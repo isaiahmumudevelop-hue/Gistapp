@@ -105,22 +105,19 @@ app.post('/api/signup', async (req,res)=>{
       'INSERT INTO users (email,password_hash,display_name,verified,verify_token,verify_expires) VALUES ($1,$2,$3,false,$4,$5) RETURNING id,email,display_name,avatar_color,dark_mode,font_size',
       [email.toLowerCase(), hash, name, vtoken, vexpires]
     );
-    let emailSent = false, emailError = null;
-    try {
-      await sendVerificationEmail(email.toLowerCase(), vtoken, name);
-      emailSent = true;
-      console.log('✅ Verification email sent to', email.toLowerCase());
-    } catch(mailErr){
-      emailError = mailErr.message;
-      console.error('❌ Email send failed:', mailErr.message);
-    }
+    // Respond IMMEDIATELY — do not wait for SMTP
     res.json({
       user: r.rows[0],
       token: sign(r.rows[0]),
       needsVerification: true,
-      emailSent,
-      emailError
+      emailSent: true,
+      emailError: null
     });
+
+    // Send the email in the background (fire-and-forget)
+    sendVerificationEmail(email.toLowerCase(), vtoken, name)
+      .then(() => console.log('✅ Verification email sent to', email.toLowerCase()))
+      .catch(mailErr => console.error('❌ Email send failed:', mailErr.message));
   } catch(e){ console.error(e); res.status(500).json({error:'Server error'}); }
 });
 app.post('/api/login', async (req,res)=>{
@@ -672,17 +669,16 @@ app.post('/api/me/change-email', auth, async (req, res) => {
     // send verification link to the NEW email
     const baseUrl = process.env.APP_URL || 'http://localhost:3000';
     const link = baseUrl + '/verify-email-change?token=' + token;
-    try {
-      await mailer.sendMail({
-        from: '"GistApp" <' + process.env.SMTP_USER + '>',
-        to: target,
-        subject: 'Confirm your new GistApp email',
-        html: '<p>Tap the link below to confirm this email address for your GistApp account:</p>' +
-              '<p><a href="' + link + '">' + link + '</a></p>' +
-              '<p>Link expires in 24 hours.</p>'
-      });
-    } catch(mailErr){ console.error('Email send failed:', mailErr.message); }
     res.json({ ok: true, sent_to: target });
+    mailer.sendMail({
+      from: '"GistApp" <' + process.env.SMTP_USER + '>',
+      to: target,
+      subject: 'Confirm your new GistApp email',
+      html: '<p>Tap the link below to confirm this email address for your GistApp account:</p>' +
+            '<p><a href="' + link + '">' + link + '</a></p>' +
+            '<p>Link expires in 24 hours.</p>'
+    }).then(() => console.log('✅ Change-email verification sent to', target))
+      .catch(mailErr => console.error('❌ Change-email send failed:', mailErr.message));
   } catch(e){ console.error(e); res.status(500).json({ error: 'Server error' }); }
 });
 
@@ -713,10 +709,10 @@ app.post('/api/verify/resend', async (req, res) => {
     const token = makeToken();
     const expires = new Date(Date.now() + 24 * 3600 * 1000);
     await pool.query('UPDATE users SET verify_token=$1, verify_expires=$2 WHERE id=$3', [token, expires, r.rows[0].id]);
-    try {
-      await sendVerificationEmail(email, token, r.rows[0].display_name);
-      res.json({ ok: true });
-    } catch(e){ console.error('resend failed', e.message); res.status(500).json({ error: 'Could not send email: ' + e.message }); }
+    res.json({ ok: true, message: 'Sending…' });
+    sendVerificationEmail(email, token, r.rows[0].display_name)
+      .then(() => console.log('✅ Resent verification to', email))
+      .catch(e => console.error('❌ Resend failed:', e.message));
   } catch(e){ console.error(e); res.status(500).json({ error: 'Server error' }); }
 });
 
