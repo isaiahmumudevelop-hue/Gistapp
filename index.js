@@ -15,11 +15,20 @@ const qrcode       = require('qrcode');
 
 /* ---------- mailer (Gmail SMTP) ---------- */
 const mailer = nodemailer.createTransport({
-  service: 'gmail',
+  host: 'smtp.gmail.com',
+  port: 465,
+  secure: true,
   auth: {
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS
-  }
+  },
+  tls: { rejectUnauthorized: false }
+});
+
+// verify connection once at startup
+mailer.verify((err) => {
+  if (err) console.error('❌ SMTP verify failed:', err.message);
+  else console.log('✅ SMTP ready');
 });
 
 function makeToken(){
@@ -32,7 +41,14 @@ async function sendVerificationEmail(toEmail, token, displayName){
   const info = await mailer.sendMail({
     from: '"GistApp" <' + process.env.SMTP_USER + '>',
     to: toEmail,
+    replyTo: process.env.SMTP_USER,
     subject: 'Verify your GistApp account',
+    headers: {
+      'X-Priority': '1',
+      'X-MSMail-Priority': 'High',
+      'Importance': 'high',
+      'List-Unsubscribe': '<mailto:' + process.env.SMTP_USER + '>'
+    },
     html: `
       <div style="font-family:Inter,sans-serif;max-width:520px;margin:0 auto;padding:32px;background:#f7f5ff;border-radius:20px">
         <h2 style="color:#33344c;margin:0 0 16px">Hi ${displayName || 'there'} 👋</h2>
