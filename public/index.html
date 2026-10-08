@@ -610,6 +610,63 @@ body:not(.dark) .cp-switch{
   margin-left:8px;
 }
 
+
+/* profile exit button */
+.pf-exit{
+  position:absolute;top:calc(14px + var(--safe-t));right:14px;
+  width:42px;height:42px;border-radius:50%;
+  background:rgba(0,0,0,.4);color:#fff;border:none;
+  display:flex;align-items:center;justify-content:center;
+  cursor:pointer;backdrop-filter:blur(8px);z-index:30;
+}
+.pf-exit:active{transform:scale(.94)}
+
+/* edit-cover button */
+.pf-edit-cover{
+  position:absolute;top:calc(14px + var(--safe-t));right:70px;
+  width:42px;height:42px;border-radius:50%;
+  background:rgba(0,0,0,.4);color:#fff;border:none;
+  display:flex;align-items:center;justify-content:center;
+  cursor:pointer;backdrop-filter:blur(8px);z-index:30;
+}
+.pf-edit-cover:active{transform:scale(.94)}
+
+/* cover hint */
+.pf-cover-hint{
+  position:absolute;left:50%;top:55%;transform:translate(-50%,-50%);
+  font-size:11.5px;color:rgba(255,255,255,.85);
+  font-weight:600;text-align:center;
+  padding:6px 12px;border-radius:20px;
+  background:rgba(0,0,0,.35);
+  opacity:0;transition:opacity .2s;pointer-events:none;
+}
+.pf-gradient:hover .pf-cover-hint{opacity:1}
+
+/* avatar edit pencil */
+.pf-avatar-edit{
+  position:absolute;bottom:2px;left:2px;
+  width:26px;height:26px;border-radius:50%;
+  background:#7b8cff;color:#fff;
+  display:flex;align-items:center;justify-content:center;
+  border:2.5px solid var(--bg);
+  z-index:12;
+}
+
+/* bio edit chip */
+.pf-bio-edit{
+  display:inline-flex;align-items:center;gap:5px;
+  margin:8px auto 0;padding:5px 12px;border-radius:14px;
+  background:var(--bg-2);color:var(--sub);
+  font-size:11.5px;font-weight:600;cursor:pointer;
+  text-align:center;
+}
+.pf-bio-edit:active{background:var(--bg-3)}
+body:not(.dark) .pf-bio-edit{background:#f0f0f3}
+
+/* make avatar pointer show */
+.pf-avatar-wrap{cursor:pointer}
+.pf-gradient{cursor:pointer}
+
 </style>
 </head>
 <body>
@@ -932,7 +989,7 @@ body:not(.dark) .cp-switch{
         <div class="cp-action" onclick="cpToggleArchive()">
           <span id="cp-arch-label">Archive chat</span>
         </div>
-        <div class="cp-action danger" onclick="cpBlock()">Block contact</div>
+        <div class="cp-action danger" id="cp-block-label" onclick="cpBlock()">Block contact</div>
         <div class="cp-action danger" onclick="cpReport()">Report contact</div>
 
         <div style="height:20px"></div>
@@ -981,12 +1038,28 @@ body:not(.dark) .cp-switch{
 
   <!-- PROFILE -->
   <section class="screen" id="screen-profile">
-    <div class="pf-gradient"></div>
+    <div class="pf-gradient" id="pf-cover" onclick="pickCover()">
+      <div class="pf-cover-hint">Tap to change cover</div>
+    </div>
 
-    <div class="pf-avatar-wrap">
+    <button class="pf-exit" onclick="closeProfile()" aria-label="Exit">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+
+    <button class="pf-edit-cover" onclick="pickCover()" aria-label="Change cover">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17.5V20.5h3l12.5-12.5-3-3L3 17.5z"/><path d="M14.5 5.5l3 3"/></svg>
+    </button>
+
+    <div class="pf-avatar-wrap" onclick="pickAvatar()">
       <div class="pf-avatar" id="pf-avatar">?</div>
       <div class="pf-online-dot"></div>
+      <div class="pf-avatar-edit">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17.5V20.5h3l12.5-12.5-3-3L3 17.5z"/><path d="M14.5 5.5l3 3"/></svg>
+      </div>
     </div>
+
+    <input type="file" id="pf-cover-file" accept="image/*" hidden>
+    <input type="file" id="pf-avatar-file" accept="image/*" hidden>
 
     <div class="pf-scroll">
       <div class="pf-card">
@@ -999,7 +1072,11 @@ body:not(.dark) .cp-switch{
         </div>
 
         <!-- about -->
-        <p class="pf-about">Hey there! I am using GistApp.</p>
+        <p class="pf-about" id="pf-bio" onclick="editBio()">Hey there! I am using GistApp.</p>
+        <div class="pf-bio-edit" onclick="editBio()">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17.5V20.5h3l12.5-12.5-3-3L3 17.5z"/></svg>
+          Edit bio
+        </div>
 
         <!-- email info -->
         <div class="pf-info-row">
@@ -1202,16 +1279,30 @@ const authTitle=document.getElementById('auth-title'),authSub=document.getElemen
       authSwapText=document.getElementById('auth-swap-text'),authSwapLink=document.getElementById('auth-swap-link'),
       authErr=document.getElementById('auth-err');
 authSwapLink.onclick=()=>{signupMode=!signupMode;authTitle.textContent=signupMode?'Create account':'Welcome back';authSub.textContent=signupMode?'Chat by email — no phone number needed.':'Log in with your email.';authName.style.display=signupMode?'block':'none';authBtn.textContent=signupMode?'Sign up':'Log in';authSwapText.textContent=signupMode?'Already have an account?':"Don't have an account?";authSwapLink.textContent=signupMode?'Log in':'Sign up';authErr.textContent='';};
-authBtn.onclick=async()=>{
-  authErr.textContent='';
-  const email=document.getElementById('auth-email').value.trim();
-  const password=document.getElementById('auth-pass').value;
-  const display_name=authName.value.trim();
-  if(!email||!password){authErr.textContent='Email and password required.';return;}
-  try{
-    const data=await api(signupMode?'/api/signup':'/api/login',{method:'POST',body:JSON.stringify(signupMode?{email,password,display_name}:{email,password})});
-    token=data.token;localStorage.setItem('token',token);me=data.user;await enterApp();
-  }catch(e){authErr.textContent=e.message;}
+authBtn.onclick = async () => {
+  authErr.textContent = '';
+  const email = document.getElementById('auth-email').value.trim();
+  const password = document.getElementById('auth-pass').value;
+  const display_name = authName.value.trim();
+  if (!email || !password) { authErr.textContent = 'Email and password required.'; return; }
+  try {
+    const isSignup = signupMode;
+    const path = isSignup ? '/api/signup' : '/api/login';
+    const body = isSignup ? { email, password, display_name } : { email, password };
+    const data = await api(path, { method:'POST', body: JSON.stringify(body) });
+    if (isSignup || data.needsVerification) {
+      showVerifyScreen(email, data.emailSent, data.emailError);
+      return;
+    }
+    token = data.token; localStorage.setItem('token', token); me = data.user;
+    await enterApp();
+  } catch(e){
+    if (e.message && e.message.toLowerCase().includes('verify')) {
+      showVerifyScreen(document.getElementById('auth-email').value.trim());
+      return;
+    }
+    authErr.textContent = e.message;
+  }
 };
 document.getElementById('auth-pass').addEventListener('keydown',e=>{if(e.key==='Enter')authBtn.click();});
 async function boot(){if(!token){show('screen-auth');return;}try{me=await api('/api/me');await enterApp();}catch{localStorage.removeItem('token');token=null;show('screen-auth');}}
@@ -1293,7 +1384,7 @@ async function loadRequests(){
     if(!reqs.length){box.innerHTML='';return;}
     box.innerHTML=reqs.map(r=>`
       <div class="req-card">
-        <div class="avatar" style="background:${r.avatar_color||colorFor(r.display_name||r.name||'G')}">${esc(initials(r.display_name||r.name||'G'))}</div>
+        ${avatarHTML(r.avatar_url, r.display_name||r.name||'G', r.avatar_color)}
         <div class="info"><b>${esc(r.display_name||r.name||'Group')}</b><small>${esc(r.email||r.type||'')} wants to ${r.type==='group'?'add you to a group':'chat'}</small></div>
         <div class="acts">
           <button class="decline" onclick="declineReq(${r.chat_id})">Decline</button>
@@ -1344,7 +1435,7 @@ function renderChats(){
     const tag=pending?' <span class="waiting-tag">Waiting</span>':(isGroup?` <span class="group-tag">${c.member_count||''}</span>`:'');
     const preview=c.last_message||(pending?'Request sent':'Tap to send a message');
     return `<div class="chat-item" data-id="${c.id}">
-      <div class="ava-wrap"><div class="avatar" style="background:${color}">${esc(initials(name))}</div>${dot}</div>
+      <div class="ava-wrap">${avatarHTML(c.other_url, name, color)}${dot}</div>
       <div class="chat-meta"><div class="name">${esc(name)}${tag} ${icons}</div><div class="preview">${esc(preview)}</div></div>
       <div class="chat-side"><time>${timeAgo(c.last_at)}</time>${badge}</div>
     </div>`;
@@ -1404,7 +1495,14 @@ async function openChat(id){
   const name=displayName(summary);
   const color=summary.other_color||colorFor(name);
   document.getElementById('dm-name').textContent=name;
-  const av=document.getElementById('dm-avatar');av.textContent=initials(name);av.style.background=color;
+  const av=document.getElementById('dm-avatar');
+  if (summary.other_url){
+    av.textContent='';
+    av.style.background = 'url(' + summary.other_url + ') center/cover';
+  } else {
+    av.textContent=initials(name);
+    av.style.background=color;
+  }
   const pending=summary.other_status==='pending';
   document.getElementById('dm-form').style.display=pending?'none':'flex';
   document.getElementById('waiting-bar').style.display=pending?'block':'none';
@@ -1678,26 +1776,18 @@ document.getElementById('new-email').addEventListener('keydown',e=>{if(e.key==='
 let selectedColor=null;
 function openProfile(){
   try {
-    if (!me){ alert('Not logged in yet'); return; }
-    const av = document.getElementById('pf-avatar');
-    if (!av){ alert('pf-avatar missing from page'); return; }
+    if (!me){ if (typeof toast==='function') toast('Not logged in'); return; }
     const name = me.display_name || '?';
-    av.innerHTML = '<span style="color:#fff;font-size:34px;font-weight:600">' + (name[0]||'?').toUpperCase() + '</span>';
-    if (me.avatar_color) av.style.background = me.avatar_color;
     const nm = document.getElementById('pf-name');
     if (nm) nm.textContent = name;
     const em = document.getElementById('pf-email');
     if (em) em.textContent = me.email || '—';
     const inp = document.getElementById('pf-name-input');
     if (inp) inp.value = name;
-    const scr = document.getElementById('screen-profile');
-    if (!scr){ alert('screen-profile missing'); return; }
-    show('screen-profile');
+    applyProfileImages();
     if (typeof loadProfileMedia === 'function') loadProfileMedia();
-    console.log('profile opened');
-  } catch(err){
-    alert('openProfile error: ' + (err && err.message || err));
-  }
+    show('screen-profile');
+  } catch(err){ alert('openProfile error: ' + (err && err.message || err)); }
 }
 
 function closeProfile(){
@@ -1747,8 +1837,13 @@ async function openContactProfile(){
   const color = cpChat.other_color || colorFor(name);
 
   const av = document.getElementById('cp-avatar');
-  av.textContent = initials(name);
-  av.style.background = color;
+  if (cpChat.other_url){
+    av.textContent = '';
+    av.style.background = 'url(' + cpChat.other_url + ') center/cover';
+  } else {
+    av.textContent = initials(name);
+    av.style.background = color;
+  }
 
   document.getElementById('cp-name').textContent = name;
   document.getElementById('cp-email').textContent = cpChat.other_email || 'Email hidden';
@@ -1769,6 +1864,10 @@ async function openContactProfile(){
   // Favorite / Archive labels
   document.getElementById('cp-fav-label').textContent = cpChat.favorite ? 'Remove from favorites' : 'Add to favorites';
   document.getElementById('cp-arch-label').textContent = cpChat.archived ? 'Unarchive chat' : 'Archive chat';
+
+  // Block label
+  const blkLabel = document.getElementById('cp-block-label');
+  if (blkLabel) blkLabel.textContent = cpIsBlocked() ? 'Unblock contact' : 'Block contact';
 
   // Media
   loadContactMedia();
@@ -1849,11 +1948,17 @@ async function cpToggleArchive(){
 }
 
 async function cpBlock(){
-  if (!cpChat.other_id){ toast('Cannot block in this chat'); return; }
-  if (!confirm('Block this contact?')) return;
+  if (!cpChat || !cpChat.other_id){ toast('Cannot block in this chat'); return; }
+  const currentlyBlocked = cpIsBlocked();
+  const label = currentlyBlocked ? 'Unblock this contact?' : 'Block this contact?';
+  if (!confirm(label)) return;
   try {
     const r = await api('/api/users/' + cpChat.other_id + '/block', { method:'POST' });
+    // refresh my user data
+    try { me = await api('/api/me'); } catch(_){}
     toast(r.blocked ? 'Contact blocked' : 'Contact unblocked');
+    // refresh chat list to hide/show messages
+    if (typeof loadChats === 'function') loadChats();
   } catch(e){ alert(e.message); }
 }
 
@@ -1919,9 +2024,9 @@ const setSvg = (k, sw) => '<svg viewBox="0 0 24 24" fill="none" stroke="currentC
 
 const SETTINGS_SECTIONS = [
   { title:'Account', rows:[
-    { icon:'shield', label:'Two-step verification', sub:'Add a PIN for extra protection', key:'two_factor', soon:true },
+    { icon:'shield', label:'Two-step verification', sub:'Add a PIN for extra protection', key:'two_factor' },
     { icon:'bell',   label:'Security notifications', sub:"Alerts when a contact's code changes", key:'security_notifications', toggle:true },
-    { icon:'swap',   label:'Change email', sub:'Migrate your account to a new email', key:'change_email', soon:true },
+    { icon:'swap',   label:'Change email', sub:'Migrate your account to a new email', key:'change_email' },
     { icon:'trash',  label:'Delete account', danger:true, key:'delete_account' },
   ]},
   { title:'Privacy', rows:[
@@ -2033,7 +2138,10 @@ async function savePref(key, value){
 function updateSettingsHeader(){
   if (!me) return;
   const av = document.getElementById('set-avatar');
-  if (me.avatar_color) {
+  if (me.avatar_url){
+    av.innerHTML = '';
+    av.style.background = 'url(' + me.avatar_url + ') center/cover';
+  } else if (me.avatar_color) {
     av.innerHTML = '<span style="color:#fff;font-size:36px;font-weight:700">' + esc(initials(me.display_name)) + '</span>';
     av.style.background = me.avatar_color;
   } else {
@@ -2041,6 +2149,8 @@ function updateSettingsHeader(){
     av.style.background = 'var(--bg-3)';
   }
   document.getElementById('set-name').textContent = me.display_name;
+  const em = document.getElementById('set-email');
+  if (em) em.textContent = me.email || '';
 }
 
 function openSettings(){
@@ -2100,8 +2210,8 @@ function handleSettingClick(key){
     case 'advanced':       openAdvanced(); break;
     case 'privacy_checkup':openPrivacyCheckup(); break;
     case 'delete_account': deleteAccount(); break;
-    case 'change_email':   showSoon('Change email'); break;
-    case 'two_factor':     showSoon('Two-step verification'); break;
+    case 'change_email':   openChangeEmail(); break;
+    case 'two_factor':     open2FA(); break;
     case 'tones':          showSoon('Custom tones'); break;
     case 'avatar':         showSoon('Avatar editor'); break;
     case 'help':           window.location.href = 'mailto:support@gistapp.app?subject=GistApp%20Support'; break;
@@ -2157,7 +2267,9 @@ async function openBlockedList(){
     if (!list.length){ body.innerHTML = '<div style="padding:24px;text-align:center;color:var(--sub);font-size:14px">No blocked contacts</div>'; return; }
     body.innerHTML = list.map(u =>
       '<div class="picker-user">' +
-        '<div class="picker-avatar" style="background:' + (u.avatar_color || colorFor(u.display_name)) + '">' + esc(initials(u.display_name)) + '</div>' +
+        (u.avatar_url
+          ? '<div class="picker-avatar" style="background:url(' + u.avatar_url + ') center/cover"></div>'
+          : '<div class="picker-avatar" style="background:' + (u.avatar_color || colorFor(u.display_name)) + '">' + esc(initials(u.display_name)) + '</div>') +
         '<div class="picker-user-info"><b>' + esc(u.display_name) + '</b><small>' + esc(u.email) + '</small></div>' +
         '<button class="picker-unblock" onclick="unblockUser(' + u.id + ')">Unblock</button>' +
       '</div>'
@@ -2362,6 +2474,250 @@ function openChatMenu(e){
   menu.style.right = '10px';
   menu.style.top = '70px';
   menu.classList.add('show');
+}
+
+/* ================= PROFILE MEDIA UPLOAD ================= */
+function pickCover(){ document.getElementById('pf-cover-file').click(); }
+function pickAvatar(){ document.getElementById('pf-avatar-file').click(); }
+
+async function uploadAndSave(file, field){
+  if (!file) return;
+  if (!file.type.startsWith('image/')){ if (typeof toast==='function') toast('Pick an image file'); return; }
+  if (file.size > 5 * 1024 * 1024){ if (typeof toast==='function') toast('Image too big (max 5MB)'); return; }
+  if (typeof toast==='function') toast('Uploading…');
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const res = await fetch('/api/upload', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + token },
+      body: fd
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Upload failed');
+    const patch = {};
+    patch[field] = data.url;
+    const updated = await api('/api/me', { method:'PATCH', body: JSON.stringify(patch) });
+    me = Object.assign({}, me, updated);
+    if (typeof toast==='function') toast(field === 'cover_url' ? 'Cover updated' : 'Photo updated');
+    applyProfileImages();
+  } catch(e){ alert(e.message); }
+}
+
+function applyProfileImages(){
+  if (!me) return;
+  const av = document.getElementById('pf-avatar');
+  const cover = document.getElementById('pf-cover');
+  if (me.avatar_url){
+    av.style.backgroundImage = 'url(' + me.avatar_url + ')';
+    av.style.backgroundSize = 'cover';
+    av.style.backgroundPosition = 'center';
+    av.textContent = '';
+  } else {
+    av.style.backgroundImage = '';
+    av.textContent = (me.display_name || '?').split(/\s+/).map(w=>w[0]).join('').slice(0,2).toUpperCase();
+    if (me.avatar_color) av.style.background = me.avatar_color;
+  }
+  if (me.cover_url){
+    cover.style.backgroundImage = 'url(' + me.cover_url + ')';
+    cover.style.backgroundSize = 'cover';
+    cover.style.backgroundPosition = 'center';
+    cover.style.backgroundRepeat = 'no-repeat';
+  } else {
+    cover.style.backgroundImage = '';
+  }
+  if (me.bio){
+    const el = document.getElementById('pf-bio');
+    if (el) el.textContent = me.bio;
+  }
+  // keep the Settings screen header in sync
+  try { if (typeof updateSettingsHeader === 'function') updateSettingsHeader(); } catch(_){}
+}
+
+async function editBio(){
+  const current = (me && me.bio) || 'Hey there! I am using GistApp.';
+  const next = prompt('Your bio:', current);
+  if (next === null) return;
+  const trimmed = next.trim().slice(0, 140);
+  if (!trimmed){ if (typeof toast==='function') toast('Bio cannot be empty'); return; }
+  try {
+    const updated = await api('/api/me', { method:'PATCH', body: JSON.stringify({ bio: trimmed }) });
+    me = Object.assign({}, me, updated);
+    const el = document.getElementById('pf-bio');
+    if (el) el.textContent = trimmed;
+    if (typeof toast==='function') toast('Bio updated');
+  } catch(e){ alert(e.message); }
+}
+
+document.addEventListener('change', function(e){
+  if (e.target && e.target.id === 'pf-cover-file') uploadAndSave(e.target.files[0], 'cover_url');
+  if (e.target && e.target.id === 'pf-avatar-file') uploadAndSave(e.target.files[0], 'avatar_url');
+});
+
+function showVerifyScreen(email, emailSent, emailError){
+  const card = document.querySelector('.auth-card');
+  if (!card) return;
+  const errNote = (emailSent === false)
+    ? '<div style="background:#fff2f0;color:#c1271d;font-size:12.5px;padding:10px 12px;border-radius:10px;margin-bottom:14px;line-height:1.5;text-align:left">' +
+        '<b>⚠️ Email couldn\'t be sent.</b><br>' +
+        (emailError ? esc(emailError) : 'Tap Resend below.') +
+      '</div>'
+    : '';
+  card.innerHTML =
+    '<div style="text-align:center">' +
+      '<div style="font-size:60px;margin-bottom:8px">📬</div>' +
+      '<h1 style="font-size:22px;font-weight:800;color:#1c1c22;margin:0 0 8px">Check your inbox</h1>' +
+      errNote +
+      '<p style="font-size:14px;color:#8e8e96;line-height:1.6;margin:0 0 20px">' +
+        'We sent a verification link to <b style="color:#1c1c22">' + esc(email) + '</b>. ' +
+        'Open your Gmail app, tap the link, then come back here and log in.' +
+      '</p>' +
+      '<button class="auth-btn" onclick="location.reload()" style="margin-bottom:10px">I\'ve verified — log in</button>' +
+      '<button id="resend-btn" onclick="resendVerification(\'' + esc(email) + '\')" ' +
+        'style="background:transparent;border:none;color:#6a62b8;font-weight:700;font-size:14px;cursor:pointer;padding:10px">Resend email</button>' +
+      '<div id="verify-status" style="font-size:12.5px;color:#8e8e96;margin-top:8px;min-height:16px"></div>' +
+    '</div>';
+}
+
+async function resendVerification(email){
+  const btn = document.getElementById('resend-btn');
+  if (btn){ btn.textContent = 'Sending…'; btn.disabled = true; }
+  try {
+    await api('/api/verify/resend', { method:'POST', body: JSON.stringify({ email }) });
+    if (btn){ btn.textContent = 'Sent! Check your inbox'; }
+  } catch(e){
+    if (btn){ btn.textContent = 'Resend email'; btn.disabled = false; }
+    alert(e.message);
+  }
+}
+
+/* universal avatar helper — image if available, otherwise initials */
+function avatarHTML(url, name, color, extraClass){
+  const cls = 'avatar' + (extraClass ? ' ' + extraClass : '');
+  if (url){
+    return '<div class="' + cls + '" style="background-image:url(\'' + url + '\');background-size:cover;background-position:center"></div>';
+  }
+  const bg = color || colorFor(name || '?');
+  const ini = initials(name || '?');
+  return '<div class="' + cls + '" style="background:' + bg + '">' + esc(ini) + '</div>';
+}
+
+/* ================= TWO-STEP VERIFICATION ================= */
+async function open2FA(){
+  const wrap = document.getElementById('picker-modal');
+  const body = document.getElementById('picker-body');
+  document.getElementById('picker-title').textContent = 'Two-step verification';
+  wrap.classList.add('show');
+
+  // If already enabled → show disable option
+  if (me && me.totp_enabled){
+    body.innerHTML =
+      '<div style="padding:16px;text-align:center;color:var(--sub);font-size:14px;line-height:1.6">' +
+        '✅ Two-step verification is <b style="color:#25d366">ON</b>.<br>' +
+        'You\'ll need your authenticator code each time you log in.' +
+      '</div>' +
+      '<button class="picker-row danger" onclick="disable2FA()">🔓 Turn off 2FA</button>';
+    return;
+  }
+
+  body.innerHTML = '<div style="padding:20px;text-align:center;color:var(--sub)">Generating QR code…</div>';
+  try {
+    const data = await api('/api/2fa/setup', { method:'POST' });
+    body.innerHTML =
+      '<div style="padding:8px 4px;font-size:13.5px;color:var(--sub);line-height:1.6;text-align:center">' +
+        'Scan this QR code with <b>Google Authenticator</b>, <b>Authy</b> or any 2FA app.' +
+      '</div>' +
+      '<div style="text-align:center;padding:12px 0">' +
+        '<img src="' + data.qr + '" style="width:200px;height:200px;border-radius:14px;background:#fff;padding:8px">' +
+      '</div>' +
+      '<div style="padding:10px 4px;font-size:13px;color:var(--sub);text-align:center">' +
+        'Or enter this key manually:<br>' +
+        '<code style="display:inline-block;margin-top:6px;background:var(--bg-3);padding:8px 12px;border-radius:10px;font-size:12px;letter-spacing:1px">' + data.secret + '</code>' +
+      '</div>' +
+      '<div style="padding:12px 0 4px">' +
+        '<input id="totp-code" placeholder="Enter 6-digit code" inputmode="numeric" maxlength="6" ' +
+          'style="width:100%;height:52px;border-radius:14px;border:1.5px solid var(--line);background:var(--bg-2);padding:0 16px;font-size:18px;color:var(--ink);outline:none;text-align:center;letter-spacing:6px;font-family:monospace">' +
+      '</div>' +
+      '<div id="totp-err" style="min-height:16px;color:#e5484d;font-size:12.5px;text-align:center;font-weight:600;margin-bottom:6px"></div>' +
+      '<button class="picker-row" style="background:#7b8cff;color:#fff;justify-content:center;font-weight:700" onclick="confirm2FA()">Enable 2FA</button>';
+    setTimeout(()=>{ const el = document.getElementById('totp-code'); if (el) el.focus(); }, 200);
+  } catch(e){
+    body.innerHTML = '<div style="padding:20px;color:#e5484d;text-align:center">' + esc(e.message) + '</div>';
+  }
+}
+
+async function confirm2FA(){
+  const code = (document.getElementById('totp-code').value || '').trim();
+  const err = document.getElementById('totp-err');
+  if (!code || code.length !== 6){ err.textContent = 'Enter the 6-digit code'; return; }
+  try {
+    await api('/api/2fa/enable', { method:'POST', body: JSON.stringify({ code }) });
+    me.totp_enabled = true;
+    closePicker();
+    if (typeof toast === 'function') toast('Two-step verification enabled');
+  } catch(e){ err.textContent = e.message; }
+}
+
+async function disable2FA(){
+  const password = prompt('Enter your account password to turn off 2FA:');
+  if (!password) return;
+  try {
+    await api('/api/2fa/disable', { method:'POST', body: JSON.stringify({ password }) });
+    me.totp_enabled = false;
+    closePicker();
+    if (typeof toast === 'function') toast('Two-step verification turned off');
+  } catch(e){ alert(e.message); }
+}
+
+/* ================= CHANGE EMAIL ================= */
+function openChangeEmail(){
+  const wrap = document.getElementById('picker-modal');
+  const body = document.getElementById('picker-body');
+  document.getElementById('picker-title').textContent = 'Change email';
+  body.innerHTML =
+    '<div style="padding:6px 4px 12px;font-size:13px;color:var(--sub);line-height:1.6">' +
+      'Current email: <b style="color:var(--ink)">' + esc(me.email) + '</b><br>' +
+      'We\'ll send a confirmation link to the new address.' +
+    '</div>' +
+    '<div style="padding:0 0 10px">' +
+      '<input id="ce-new" type="email" placeholder="new@example.com" spellcheck="false" ' +
+        'style="width:100%;height:52px;border-radius:14px;border:1.5px solid var(--line);background:var(--bg-2);padding:0 16px;font-size:15px;color:var(--ink);outline:none">' +
+    '</div>' +
+    '<div style="padding:0 0 10px">' +
+      '<input id="ce-pass" type="password" placeholder="Confirm with your password" ' +
+        'style="width:100%;height:52px;border-radius:14px;border:1.5px solid var(--line);background:var(--bg-2);padding:0 16px;font-size:15px;color:var(--ink);outline:none">' +
+    '</div>' +
+    '<div id="ce-err" style="min-height:16px;color:#e5484d;font-size:12.5px;font-weight:600;margin-bottom:6px"></div>' +
+    '<button class="picker-row" style="background:#7b8cff;color:#fff;justify-content:center;font-weight:700" onclick="submitChangeEmail()">Send verification</button>';
+  wrap.classList.add('show');
+}
+
+async function submitChangeEmail(){
+  const new_email = (document.getElementById('ce-new').value || '').trim();
+  const password  = document.getElementById('ce-pass').value || '';
+  const err = document.getElementById('ce-err');
+  err.textContent = '';
+  if (!new_email || !new_email.includes('@')){ err.textContent = 'Enter a valid email'; return; }
+  if (!password){ err.textContent = 'Enter your password'; return; }
+  try {
+    const r = await api('/api/me/change-email', { method:'POST', body: JSON.stringify({ new_email, password }) });
+    document.getElementById('picker-body').innerHTML =
+      '<div style="text-align:center;padding:24px 8px">' +
+        '<div style="font-size:52px;margin-bottom:8px">📬</div>' +
+        '<h3 style="color:var(--ink);margin:0 0 8px;font-size:18px">Check the new inbox</h3>' +
+        '<p style="color:var(--sub);font-size:13.5px;line-height:1.6">' +
+          'We sent a confirmation link to <b style="color:var(--ink)">' + esc(r.sent_to) + '</b>.<br>' +
+          'Tap it to finish changing your email.' +
+        '</p>' +
+      '</div>';
+  } catch(e){ err.textContent = e.message; }
+}
+
+function cpIsBlocked(){
+  try {
+    const list = (me && me.blocked_ids) || [];
+    return cpChat && cpChat.other_id && list.map(Number).includes(Number(cpChat.other_id));
+  } catch(_){ return false; }
 }
 
 boot();
