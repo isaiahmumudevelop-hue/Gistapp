@@ -639,6 +639,44 @@ body.dark .disappear-chip{background:rgba(255,255,255,.12);color:var(--ink)}
 .popmenu .iconrow button{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 2px;font-size:11px}
 .popmenu .iconrow button span{font-size:20px}
 
+
+.requests-wrap{padding:4px 16px 8px;flex-shrink:0}
+.requests-wrap:empty{display:none}
+.req-card{background:var(--bg-2);border-radius:18px;padding:12px 14px;margin:8px 0;display:flex;gap:12px;align-items:center;border:1px solid var(--line)}
+.req-card .avatar{width:44px;height:44px;font-size:14px}
+.req-card .info{flex:1;min-width:0}
+.req-card .info b{font-size:14px;color:var(--ink);display:block}
+.req-card .info small{font-size:12px;color:var(--sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;margin-top:2px}
+.req-card .acts{display:flex;gap:6px;flex-shrink:0}
+.req-card button{border:none;border-radius:12px;padding:9px 13px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit}
+.req-card .accept{background:#14141a;color:#fff}
+.req-card .decline{background:var(--bg-3);color:var(--sub)}
+
+
+/* Profile stats */
+.prof-stats{display:flex;justify-content:space-around;gap:12px;margin:18px 0}
+.prof-stat{text-align:center;cursor:pointer;flex:1;padding:8px 4px;border-radius:12px;transition:background .15s}
+.prof-stat:hover{background:var(--bg-2)}
+.prof-stat b{font-size:17px;color:var(--ink);display:block;font-weight:800}
+.prof-stat small{font-size:11.5px;color:var(--sub);display:block;margin-top:2px}
+
+/* Follow / Like action buttons */
+.cp-action-buttons{display:flex;gap:10px;margin-top:8px}
+.follow-btn,.like-btn{
+  flex:1;display:flex;align-items:center;justify-content:center;gap:6px;
+  padding:12px 16px;border-radius:22px;font-size:14px;font-weight:700;
+  border:none;cursor:pointer;font-family:inherit;transition:transform .12s, background .15s
+}
+.follow-btn:active,.like-btn:active{transform:scale(.96)}
+.follow-btn.not,.like-btn.not{background:var(--bg-2);color:var(--ink)}
+.follow-btn.following{background:#25d366;color:#fff}
+.like-btn.liked{background:#ff3b30;color:#fff}
+
+/* ============================================================
+   FOOTER — Status eye count
+   ============================================================ */
+.my-status-eye{position:absolute;bottom:-2px;right:-2px;min-width:20px;height:20px;border-radius:10px;background:#7b8cff;color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 6px;border:2px solid var(--bg)}
+
 </style>
 </head>
 <body>
@@ -738,6 +776,7 @@ body.dark .disappear-chip{background:rgba(255,255,255,.12);color:var(--ink)}
       <button class="filter-chip" data-f="favorites" onclick="setFilter('favorites')">Favorites</button>
       <button class="filter-chip" data-f="archived" onclick="setFilter('archived')">Archived</button>
     </div>
+    <div class="requests-wrap" id="requests"></div>
     <div class="chat-scroll" id="chat-scroll"></div>
     <div class="e2e-footer">🔒 Your personal messages are end-to-end encrypted</div>
   </section>
@@ -800,6 +839,13 @@ body.dark .disappear-chip{background:rgba(255,255,255,.12);color:var(--ink)}
       <input type="file" id="file-pick" hidden>
     </form>
     <div class="dm-rec-timer" id="dm-rec-timer"></div>
+    <div class="emoji-picker" id="emoji-picker">
+      <div class="emoji-head">
+        <span>Emoji</span>
+        <button class="emoji-close" onclick="closeEmojiPicker()">✕</button>
+      </div>
+      <div class="emoji-grid" id="emoji-grid"></div>
+    </div>
   </section>
 
   <!-- ============ CONTACT PROFILE ============ -->
@@ -825,6 +871,25 @@ body.dark .disappear-chip{background:rgba(255,255,255,.12);color:var(--ink)}
           <span id="cp-email">…</span>
         </div>
         <div class="cp-meta-small" id="cp-lastseen">Last seen recently</div>
+
+        <div class="prof-stats" id="cp-stats-row">
+          <div class="prof-stat" onclick="showUserList('posts')"><b id="cp-posts-count">0</b><small>Posts</small></div>
+          <div class="prof-stat" onclick="showUserList('followers')"><b id="cp-followers-count">0</b><small>Followers</small></div>
+          <div class="prof-stat" onclick="showUserList('following')"><b id="cp-following-count">0</b><small>Following</small></div>
+          <div class="prof-stat" onclick="showUserList('likers')"><b id="cp-likes-count">0</b><small>Likes</small></div>
+        </div>
+
+        <div class="cp-action-buttons">
+          <button class="follow-btn not" id="cp-follow-btn" onclick="toggleFollowCp()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5"/><path d="M19 6v6M16 9h6"/></svg>
+            <span>Follow</span>
+          </button>
+          <button class="like-btn not" id="cp-like-btn" onclick="toggleLikeCp()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-4.5-9-9.5C1.4 7.4 3.7 4.5 7 4.5c2 0 3.5 1 5 3 1.5-2 3-3 5-3 3.3 0 5.6 2.9 4 7-2 5-9 9.5-9 9.5z"/></svg>
+            <span>Like</span>
+          </button>
+        </div>
+
         <div class="cp-divider"></div>
         <div class="cp-sec-head" onclick="openGallery()"><span>Media, links and docs</span><span style="opacity:.7">›</span></div>
         <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:8px 0 4px" id="cp-media-grid"></div>
@@ -859,7 +924,7 @@ body.dark .disappear-chip{background:rgba(255,255,255,.12);color:var(--ink)}
   <section class="screen" id="screen-profile">
     <div class="cp-gradient" id="pf-cover"></div>
     <div class="cp-avatar-wrap">
-      <div class="cp-avatar" id="pf-avatar">?</div>
+      <div class="cp-avatar" id="pf-avatar" onclick="pickAvatar()" style="cursor:pointer">?</div>
     </div>
     <div class="cp-scroll">
       <div class="cp-inner">
@@ -1054,11 +1119,16 @@ body.dark .disappear-chip{background:rgba(255,255,255,.12);color:var(--ink)}
       <textarea class="pc-text" id="pc-text" placeholder="What's on your mind?" maxlength="1000"></textarea>
       <div class="pc-preview" id="pc-preview" style="display:none"></div>
       <div class="pc-actions">
-        <button class="pc-media-btn" onclick="document.getElementById('pc-file').click()">
+        <button class="pc-media-btn" onclick="document.getElementById('pc-photo').click()">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="5" width="18" height="14" rx="2.5"/><circle cx="9" cy="10" r="1.6"/><path d="M4 17l4.5-4.5L11 15l3-3 5 5"/></svg>
-          <span>Photo / Video</span>
+          <span>Photo</span>
         </button>
-        <input type="file" id="pc-file" accept="image/*,video/*" hidden>
+        <button class="pc-media-btn" onclick="document.getElementById('pc-video').click()">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="13" height="12" rx="2.5"/><path d="M16 10.5l5-2.5v8l-5-2.5"/></svg>
+          <span>Video</span>
+        </button>
+        <input type="file" id="pc-photo" accept="image/*" hidden>
+        <input type="file" id="pc-video" accept="video/*" hidden>
       </div>
     </div>
   </div>
@@ -1221,6 +1291,34 @@ body.dark .disappear-chip{background:rgba(255,255,255,.12);color:var(--ink)}
       <h3 id="picker-title">Pick an option</h3>
       <div id="picker-body"></div>
       <div class="modal-actions"><button class="ghost" onclick="closePicker()">Close</button></div>
+    </div>
+  </div>
+
+  <div class="modal-wrap" id="forgot-pin-modal">
+    <div class="modal">
+      <h3>Reset your PIN</h3>
+      <p>Verify with your account password to set a new PIN.</p>
+      <input id="forgot-pin-pass" type="password" placeholder="Account password">
+      <input id="forgot-pin-new" placeholder="New 4-digit PIN" inputmode="numeric" maxlength="4" style="margin-top:10px">
+      <div class="err" id="forgot-pin-err"></div>
+      <div class="modal-actions">
+        <button class="ghost" onclick="closeModal('forgot-pin-modal')">Cancel</button>
+        <button class="primary" onclick="submitForgotPin()">Save new PIN</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-wrap" id="pin-setup-modal">
+    <div class="modal">
+      <h3 id="pin-setup-title">Set your PIN</h3>
+      <p>Choose a 4-digit PIN. You'll use it to unlock the app and locked chats.</p>
+      <input id="pin-setup-1" placeholder="Enter 4-digit PIN" inputmode="numeric" maxlength="4" autocomplete="off">
+      <input id="pin-setup-2" placeholder="Confirm PIN" inputmode="numeric" maxlength="4" autocomplete="off" style="margin-top:10px">
+      <div class="err" id="pin-setup-err"></div>
+      <div class="modal-actions">
+        <button class="ghost" onclick="closeModal('pin-setup-modal')">Cancel</button>
+        <button class="primary" onclick="submitPinSetup()">Save PIN</button>
+      </div>
     </div>
   </div>
 
@@ -1494,53 +1592,7 @@ async function submitPwReset(){
 }
 
 /* ---------- ONBOARDING (simple) ---------- */
-async function showOnboarding(){
-  const root = document.getElementById('ob-root');
-  if (!root) return;
-  root.innerHTML = '<div class="ob-step">' +
-    '<h1 class="ob-title">Welcome to GistApp 👋</h1>' +
-    '<p class="ob-sub">Set up your profile in 30 seconds.</p>' +
-    '<div class="ob-avatar-wrap" onclick="document.getElementById(\'ob-file\').click()">' +
-      '<div class="ob-avatar" id="ob-avatar">' + esc(initials(me && me.display_name || '?')) + '</div>' +
-      '<div class="ob-avatar-hint">📷 Add photo</div>' +
-    '</div>' +
-    '<input type="file" id="ob-file" accept="image/*" hidden>' +
-    '<div class="ob-field"><label>Display name</label><input id="ob-name" placeholder="Your name" value="' + esc(me && me.display_name || '') + '"></div>' +
-    '<div class="ob-field"><label>Username</label><input id="ob-username" placeholder="yourhandle" maxlength="20" autocomplete="off"></div>' +
-    '<div class="ob-field"><label>Bio (optional)</label><textarea id="ob-bio" placeholder="Say hi…" maxlength="140" rows="2"></textarea></div>' +
-    '<button class="ob-btn" onclick="finishOnboarding()">Continue →</button>' +
-    '<div class="ob-skip" onclick="finishOnboarding(true)">Skip for now</div>' +
-  '</div>';
-  show('screen-onboarding');
-  document.getElementById('ob-file').onchange = async function(){
-    const f = this.files[0]; if (!f) return;
-    const fd = new FormData(); fd.append('file', f);
-    try {
-      const res = await fetch('/api/upload', { method:'POST', headers:{ Authorization:'Bearer '+token }, body: fd });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Upload failed');
-      me.avatar_url = data.url;
-      const av = document.getElementById('ob-avatar');
-      av.textContent = ''; av.style.backgroundImage = 'url(' + data.url + ')'; av.style.backgroundSize = 'cover';
-    } catch(e){ alert(e.message); }
-  };
-}
-let _obAvatarUrl = null;
-async function finishOnboarding(skip){
-  const name = (document.getElementById('ob-name').value||'').trim() || (me.display_name || me.email.split('@')[0]);
-  const bio = (document.getElementById('ob-bio').value||'').trim();
-  const username = (document.getElementById('ob-username').value||'').trim().toLowerCase();
-  try {
-    if (username && /^[a-z0-9_]{3,20}$/.test(username)){
-      await api('/api/username/set', { method:'POST', body: JSON.stringify({ username }) });
-    }
-    await api('/api/onboard/profile', { method:'POST', body: JSON.stringify({ display_name:name, bio:bio||'Hey there! I am using GistApp.', avatar_url: me.avatar_url || null }) });
-    await api('/api/onboard/permissions', { method:'POST', body: JSON.stringify({ permissions:{} }) });
-    me.onboarded = true;
-    me.display_name = name;
-    await enterApp();
-  } catch(e){ alert(e.message); }
-}
+/* showOnboarding replaced by multi-step version below */
 
 /* ---------- NAV ---------- */
 function updateNavVisibility(id){
@@ -1613,6 +1665,15 @@ function connectSocket(){
   socket.on('requests-changed', loadRequests);
   socket.on('chats-changed', function(){ loadChats(); loadRequests(); });
   socket.on('status-added', function(){ loadStories(); });
+  socket.on('user-updated', function(p){
+    // Another user changed their profile — refresh our views
+    if (p && Number(p.userId) === Number(me.id)) return;
+    loadChats();
+    if (currentChat && Number(currentChat.other_id) === Number(p.userId)){
+      // Re-fetch this chat's details
+      loadChats();
+    }
+  });
   socket.on('feed-new-post', function(){ if (document.getElementById('screen-feed').classList.contains('active')) loadFeed(); });
   socket.on('call:incoming', function(p){ incomingCallScreen(p); });
   socket.on('call:initiated', function(){ startOutgoingMedia().then(sendOffer); });
@@ -2144,6 +2205,7 @@ function openProfile(){
   document.getElementById('pf-disappear').classList.toggle('on', disp !== 'Off');
   document.getElementById('pf-disappear-sub').textContent = disp;
   loadProfileMedia();
+  if (typeof applyProfileImages === 'function') applyProfileImages();
   show('screen-profile');
 }
 function closeProfile(){ show('screen-settings'); }
@@ -2326,7 +2388,7 @@ function handleSettingClick(key){
     case 'blocked_list': openBlockedList(); break;
     case 'app_lock_manage': openPinSetup(); break;
     case 'chat_lock_manage': toggleChatLockFeature(); break;
-    case 'two_factor': toast('2FA coming soon'); break;
+    case 'two_factor': open2FA(); break;
     case 'change_email': toast('Change email coming soon'); break;
     case 'delete_account': if (confirm('Delete your account permanently?')) api('/api/me', { method:'DELETE' }).then(function(){ logout(); }); break;
     case 'help': window.location.href = 'mailto:support@gistapp.app'; break;
@@ -2649,15 +2711,17 @@ async function editPost(id){ const p = _feedPosts.find(function(x){ return Numbe
 function openSharePost(id){ _sharePostId = id; const c = prompt('Add a comment (optional):', ''); if (c===null) return; api('/api/posts/'+id+'/share', { method:'POST', body: JSON.stringify({ caption:c }) }).then(function(){ toast('Reposted'); loadFeed(); }).catch(function(e){ alert(e.message); }); }
 function openPostComposer(){ document.getElementById('post-composer').classList.add('show'); document.getElementById('pc-text').value = ''; document.getElementById('pc-preview').style.display = 'none'; document.getElementById('pc-preview').innerHTML = ''; document.getElementById('pc-post-btn').disabled = true; _pcFile = null; setTimeout(function(){ document.getElementById('pc-text').focus(); }, 100); }
 function closePostComposer(){ document.getElementById('post-composer').classList.remove('show'); _pcFile = null; }
-document.getElementById('pc-file').addEventListener('change', function(e){
-  const f = e.target.files[0]; if (!f) return;
-  _pcFile = f;
-  const url = URL.createObjectURL(f);
-  const prev = document.getElementById('pc-preview');
-  prev.innerHTML = f.type.startsWith('video') ? '<video src="'+url+'" controls></video>' : '<img src="'+url+'">';
-  prev.style.display = 'flex';
-  document.getElementById('pc-post-btn').disabled = false;
-  e.target.value = '';
+['pc-photo','pc-video'].forEach(function(id){
+  document.getElementById(id).addEventListener('change', function(e){
+    const f = e.target.files[0]; if (!f) return;
+    _pcFile = f;
+    const url = URL.createObjectURL(f);
+    const prev = document.getElementById('pc-preview');
+    prev.innerHTML = f.type.startsWith('video') ? '<video src="'+url+'" controls></video>' : '<img src="'+url+'">';
+    prev.style.display = 'flex';
+    document.getElementById('pc-post-btn').disabled = false;
+    e.target.value = '';
+  });
 });
 document.getElementById('pc-text').addEventListener('input', function(){
   document.getElementById('pc-post-btn').disabled = !this.value.trim() && !_pcFile;
@@ -2783,19 +2847,39 @@ async function postStatus(){
 async function loadStories(){
   const wrap = document.getElementById('stories');
   if (!wrap) return;
-  let html = '<div class="story add" onclick="openStatusComposer()"><div class="ring"><div>+</div></div><span>Update</span></div>';
+
+  let mine = [];
+  let others = [];
   try {
     const data = await api('/api/statuses/feed');
-    (data.others||[]).forEach(function(u){
-      const color = u.avatar_color || colorFor(u.display_name);
-      const inner = u.avatar_url ? '<div style="background-image:url('+u.avatar_url+');background-size:cover;background-position:center"></div>' : '<div style="background:'+color+'">'+esc(initials(u.display_name))+'</div>';
-      const cls = u.all_seen ? ' seen' : '';
-      html += '<div class="story' + cls + '" data-uid="' + u.user_id + '"><div class="ring">' + inner + '</div><span>' + esc((u.display_name||'').split(' ')[0]) + '</span></div>';
-    });
-    wrap.innerHTML = html;
-    wrap.querySelectorAll('.story[data-uid]').forEach(function(el){ el.onclick = function(){ openUserStatus(Number(el.dataset.uid)); }; });
-  } catch(e){ wrap.innerHTML = html; }
+    mine = data.mine || [];
+    others = data.others || [];
+  } catch(_){}
+
+  let html = '';
+  // First item: Update button (or My update if I posted)
+  if (mine.length > 0){
+    const myAva = me.avatar_url ? '<div style="background-image:url(' + me.avatar_url + ');background-size:cover;background-position:center"></div>' : '<div style="background:' + (me.avatar_color || 'linear-gradient(135deg,#7b8cff,#b58cff)') + '">' + esc(initials(me.display_name||'?')) + '</div>';
+    html += '<div class="story" id="my-status-story"><div class="ring">' + myAva + '</div><span>My update</span></div>';
+  } else {
+    html += '<div class="story add" onclick="openStatusComposer()"><div class="ring"><div>+</div></div><span>Update</span></div>';
+  }
+  // Others' statuses
+  others.forEach(function(u){
+    const color = u.avatar_color || colorFor(u.display_name);
+    const inner = u.avatar_url ? '<div style="background-image:url(' + u.avatar_url + ');background-size:cover;background-position:center"></div>' : '<div style="background:' + color + '">' + esc(initials(u.display_name)) + '</div>';
+    const cls = u.all_seen ? ' seen' : '';
+    html += '<div class="story' + cls + '" data-uid="' + u.user_id + '"><div class="ring">' + inner + '</div><span>' + esc((u.display_name||'').split(' ')[0]) + '</span></div>';
+  });
+  wrap.innerHTML = html;
+
+  wrap.querySelectorAll('.story[data-uid]').forEach(function(el){
+    el.onclick = function(){ openUserStatus(Number(el.dataset.uid)); };
+  });
+  const myStory = document.getElementById('my-status-story');
+  if (myStory) myStory.onclick = function(){ openMyStatus(); };
 }
+
 async function openUserStatus(userId){
   try {
     const rows = await api('/api/statuses/user/' + userId);
@@ -2926,29 +3010,14 @@ async function submitPinSetup(){
   try { await api('/api/lock/set-pin', { method:'POST', body: JSON.stringify({ pin:p1 }) }); closeModal('pin-setup-modal'); toast('PIN set'); await refreshLockStatus(); } catch(e){ err.textContent = e.message; }
 }
 async function maybeLockApp(){ if (!me) return; await refreshLockStatus(); if (_lockStatus.app_lock_enabled && _lockStatus.pin_set) openLockScreen('app', null); }
-function openForgotPin(){ const c = prompt('Enter your account password:'); if (!c) return; const np = prompt('Enter new 4-digit PIN:'); if (!np || !/^\d{4}$/.test(np)) return; api('/api/lock/reset-pin', { method:'POST', body: JSON.stringify({ password:c, new_pin:np }) }).then(function(){ toast('PIN reset'); closeLockScreen(); }).catch(function(e){ alert(e.message); }); }
-async function toggleChatLock(chatId){ try { const r = await api('/api/chats/'+chatId+'/lock', { method:'POST' }); toast(r.locked?'Chat locked':'Chat unlocked'); await refreshLockStatus(); renderChats(); } catch(e){ alert(e.message); } }
-
-/* ---------- NOTIFICATIONS ---------- */
-let _notifTimer = null;
-function showNotif(m){
-  if (Number(m.sender_id)===Number(me.id)) return;
-  if (currentChat && Number(currentChat.id)===Number(m.chat_id)) return;
-  const chat = chatsCache.find(function(c){ return Number(c.id)===Number(m.chat_id); });
-  if (chat && chat.muted) return;
-  if (userPrefs.high_priority) playNotifSound();
-  const b = document.getElementById('notif-banner');
-  const title = document.getElementById('notif-title');
-  const body = document.getElementById('notif-body');
-  const av = document.getElementById('notif-av');
-  title.textContent = m.display_name || 'New message';
-  body.textContent = m.body || (m.media_type ? '['+m.media_type+']' : '');
-  if (m.avatar_url){ av.textContent = ''; av.style.background = 'url('+m.avatar_url+') center/cover'; }
-  else { av.textContent = initials(m.display_name||'?'); av.style.background = m.avatar_color || 'linear-gradient(135deg,#7b8cff,#b58cff)'; }
-  b.classList.add('show');
-  b.onclick = function(e){ if (e.target.closest('.notif-close')) return; dismissNotification(); openChat(Number(m.chat_id)); };
-  clearTimeout(_notifTimer);
-  _notifTimer = setTimeout(dismissNotification, 5000);
+function openForgotPin(){
+  const pass = document.getElementById('forgot-pin-pass');
+  const pin = document.getElementById('forgot-pin-new');
+  const err = document.getElementById('forgot-pin-err');
+  if (pass) pass.value = '';
+  if (pin) pin.value = '';
+  if (err) err.textContent = '';
+  openModal('forgot-pin-modal');
 }
 function dismissNotification(){ document.getElementById('notif-banner').classList.remove('show'); }
 function playNotifSound(){
@@ -3176,6 +3245,774 @@ function applyLanguage(){
   document.querySelectorAll('[data-i18n-placeholder]').forEach(function(el){
     el.placeholder = t(el.dataset.i18nPlaceholder);
   });
+}
+
+/* ================= 2FA ================= */
+async function open2FA(){
+  const wrap = document.getElementById('picker-modal');
+  const body = document.getElementById('picker-body');
+  if (!wrap || !body) return;
+  document.getElementById('picker-title').textContent = 'Two-step verification';
+  wrap.classList.add('show');
+
+  if (me && me.totp_enabled){
+    body.innerHTML =
+      '<div style="padding:16px;text-align:center;color:var(--sub);font-size:14px;line-height:1.6">' +
+        '<div style="font-size:44px;margin-bottom:8px">🔐</div>' +
+        '<b style="color:#25d366;font-size:16px">Enabled</b><br>' +
+        'You\'ll need your authenticator code each time you log in.' +
+      '</div>' +
+      '<button class="picker-row" onclick="disable2FA()" style="color:#ff3b30;justify-content:center">🔓 Turn off 2FA</button>';
+    return;
+  }
+
+  body.innerHTML = '<div style="padding:20px;text-align:center;color:var(--sub)">Generating QR…</div>';
+  try {
+    const data = await api('/api/2fa/setup', { method:'POST' });
+    body.innerHTML =
+      '<div style="padding:8px 4px;font-size:13.5px;color:var(--sub);text-align:center;line-height:1.6">' +
+        'Scan this QR with <b>Google Authenticator</b>, <b>Authy</b>, or any 2FA app.' +
+      '</div>' +
+      '<div style="text-align:center;padding:12px 0">' +
+        '<img src="' + data.qr + '" style="width:200px;height:200px;border-radius:14px;background:#fff;padding:8px">' +
+      '</div>' +
+      '<div style="padding:10px 4px;font-size:13px;color:var(--sub);text-align:center">' +
+        'Or enter this key manually:<br>' +
+        '<code style="display:inline-block;margin-top:6px;background:var(--bg-3);padding:8px 12px;border-radius:10px;font-size:12px;letter-spacing:1px">' + data.secret + '</code>' +
+      '</div>' +
+      '<div style="padding:12px 0 4px">' +
+        '<input id="totp-code" placeholder="Enter 6-digit code" inputmode="numeric" maxlength="6" ' +
+          'style="width:100%;height:52px;border-radius:14px;border:1.5px solid var(--line);background:var(--bg-2);padding:0 16px;font-size:18px;color:var(--ink);outline:none;text-align:center;letter-spacing:6px;font-family:monospace;box-sizing:border-box">' +
+      '</div>' +
+      '<div id="totp-err" style="min-height:16px;color:#e5484d;font-size:12.5px;text-align:center;font-weight:600;margin-bottom:6px"></div>' +
+      '<button class="picker-row" onclick="confirm2FA()" style="background:#7b8cff;color:#fff;justify-content:center;font-weight:700">Enable 2FA</button>';
+    setTimeout(function(){ const el = document.getElementById('totp-code'); if (el) el.focus(); }, 200);
+  } catch(e){
+    body.innerHTML = '<div style="padding:20px;color:#e5484d;text-align:center">' + esc(e.message) + '</div>';
+  }
+}
+
+async function confirm2FA(){
+  const code = (document.getElementById('totp-code').value || '').trim();
+  const err = document.getElementById('totp-err');
+  if (!code || code.length !== 6){ err.textContent = 'Enter the 6-digit code'; return; }
+  try {
+    await api('/api/2fa/enable', { method:'POST', body: JSON.stringify({ code }) });
+    me.totp_enabled = true;
+    closePicker();
+    toast('Two-step verification enabled');
+  } catch(e){ err.textContent = e.message; }
+}
+
+async function disable2FA(){
+  const password = prompt('Enter your account password to turn off 2FA:');
+  if (!password) return;
+  try {
+    await api('/api/2fa/disable', { method:'POST', body: JSON.stringify({ password }) });
+    me.totp_enabled = false;
+    closePicker();
+    toast('Two-step verification turned off');
+  } catch(e){ alert(e.message); }
+}
+
+function applyProfileImages(){
+  if (!me) return;
+  const av = document.getElementById('pf-avatar');
+  if (av){
+    if (me.avatar_url){
+      av.textContent = '';
+      av.style.backgroundImage = 'url(' + me.avatar_url + ')';
+      av.style.backgroundSize = 'cover';
+      av.style.backgroundPosition = 'center';
+    } else {
+      av.textContent = initials(me.display_name || '?');
+      av.style.backgroundImage = '';
+      av.style.background = me.avatar_color || 'linear-gradient(135deg,#7b8cff,#b58cff)';
+      av.style.color = '#fff';
+    }
+  }
+  const cover = document.getElementById('pf-cover');
+  if (cover){
+    const oldImg = cover.querySelector('.pf-cover-img');
+    if (oldImg) oldImg.remove();
+    if (me.cover_url){
+      const img = document.createElement('img');
+      img.className = 'pf-cover-img';
+      img.src = me.cover_url;
+      img.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;object-position:center;z-index:0;pointer-events:none';
+      cover.insertBefore(img, cover.firstChild);
+    }
+  }
+}
+
+async function openMyStatus(){
+  try {
+    const data = await api('/api/statuses/feed');
+    const mine = data.mine || [];
+    if (!mine.length){ openStatusComposer(); return; }
+    _svUser = { id: me.id, name: 'My update', color: me.avatar_color || colorFor(me.display_name), url: me.avatar_url || null };
+    _svQueue = mine.map(function(x){ return { id:x.id, media_url:x.media_url, media_type:x.media_type, caption:x.caption, created_at:x.created_at, seen:true }; });
+    _svIndex = 0;
+    showStatusViewer();
+  } catch(e){ alert(e.message); }
+}
+
+async function submitForgotPin(){
+  const password = document.getElementById('forgot-pin-pass').value;
+  const newPin = document.getElementById('forgot-pin-new').value.trim();
+  const err = document.getElementById('forgot-pin-err');
+  err.textContent = '';
+  if (!password){ err.textContent = 'Enter your account password'; return; }
+  if (!/^\d{4}$/.test(newPin)){ err.textContent = 'PIN must be 4 digits'; return; }
+  try {
+    await api('/api/lock/reset-pin', { method:'POST', body: JSON.stringify({ password, new_pin:newPin }) });
+    closeModal('forgot-pin-modal');
+    toast('PIN reset');
+    await refreshLockStatus();
+    closeLockScreen();
+  } catch(e){ err.textContent = e.message; }
+}
+
+/* ============================================================
+   ONBOARDING — 6-step wizard
+   ============================================================ */
+const OB_INTERESTS_LIST = [
+  { id:'comedy', label:'Comedy', emoji:'😂' },
+  { id:'dance', label:'Dance', emoji:'💃' },
+  { id:'cooking', label:'Cooking', emoji:'🍳' },
+  { id:'sports', label:'Sports', emoji:'⚽' },
+  { id:'beauty', label:'Beauty', emoji:'💄' },
+  { id:'tech', label:'Tech', emoji:'💻' },
+  { id:'gaming', label:'Gaming', emoji:'🎮' },
+  { id:'movies', label:'Movies', emoji:'🎬' },
+  { id:'art', label:'Art', emoji:'🎨' },
+  { id:'science', label:'Science', emoji:'🔬' },
+  { id:'music', label:'Music', emoji:'🎵' },
+  { id:'fashion', label:'Fashion', emoji:'👗' },
+  { id:'travel', label:'Travel', emoji:'✈️' },
+  { id:'fitness', label:'Fitness', emoji:'💪' },
+  { id:'books', label:'Books', emoji:'📚' }
+];
+
+const OB_STATE = {
+  step: 1,
+  total: 6,
+  avatar_url: null,
+  display_name: '',
+  bio: '',
+  username: '',
+  username_ok: false,
+  birthday: '',
+  interests: [],
+  communities: [],
+  follows: [],
+  permissions: { notifications: false, find_friends: false },
+  allCommunities: [],
+  allUsers: [],
+  pickTab: 'communities'
+};
+
+async function showOnboarding(){
+  OB_STATE.step = 1;
+  OB_STATE.avatar_url = null;
+  OB_STATE.display_name = (me && me.display_name) || '';
+  OB_STATE.bio = '';
+  OB_STATE.username = '';
+  OB_STATE.username_ok = false;
+  OB_STATE.birthday = '';
+  OB_STATE.interests = [];
+  OB_STATE.communities = [];
+  OB_STATE.follows = [];
+  OB_STATE.permissions = { notifications: false, find_friends: false };
+  OB_STATE.pickTab = 'communities';
+
+  try { OB_STATE.allCommunities = await api('/api/communities'); } catch(_) { OB_STATE.allCommunities = []; }
+  try { OB_STATE.allUsers = await api('/api/users/suggested'); } catch(_) { OB_STATE.allUsers = []; }
+
+  show('screen-onboarding');
+  renderObStep();
+}
+
+function obProgress(){
+  return '<div class="ob-prog">' +
+    Array.from({length: OB_STATE.total}, function(_, i){
+      return '<span class="' + (i < OB_STATE.step ? 'on' : '') + '"></span>';
+    }).join('') +
+  '</div>';
+}
+
+function renderObStep(){
+  const root = document.getElementById('ob-root');
+  if (!root) return;
+  const s = OB_STATE;
+  let body = '';
+  if (s.step === 1) body = obStep1();
+  else if (s.step === 2) body = obStep2();
+  else if (s.step === 3) body = obStep3();
+  else if (s.step === 4) body = obStep4();
+  else if (s.step === 5) body = obStep5();
+  else if (s.step === 6) body = obStep6();
+
+  root.innerHTML = '<div class="ob-step">' + obProgress() + body + '</div>';
+
+  if (s.step === 1) wireObStep1();
+  if (s.step === 2) wireObStep2();
+}
+
+function obStep1(){
+  const s = OB_STATE;
+  const avStyle = s.avatar_url ? 'background-image:url(' + s.avatar_url + ');background-size:cover;background-position:center' : '';
+  return '<h1 class="ob-title">Welcome to GistApp</h1>' +
+    '<p class="ob-sub">Let\'s set up your profile in 30 seconds.</p>' +
+    '<div class="ob-avatar-wrap" onclick="document.getElementById(\'ob-avatar-file\').click()">' +
+      '<div class="ob-avatar" id="ob-avatar" style="' + avStyle + '">' + (s.avatar_url ? '' : esc(initials(s.display_name || (me && me.email) || '?'))) + '</div>' +
+      '<div class="ob-avatar-hint">' + (s.avatar_url ? '📷 Change photo' : '📷 Add photo (optional)') + '</div>' +
+    '</div>' +
+    '<input type="file" id="ob-avatar-file" accept="image/*" hidden>' +
+    '<div class="ob-field"><label>Display name</label>' +
+      '<input id="ob-name" placeholder="Your name" maxlength="40" value="' + esc(s.display_name) + '">' +
+    '</div>' +
+    '<div class="ob-field"><label>Bio (optional)</label>' +
+      '<textarea id="ob-bio" placeholder="Say something about yourself…" maxlength="140" rows="2">' + esc(s.bio) + '</textarea>' +
+    '</div>' +
+    '<button class="ob-btn" onclick="obNext1()">Continue</button>' +
+    '<div class="ob-skip" onclick="obFinishAll()">Skip onboarding</div>';
+}
+
+function wireObStep1(){
+  const f = document.getElementById('ob-avatar-file');
+  if (f) f.onchange = async function(){
+    const file = this.files[0]; if (!file) return;
+    if (file.size > 5*1024*1024) { alert('Image too big (max 5MB)'); return; }
+    const fd = new FormData(); fd.append('file', file);
+    try {
+      const res = await fetch('/api/upload', { method:'POST', headers:{ Authorization:'Bearer '+token }, body: fd });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Upload failed');
+      OB_STATE.avatar_url = data.url;
+      const av = document.getElementById('ob-avatar');
+      av.textContent = '';
+      av.style.backgroundImage = 'url(' + data.url + ')';
+      av.style.backgroundSize = 'cover';
+      av.style.backgroundPosition = 'center';
+      const hint = document.querySelector('.ob-avatar-hint');
+      if (hint) hint.textContent = '📷 Change photo';
+    } catch(e) { alert(e.message); }
+  };
+}
+
+function obNext1(){
+  const n = (document.getElementById('ob-name').value || '').trim();
+  if (!n) { alert('Please enter a display name'); return; }
+  OB_STATE.display_name = n;
+  OB_STATE.bio = (document.getElementById('ob-bio').value || '').trim();
+  OB_STATE.step = 2;
+  renderObStep();
+}
+
+function obStep2(){
+  const s = OB_STATE;
+  return '<h1 class="ob-title">Pick a username</h1>' +
+    '<p class="ob-sub">3-20 characters. Letters, numbers, and underscore.</p>' +
+    '<div class="ob-field">' +
+      '<label>Username</label>' +
+      '<input id="ob-username" placeholder="yourhandle" maxlength="20" autocomplete="off" spellcheck="false" value="' + esc(s.username) + '">' +
+      '<div class="ob-status" id="ob-username-status"></div>' +
+      '<div class="ob-suggest" id="ob-username-suggest"></div>' +
+    '</div>' +
+    '<button class="ob-btn" id="ob-user-btn" onclick="obNext2()" disabled>Continue</button>' +
+    '<div class="ob-skip" onclick="obSkipStep()">Skip for now</div>';
+}
+
+function wireObStep2(){
+  const inp = document.getElementById('ob-username');
+  if (!inp) return;
+  inp.oninput = function(){
+    OB_STATE.username = this.value.trim().toLowerCase();
+    OB_STATE.username_ok = false;
+    const btn = document.getElementById('ob-user-btn');
+    if (btn) btn.disabled = true;
+    clearTimeout(inp._t);
+    inp._t = setTimeout(obCheckUsername, 400);
+  };
+  if (OB_STATE.username) obCheckUsername();
+  else obFetchSuggestions('');
+}
+
+async function obCheckUsername(){
+  const inp = document.getElementById('ob-username');
+  const status = document.getElementById('ob-username-status');
+  const btn = document.getElementById('ob-user-btn');
+  if (!inp || !status || !btn) return;
+  const u = (inp.value || '').trim().toLowerCase();
+  if (!/^[a-z0-9_]{3,20}$/.test(u)){
+    status.className = 'ob-status err';
+    status.textContent = 'Must be 3-20 chars: a-z, 0-9, _';
+    inp.classList.remove('ok'); inp.classList.add('err');
+    btn.disabled = true;
+    obFetchSuggestions(u.replace(/[^a-z0-9_]/g, ''));
+    return;
+  }
+  try {
+    await api('/api/username/set', { method:'POST', body: JSON.stringify({ username: u }) });
+    status.className = 'ob-status ok';
+    status.textContent = '✓ @' + u + ' is available';
+    inp.classList.remove('err'); inp.classList.add('ok');
+    OB_STATE.username = u;
+    OB_STATE.username_ok = true;
+    btn.disabled = false;
+  } catch(e) {
+    status.className = 'ob-status err';
+    status.textContent = e.message;
+    inp.classList.remove('ok'); inp.classList.add('err');
+    btn.disabled = true;
+    obFetchSuggestions(u.replace(/[^a-z0-9_]/g, ''));
+  }
+}
+
+async function obFetchSuggestions(base){
+  const box = document.getElementById('ob-username-suggest');
+  if (!box) return;
+  try {
+    const data = await api('/api/username/suggest?base=' + encodeURIComponent(base || 'user'));
+    if (!data.suggestions || !data.suggestions.length) { box.innerHTML = ''; return; }
+    box.innerHTML = data.suggestions.map(function(s){
+      return '<button type="button" onclick="obUseSuggestion(\'' + s + '\')">@' + s + '</button>';
+    }).join('');
+  } catch(_) { box.innerHTML = ''; }
+}
+
+function obUseSuggestion(u){
+  const inp = document.getElementById('ob-username');
+  if (inp) { inp.value = u; obCheckUsername(); }
+}
+
+function obNext2(){
+  if (!OB_STATE.username_ok) { alert('Please pick a valid username'); return; }
+  OB_STATE.step = 3;
+  renderObStep();
+}
+
+function obStep3(){
+  const maxDate = new Date(Date.now() - 18*365.25*24*3600*1000).toISOString().slice(0, 10);
+  return '<h1 class="ob-title">Your birthday</h1>' +
+    '<p class="ob-sub">You must be 18 or older to use GistApp. We never share your birthday.</p>' +
+    '<div class="ob-field">' +
+      '<label>Date of birth</label>' +
+      '<input id="ob-birthday" type="date" max="' + maxDate + '" value="' + esc(OB_STATE.birthday) + '">' +
+    '</div>' +
+    '<button class="ob-btn" onclick="obNext3()">Continue</button>' +
+    '<div class="ob-skip" onclick="obSkipStep()">Skip for now</div>';
+}
+
+async function obNext3(){
+  const v = (document.getElementById('ob-birthday').value || '').trim();
+  if (!v) { alert('Please enter your birthday'); return; }
+  const dob = new Date(v);
+  const age = Math.floor((Date.now() - dob.getTime()) / (365.25*24*3600*1000));
+  if (age < 18) { alert('You must be 18 or older'); return; }
+  OB_STATE.birthday = v;
+  try {
+    await api('/api/onboard/profile', { method:'POST', body: JSON.stringify({
+      display_name: OB_STATE.display_name,
+      bio: OB_STATE.bio,
+      avatar_url: OB_STATE.avatar_url,
+      birthday: v
+    })});
+    me.display_name = OB_STATE.display_name;
+    me.bio = OB_STATE.bio;
+    me.avatar_url = OB_STATE.avatar_url;
+    me.birthday = v;
+  } catch(e) { alert(e.message); return; }
+  OB_STATE.step = 4;
+  renderObStep();
+}
+
+function obStep4(){
+  const s = OB_STATE;
+  return '<h1 class="ob-title">What interests you?</h1>' +
+    '<p class="ob-sub">Pick at least 3. This shapes your feed and suggestions.</p>' +
+    '<div class="ob-grid">' +
+      OB_INTERESTS_LIST.map(function(i){
+        const on = s.interests.indexOf(i.id) !== -1;
+        return '<button type="button" class="ob-chip' + (on ? ' on' : '') + '" onclick="obToggleInterest(\'' + i.id + '\')">' +
+          '<span class="ic">' + i.emoji + '</span>' + i.label +
+        '</button>';
+      }).join('') +
+    '</div>' +
+    '<button class="ob-btn" id="ob-int-btn" onclick="obNext4()" ' + (s.interests.length < 3 ? 'disabled' : '') + '>Continue</button>' +
+    '<div class="ob-skip" onclick="obSkipStep()">Skip for now</div>';
+}
+
+function obToggleInterest(id){
+  const i = OB_STATE.interests.indexOf(id);
+  if (i === -1) OB_STATE.interests.push(id);
+  else OB_STATE.interests.splice(i, 1);
+  const btn = document.getElementById('ob-int-btn');
+  document.querySelectorAll('.ob-chip').forEach(function(el){
+    if (el.getAttribute('onclick').indexOf(id) !== -1){
+      el.classList.toggle('on', OB_STATE.interests.indexOf(id) !== -1);
+    }
+  });
+  if (btn) btn.disabled = OB_STATE.interests.length < 3;
+}
+
+async function obNext4(){
+  if (OB_STATE.interests.length < 3) { alert('Pick at least 3'); return; }
+  try {
+    await api('/api/onboard/interests', { method:'POST', body: JSON.stringify({ interests: OB_STATE.interests }) });
+    me.interests = OB_STATE.interests;
+  } catch(_) {}
+  OB_STATE.step = 5;
+  renderObStep();
+}
+
+function obStep5(){
+  const s = OB_STATE;
+  const tab = s.pickTab || 'communities';
+  const communities = s.allCommunities || [];
+  const users = s.allUsers || [];
+
+  let listHTML = '';
+  if (tab === 'communities') {
+    listHTML = communities.slice(0, 30).map(function(c){
+      const on = s.communities.indexOf(c.id) !== -1;
+      return '<div class="ob-item' + (on ? ' on' : '') + '" onclick="obToggleCommunity(' + c.id + ')">' +
+        '<div class="av">' + c.emoji + '</div>' +
+        '<div class="info"><b>' + esc(c.name) + '</b><small>' + (c.member_count || 0) + ' members</small></div>' +
+        '<button class="join">' + (on ? '✓ Joined' : 'Join') + '</button>' +
+      '</div>';
+    }).join('');
+    if (!listHTML) listHTML = '<div style="padding:20px;text-align:center;color:#8e8e96">No communities yet</div>';
+  } else {
+    listHTML = users.slice(0, 30).map(function(u){
+      const on = s.follows.indexOf(u.id) !== -1;
+      const color = u.avatar_color || colorFor(u.display_name);
+      const avHTML = u.avatar_url
+        ? '<div class="av" style="background-image:url(' + u.avatar_url + ');background-size:cover;background-position:center"></div>'
+        : '<div class="av" style="background:' + color + '">' + esc(initials(u.display_name)) + '</div>';
+      return '<div class="ob-item' + (on ? ' on' : '') + '" onclick="obToggleFollow(' + u.id + ')">' +
+        avHTML +
+        '<div class="info"><b>' + esc(u.display_name) + '</b><small>' + (u.username ? '@' + esc(u.username) : '') + '</small></div>' +
+        '<button class="join">' + (on ? '✓ Following' : 'Follow') + '</button>' +
+      '</div>';
+    }).join('');
+    if (!listHTML) listHTML = '<div style="padding:20px;text-align:center;color:#8e8e96">No other users yet</div>';
+  }
+
+  return '<h1 class="ob-title">Discover</h1>' +
+    '<p class="ob-sub">Join communities and follow people.</p>' +
+    '<div class="ob-tabs">' +
+      '<button type="button" class="' + (tab === 'communities' ? 'on' : '') + '" onclick="obSetTab(\'communities\')">Communities</button>' +
+      '<button type="button" class="' + (tab === 'people' ? 'on' : '') + '" onclick="obSetTab(\'people\')">People</button>' +
+    '</div>' +
+    '<div class="ob-list">' + listHTML + '</div>' +
+    '<button class="ob-btn" onclick="obNext5()">Continue</button>' +
+    '<div class="ob-skip" onclick="obSkipStep()">Skip for now</div>';
+}
+
+function obSetTab(t){
+  OB_STATE.pickTab = t;
+  renderObStep();
+}
+
+async function obToggleCommunity(id){
+  try {
+    const r = await api('/api/communities/' + id + '/toggle', { method: 'POST' });
+    const i = OB_STATE.communities.indexOf(id);
+    if (r.joined && i === -1) OB_STATE.communities.push(id);
+    if (!r.joined && i !== -1) OB_STATE.communities.splice(i, 1);
+    renderObStep();
+  } catch(e) { alert(e.message); }
+}
+
+function obToggleFollow(id){
+  const i = OB_STATE.follows.indexOf(id);
+  if (i === -1) OB_STATE.follows.push(id);
+  else OB_STATE.follows.splice(i, 1);
+  renderObStep();
+}
+
+async function obNext5(){
+  for (const uid of OB_STATE.follows) {
+    try { await api('/api/users/' + uid + '/follow', { method: 'POST' }); } catch(_) {}
+  }
+  OB_STATE.step = 6;
+  renderObStep();
+}
+
+function obStep6(){
+  const s = OB_STATE;
+  const notifOn = s.permissions.notifications;
+  const friendsOn = s.permissions.find_friends;
+  return '<h1 class="ob-title">A few more things</h1>' +
+    '<p class="ob-sub">Both are optional — change any time in Settings.</p>' +
+    '<div class="ob-perm' + (notifOn ? ' on' : '') + '" onclick="obTogglePerm(\'notifications\')">' +
+      '<div class="ic">🔔</div>' +
+      '<div class="info"><b>Turn on notifications</b><small>Get notified about replies, mentions, likes and trending posts.</small></div>' +
+    '</div>' +
+    '<div class="ob-perm' + (friendsOn ? ' on' : '') + '" onclick="obTogglePerm(\'find_friends\')">' +
+      '<div class="ic">👥</div>' +
+      '<div class="info"><b>Find friends</b><small>Connect with people you already know. We never post for you.</small></div>' +
+    '</div>' +
+    '<button class="ob-btn" onclick="obFinishAll()">Finish 🎉</button>' +
+    '<div class="ob-skip" onclick="obFinishAll()">Skip for now</div>';
+}
+
+function obTogglePerm(key){
+  OB_STATE.permissions[key] = !OB_STATE.permissions[key];
+  renderObStep();
+  if (key === 'notifications' && OB_STATE.permissions.notifications && typeof Notification !== 'undefined' && Notification.requestPermission) {
+    Notification.requestPermission();
+  }
+}
+
+function obSkipStep(){
+  if (OB_STATE.step < OB_STATE.total) {
+    OB_STATE.step += 1;
+    renderObStep();
+  } else {
+    obFinishAll();
+  }
+}
+
+async function obFinishAll(){
+  try {
+    await api('/api/onboard/permissions', { method:'POST', body: JSON.stringify({ permissions: OB_STATE.permissions }) });
+    me.onboarded = true;
+    if (typeof toast === 'function') toast('Welcome to GistApp!');
+    await enterApp();
+  } catch(e) { alert(e.message); }
+}
+
+/* ================= USER PROFILE — Follow / Like / Stats ================= */
+async function loadCpStats(){
+  if (!cpChat || !cpChat.other_id) return;
+  try {
+    const s = await api('/api/users/' + cpChat.other_id + '/profile-card');
+    document.getElementById('cp-posts-count').textContent = s.posts || 0;
+    document.getElementById('cp-followers-count').textContent = s.followers || 0;
+    document.getElementById('cp-following-count').textContent = s.following || 0;
+    document.getElementById('cp-likes-count').textContent = s.likes || 0;
+
+    const fb = document.getElementById('cp-follow-btn');
+    fb.classList.toggle('following', !!s.is_following);
+    fb.classList.toggle('not', !s.is_following);
+    fb.querySelector('span').textContent = s.is_following ? 'Following' : 'Follow';
+
+    const lb = document.getElementById('cp-like-btn');
+    lb.classList.toggle('liked', !!s.is_liked);
+    lb.classList.toggle('not', !s.is_liked);
+    lb.querySelector('span').textContent = s.is_liked ? 'Liked' : 'Like';
+
+    // Gender (if profile has it)
+    const genderEl = document.getElementById('cp-gender');
+    if (genderEl && s.gender) genderEl.textContent = '· ' + s.gender;
+  } catch(e){ console.warn('loadCpStats', e); }
+}
+
+async function toggleFollowCp(){
+  if (!cpChat || !cpChat.other_id) return;
+  try {
+    const r = await api('/api/users/' + cpChat.other_id + '/follow', { method:'POST' });
+    toast(r.following ? 'Following' : 'Unfollowed');
+    await loadCpStats();
+  } catch(e){ alert(e.message); }
+}
+
+async function toggleLikeCp(){
+  if (!cpChat || !cpChat.other_id) return;
+  try {
+    const r = await api('/api/users/' + cpChat.other_id + '/like', { method:'POST' });
+    toast(r.liked ? 'Liked ❤️' : 'Unliked');
+    await loadCpStats();
+  } catch(e){ alert(e.message); }
+}
+
+async function showUserList(kind){
+  if (!cpChat || !cpChat.other_id) return;
+  const title = kind === 'followers' ? 'Followers'
+              : kind === 'following' ? 'Following'
+              : kind === 'likers' ? 'Likes'
+              : 'Posts';
+  const body = document.getElementById('picker-body');
+  document.getElementById('picker-title').textContent = title;
+  body.innerHTML = '<div style="padding:20px;text-align:center;color:var(--sub)">Loading…</div>';
+  openModal('picker-modal');
+  try {
+    if (kind === 'posts'){
+      const rows = await api('/api/users/' + cpChat.other_id + '/posts').catch(function(){ return []; });
+      if (!rows.length){ body.innerHTML = '<div style="padding:24px;text-align:center;color:var(--sub)">No posts yet</div>'; return; }
+      body.innerHTML = rows.map(function(p){ return '<div class="picker-user"><div class="picker-avatar" style="background:var(--bg-2)">📝</div><div style="flex:1"><b>' + esc((p.body||'').slice(0,60)) + '</b><br><small>' + timeAgo(p.created_at) + '</small></div></div>'; }).join('');
+      return;
+    }
+    const endpoint = '/api/users/' + cpChat.other_id + '/' + kind;
+    const rows = await api(endpoint);
+    if (!rows.length){ body.innerHTML = '<div style="padding:24px;text-align:center;color:var(--sub)">No one here yet</div>'; return; }
+    body.innerHTML = rows.map(function(u){
+      const color = u.avatar_color || colorFor(u.display_name);
+      const av = u.avatar_url
+        ? '<div class="picker-avatar" style="background-image:url(' + u.avatar_url + ');background-size:cover;background-position:center"></div>'
+        : '<div class="picker-avatar" style="background:' + color + '">' + esc(initials(u.display_name)) + '</div>';
+      return '<div class="picker-user">' + av +
+        '<div style="flex:1"><b>' + esc(u.display_name) + '</b>' + (u.username ? '<br><small style="color:var(--sub);font-size:12px">@' + esc(u.username) + '</small>' : '') + '</div></div>';
+    }).join('');
+  } catch(e){
+    body.innerHTML = '<div style="padding:20px;color:#e5484d;text-align:center">' + esc(e.message) + '</div>';
+  }
+}
+
+/* ================= STATUS VIEW COUNT (own status) ================= */
+async function updateMyStatusEye(){
+  try {
+    const r = await api('/api/statuses/mine/views');
+    const eye = document.getElementById('my-status-eye');
+    if (eye){
+      if (r.total > 0){ eye.textContent = r.total; eye.style.display = 'flex'; }
+      else eye.style.display = 'none';
+    }
+  } catch(_){}
+}
+
+/* Patch loadStories to add eye badge on "My update" */
+var _origLoadStories = window.loadStories;
+if (typeof _origLoadStories === 'function'){
+  window.loadStories = async function(){
+    var r = await _origLoadStories.apply(this, arguments);
+    setTimeout(function(){
+      var my = document.getElementById('my-status-story');
+      if (my && !my.querySelector('.my-status-eye')){
+        var badge = document.createElement('div');
+        badge.className = 'my-status-eye';
+        badge.id = 'my-status-eye';
+        badge.textContent = '0';
+        badge.style.display = 'none';
+        my.querySelector('.ring').appendChild(badge);
+      }
+      updateMyStatusEye();
+    }, 150);
+    return r;
+  };
+}
+
+/* Patch openContactProfile to load stats */
+var _origOpenCP = window.openContactProfile;
+if (typeof _origOpenCP === 'function'){
+  window.openContactProfile = async function(){
+    var r = await _origOpenCP.apply(this, arguments);
+    setTimeout(loadCpStats, 100);
+    return r;
+  };
+}
+
+/* ================= FEED — click author → their profile ================= */
+/* Patch renderPostCard: make avatar + name clickable */
+var _origRenderPostCard = window.renderPostCard;
+if (typeof _origRenderPostCard === 'function'){
+  window.renderPostCard = function(p){
+    var html = _origRenderPostCard.apply(this, arguments);
+    // Wrap the post header avatar + name in a click handler
+    html = html.replace(
+      '<div class="post-head">',
+      '<div class="post-head" onclick="openAuthorProfile(' + p.user_id + ', event)">'
+    );
+    return html;
+  };
+}
+
+function openAuthorProfile(userId, e){
+  if (e && e.stopPropagation) e.stopPropagation();
+  // Find a chat with this user
+  const chat = chatsCache.find(function(c){ return Number(c.other_id) === Number(userId); });
+  if (chat){
+    const prev = currentChat;
+    currentChat = chat;
+    openContactProfile();
+    return;
+  }
+  // No chat — try to open a chat by email via search
+  // Fallback: fetch basic profile and show a lightweight modal
+  api('/api/users/' + userId + '/profile-card').then(function(s){
+    document.getElementById('picker-title').textContent = s.display_name || 'User';
+    document.getElementById('picker-body').innerHTML =
+      '<div style="text-align:center;padding:14px">' +
+        (s.avatar_url ? '<div class="avatar" style="width:80px;height:80px;margin:0 auto;background-image:url(' + s.avatar_url + ');background-size:cover;background-position:center"></div>'
+                      : '<div class="avatar" style="width:80px;height:80px;margin:0 auto;background:' + (s.avatar_color || '#7b8cff') + ';font-size:28px">' + (s.display_name ? s.display_name[0].toUpperCase() : '?') + '</div>') +
+        '<div style="font-size:18px;font-weight:800;margin-top:12px;color:var(--ink)">' + esc(s.display_name) + '</div>' +
+        (s.username ? '<div style="color:var(--sub);font-size:13px;margin-top:2px">@' + esc(s.username) + '</div>' : '') +
+        '<div class="prof-stats" style="margin-top:16px">' +
+          '<div class="prof-stat"><b>' + (s.posts||0) + '</b><small>Posts</small></div>' +
+          '<div class="prof-stat"><b>' + (s.followers||0) + '</b><small>Followers</small></div>' +
+          '<div class="prof-stat"><b>' + (s.following||0) + '</b><small>Following</small></div>' +
+          '<div class="prof-stat"><b>' + (s.likes||0) + '</b><small>Likes</small></div>' +
+        '</div>' +
+        '<div class="cp-action-buttons">' +
+          '<button class="follow-btn ' + (s.is_following?'following':'not') + '" onclick="quickFollow(' + s.id + ', this)"><span>' + (s.is_following?'Following':'Follow') + '</span></button>' +
+          '<button class="like-btn ' + (s.is_liked?'liked':'not') + '" onclick="quickLike(' + s.id + ', this)"><span>' + (s.is_liked?'Liked':'Like') + '</span></button>' +
+        '</div>' +
+      '</div>';
+    openModal('picker-modal');
+  }).catch(function(e){ alert(e.message); });
+}
+
+async function quickFollow(userId, btn){
+  try {
+    const r = await api('/api/users/' + userId + '/follow', { method:'POST' });
+    btn.classList.toggle('following', r.following);
+    btn.classList.toggle('not', !r.following);
+    btn.querySelector('span').textContent = r.following ? 'Following' : 'Follow';
+    toast(r.following ? 'Following' : 'Unfollowed');
+  } catch(e){ alert(e.message); }
+}
+async function quickLike(userId, btn){
+  try {
+    const r = await api('/api/users/' + userId + '/like', { method:'POST' });
+    btn.classList.toggle('liked', r.liked);
+    btn.classList.toggle('not', !r.liked);
+    btn.querySelector('span').textContent = r.liked ? 'Liked' : 'Like';
+    toast(r.liked ? 'Liked ❤️' : 'Unliked');
+  } catch(e){ alert(e.message); }
+}
+
+async function toggleChatLock(chatId){
+  try {
+    const r = await api('/api/chats/' + chatId + '/lock', { method:'POST' });
+    toast(r.locked ? 'Chat locked 🔒' : 'Chat unlocked');
+    await refreshLockStatus();
+    if (typeof renderChats === 'function') renderChats();
+    const cpLock = document.getElementById('cp-lock');
+    if (cpLock && cpChat && Number(cpChat.id) === Number(chatId)){
+      cpLock.textContent = r.locked ? 'Unlock chat' : 'Lock chat';
+    }
+  } catch(e){ alert(e.message); }
+}
+
+function showNotif(m){
+  if (!m) return;
+  if (Number(m.sender_id) === Number(me && me.id)) return;
+  if (typeof currentChat !== 'undefined' && currentChat && Number(currentChat.id) === Number(m.chat_id)) return;
+  const chat = (typeof chatsCache !== 'undefined' ? chatsCache : []).find(function(c){ return Number(c.id) === Number(m.chat_id); });
+  if (chat && chat.muted) return;
+  const highPriority = !!(userPrefs && userPrefs.high_priority);
+  if (highPriority && typeof playNotifSound === 'function') playNotifSound();
+  const title = m.display_name || (chat && (chat.other_name || chat.name)) || 'New message';
+  const body = m.body || (m.media_type === 'image' ? '📷 Photo' : (m.media_type === 'video' ? '🎬 Video' : (m.media_type === 'audio' ? '🎙 Voice message' : 'Sent an attachment')));
+  const banner = document.getElementById('notif-banner');
+  if (!banner) return;
+  document.getElementById('notif-title').textContent = title;
+  document.getElementById('notif-body').textContent = body;
+  const av = document.getElementById('notif-av');
+  const url = m.avatar_url || (chat && chat.other_url) || null;
+  if (url){ av.textContent = ''; av.style.background = 'url(' + url + ') center/cover'; }
+  else { av.textContent = initials(title); av.style.background = m.avatar_color || (chat && chat.other_color) || 'linear-gradient(135deg,#7b8cff,#b58cff)'; }
+  banner.classList.add('show');
+  banner.onclick = function(e){
+    if (e.target.closest('.notif-close')) return;
+    dismissNotification();
+    if (typeof openChat === 'function') openChat(Number(m.chat_id));
+  };
+  clearTimeout(window._notifTimer);
+  window._notifTimer = setTimeout(function(){ dismissNotification(); }, 5000);
 }
 
 boot();

@@ -234,7 +234,7 @@ app.get('/api/me', auth, async (req,res)=>{
   res.json(r.rows[0]);
 });
 app.patch('/api/me', auth, async (req,res)=>{
-  const { display_name, avatar_color, dark_mode, font_size, dnd_until, prefs, avatar_url, cover_url, bio } = req.body;
+  const { display_name, avatar_color, dark_mode, font_size, dnd_until, prefs, avatar_url, cover_url, bio, gender } = req.body;
   const sets=[],vals=[]; let i=1;
   if (display_name!==undefined){sets.push(`display_name=$${i++}`);vals.push(display_name);}
   if (avatar_color!==undefined){sets.push(`avatar_color=$${i++}`);vals.push(avatar_color);}
@@ -244,6 +244,7 @@ app.patch('/api/me', auth, async (req,res)=>{
   if (avatar_url!==undefined){sets.push(`avatar_url=$${i++}`);vals.push(avatar_url);}
   if (cover_url!==undefined){sets.push(`cover_url=$${i++}`);vals.push(cover_url);}
   if (bio!==undefined){sets.push(`bio=$${i++}`);vals.push(bio);}
+  if (gender!==undefined){sets.push(`gender=$${i++}`);vals.push(gender);}
   if (prefs!==undefined){
     const existing = await pool.query('SELECT prefs FROM users WHERE id=$1',[req.user.id]);
     const merged = Object.assign({}, existing.rows[0].prefs||{}, prefs);
@@ -252,6 +253,8 @@ app.patch('/api/me', auth, async (req,res)=>{
   if (!sets.length) return res.json({ok:true});
   vals.push(req.user.id);
   const r = await pool.query(`UPDATE users SET ${sets.join(', ')} WHERE id=$${i} RETURNING id,email,display_name,avatar_color,dark_mode,font_size,dnd_until,prefs,avatar_url,cover_url,bio`,[...vals]);
+  // Notify all connected clients that this user's profile changed
+  try { io.emit('user-updated', { userId: req.user.id }); } catch(_) {}
   res.json(r.rows[0]);
 });
 
@@ -288,11 +291,12 @@ app.post('/api/username/set', auth, async (req, res) => {
 
 app.post('/api/onboard/profile', auth, async (req, res) => {
   try {
-    const { display_name, bio, avatar_url, birthday } = req.body;
+    const { display_name, bio, avatar_url, birthday, gender } = req.body;
     const sets=[]; const vals=[]; let i=1;
     if (display_name){ sets.push('display_name=$' + (i++)); vals.push(display_name); }
     if (bio){ sets.push('bio=$' + (i++)); vals.push(bio); }
     if (avatar_url){ sets.push('avatar_url=$' + (i++)); vals.push(avatar_url); }
+    if (gender){ sets.push('gender=$' + (i++)); vals.push(gender); }
     if (birthday){
       const dob = new Date(birthday);
       const age = Math.floor((Date.now() - dob.getTime()) / (365.25 * 24 * 3600 * 1000));
@@ -1732,21 +1736,7 @@ app.post('/api/users/:id/follow', auth, async (req, res) => {
   } catch(e){ res.status(500).json({ error: 'Server error' }); }
 });
 
-app.get('/api/users/:id/stats', auth, async (req, res) => {
-  try {
-    const id = Number(req.params.id);
-    const followers = await pool.query('SELECT COUNT(*) FROM user_follows WHERE following_id=$1', [id]);
-    const following = await pool.query('SELECT COUNT(*) FROM user_follows WHERE follower_id=$1', [id]);
-    const posts = await pool.query('SELECT COUNT(*) FROM posts WHERE user_id=$1 AND deleted_at IS NULL', [id]);
-    const isFollowing = await pool.query('SELECT 1 FROM user_follows WHERE follower_id=$1 AND following_id=$2', [req.user.id, id]);
-    res.json({
-      followers: Number(followers.rows[0].count),
-      following: Number(following.rows[0].count),
-      posts: Number(posts.rows[0].count),
-      is_following: isFollowing.rowCount > 0
-    });
-  } catch(e){ res.status(500).json({ error: 'Server error' }); }
-});
+
 
 /* ---------- /verify (email verification link) ---------- */
 app.get('/verify', async (req, res) => {
@@ -1918,6 +1908,169 @@ app.get('/api/users/:id/profile', auth, async (req, res) => {
     if (Number(req.user.id) === uid || await canViewField(req.user.id, uid, 'last_seen')) out.last_seen_at = u.last_seen_at;
 
     res.json(out);
+  } catch(e){ console.error(e); res.status(500).json({ error: 'Server error' }); }
+});
+
+
+
+/* ---------- COMMUNITIES ---------- */
+app.get('/api/communities', auth, async (req, res) => {
+  try {
+    const r = await pool.query(`
+      SELECT c.id, c.slug, c.name, c.description, c.emoji, c.category,
+        (SELECT COUNT(*) FROM community_members WHERE community_id=c.id) AS member_count,
+        EXISTS(SELECT 1 FROM community_members WHERE community_id=c.id AND user_id=$1) AS joined
+      FROM communities c
+      ORDER BY c.category ASC, c.name ASC
+    `, [req.user.id]);
+    res.json(r.rows);
+  } catch(e){ console.error(e); res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/communities/mine', auth, async (req, res) => {
+  try {
+    const r = await pool.query(`
+      SELECT c.id, c.slug, c.name, c.description, c.emoji, c.category,
+        (SELECT COUNT(*) FROM community_members WHERE community_id=c.id) AS member_count
+      FROM communities c
+      JOIN community_members m ON m.community_id=c.id AND m.user_id=$1
+      ORDER BY c.name ASC
+    `, [req.user.id]);
+    res.json(r.rows);
+  } catch(e){ res.status(500).json({ error: 'Server error' }); }
+});
+
+app.post('/api/communities/:id/toggle', auth, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const has = await pool.query('SELECT 1 FROM community_members WHERE community_id=$1 AND user_id=$2', [id, req.user.id]);
+    if (has.rowCount){
+      await pool.query('DELETE FROM community_members WHERE community_id=$1 AND user_id=$2', [id, req.user.id]);
+      return res.json({ joined: false });
+    }
+    await pool.query('INSERT INTO community_members (community_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [id, req.user.id]);
+    res.json({ joined: true });
+  } catch(e){ console.error(e); res.status(500).json({ error: 'Server error' }); }
+});
+
+/* ---------- USER LIKE / STATS ---------- */
+app.post('/api/users/:id/like', auth, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (id === req.user.id) return res.status(400).json({ error: 'Cannot like yourself' });
+    const has = await pool.query('SELECT 1 FROM user_likes WHERE liker_id=$1 AND liked_id=$2', [req.user.id, id]);
+    if (has.rowCount){
+      await pool.query('DELETE FROM user_likes WHERE liker_id=$1 AND liked_id=$2', [req.user.id, id]);
+      return res.json({ liked: false });
+    }
+    await pool.query('INSERT INTO user_likes (liker_id, liked_id) VALUES ($1,$2)', [req.user.id, id]);
+    res.json({ liked: true });
+  } catch(e){ console.error(e); res.status(500).json({ error: 'Server error' }); }
+});
+
+app.get('/api/users/:id/stats', auth, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const followers = await pool.query('SELECT COUNT(*) FROM user_follows WHERE following_id=$1', [id]);
+    const following = await pool.query('SELECT COUNT(*) FROM user_follows WHERE follower_id=$1', [id]);
+    const likes = await pool.query('SELECT COUNT(*) FROM user_likes WHERE liked_id=$1', [id]);
+    const posts = await pool.query('SELECT COUNT(*) FROM posts WHERE user_id=$1 AND deleted_at IS NULL', [id]);
+    const isFollowing = await pool.query('SELECT 1 FROM user_follows WHERE follower_id=$1 AND following_id=$2', [req.user.id, id]);
+    const isLiked = await pool.query('SELECT 1 FROM user_likes WHERE liker_id=$1 AND liked_id=$2', [req.user.id, id]);
+    res.json({
+      followers: Number(followers.rows[0].count),
+      following: Number(following.rows[0].count),
+      likes: Number(likes.rows[0].count),
+      posts: Number(posts.rows[0].count),
+      is_following: isFollowing.rowCount > 0,
+      is_liked: isLiked.rowCount > 0
+    });
+  } catch(e){ console.error(e); res.status(500).json({ error: 'Server error' }); }
+});
+
+
+app.get('/api/users/suggested', auth, async (req, res) => {
+  try {
+    const r = await pool.query(`
+      SELECT id, display_name, username, avatar_color, avatar_url
+      FROM users
+      WHERE id <> $1
+      ORDER BY created_at DESC
+      LIMIT 30
+    `, [req.user.id]);
+    res.json(r.rows);
+  } catch(e){ console.error(e); res.status(500).json({ error: 'Server error' }); }
+});
+
+
+/* ---------- FOLLOWERS / FOLLOWING / LIKES LISTS ---------- */
+app.get('/api/users/:id/followers', auth, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const r = await pool.query(`
+      SELECT u.id, u.display_name, u.username, u.avatar_color, u.avatar_url, f.created_at
+      FROM user_follows f JOIN users u ON u.id = f.follower_id
+      WHERE f.following_id = $1
+      ORDER BY f.created_at DESC LIMIT 200
+    `, [id]);
+    res.json(r.rows);
+  } catch(e){ console.error(e); res.status(500).json({ error: 'Server error' }); }
+});
+
+app.get('/api/users/:id/following', auth, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const r = await pool.query(`
+      SELECT u.id, u.display_name, u.username, u.avatar_color, u.avatar_url, f.created_at
+      FROM user_follows f JOIN users u ON u.id = f.following_id
+      WHERE f.follower_id = $1
+      ORDER BY f.created_at DESC LIMIT 200
+    `, [id]);
+    res.json(r.rows);
+  } catch(e){ console.error(e); res.status(500).json({ error: 'Server error' }); }
+});
+
+app.get('/api/users/:id/likers', auth, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const r = await pool.query(`
+      SELECT u.id, u.display_name, u.username, u.avatar_color, u.avatar_url, l.created_at
+      FROM user_likes l JOIN users u ON u.id = l.liker_id
+      WHERE l.liked_id = $1
+      ORDER BY l.created_at DESC LIMIT 200
+    `, [id]);
+    res.json(r.rows);
+  } catch(e){ console.error(e); res.status(500).json({ error: 'Server error' }); }
+});
+
+/* ---------- USER PROFILE with gender + counts ---------- */
+app.get('/api/users/:id/profile-card', auth, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const r = await pool.query(`
+      SELECT u.id, u.display_name, u.username, u.avatar_color, u.avatar_url, u.cover_url, u.bio, u.gender,
+        (SELECT COUNT(*) FROM user_follows WHERE following_id=u.id) AS followers,
+        (SELECT COUNT(*) FROM user_follows WHERE follower_id=u.id) AS following,
+        (SELECT COUNT(*) FROM user_likes WHERE liked_id=u.id) AS likes,
+        (SELECT COUNT(*) FROM posts WHERE user_id=u.id AND deleted_at IS NULL) AS posts,
+        EXISTS(SELECT 1 FROM user_follows WHERE follower_id=$2 AND following_id=u.id) AS is_following,
+        EXISTS(SELECT 1 FROM user_likes WHERE liker_id=$2 AND liked_id=u.id) AS is_liked
+      FROM users u WHERE u.id=$1
+    `, [id, req.user.id]);
+    if (!r.rowCount) return res.status(404).json({ error: 'Not found' });
+    res.json(r.rows[0]);
+  } catch(e){ console.error(e); res.status(500).json({ error: 'Server error' }); }
+});
+
+/* ---------- STATUS view count for own statuses ---------- */
+app.get('/api/statuses/mine/views', auth, async (req, res) => {
+  try {
+    const r = await pool.query(`
+      SELECT s.id, (SELECT COUNT(*) FROM status_views WHERE status_id=s.id) AS views
+      FROM statuses s WHERE s.user_id=$1 AND s.expires_at > NOW()
+    `, [req.user.id]);
+    const total = r.rows.reduce(function(sum, row){ return sum + Number(row.views); }, 0);
+    res.json({ total: total, per_status: r.rows });
   } catch(e){ console.error(e); res.status(500).json({ error: 'Server error' }); }
 });
 
