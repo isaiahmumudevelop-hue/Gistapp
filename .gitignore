@@ -1,5 +1,31 @@
+# Node
 node_modules/
+
+# Secrets
 .env
-server.log
+.env.*
+
+# Logs
 *.log
+server.log
+
+# Backups
 *.backup-*
+*.safe-*
+*.before-*
+
+# Dev / debug scripts
+*.py
+!public/**
+!node_modules/**
+
+# Uploads (user data — Render has its own)
+public/uploads/*.jpg
+public/uploads/*.png
+public/uploads/*.webm
+public/uploads/*.jpeg
+!public/uploads/.gitkeep
+
+# OS
+.DS_Store
+Thumbs.db
