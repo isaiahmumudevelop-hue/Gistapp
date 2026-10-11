@@ -1,32 +1,28 @@
-# Node
 node_modules/
-
-# Secrets
 .env
-.env.*
-
-# Logs
 *.log
-server.log
 
-# Backups
-*.backup-*
-*.safe-*
-*.before-*
+# dev scripts (keep locally, don't ship)
+patch_*.py
+fix_*.py
+diag_*.py
+audit_*.py
+rebuild_*.py
+full_*.py
+deep_*.py
+enforce_*.py
+backend_whatsapp.py
+frontend_whatsapp.py
+onboard_v2.py
+welcome_patch.py
+app_report.py
+pre_push_check.py
+inventory.py
+apply_indexes.js
+test_perf.js
 
-# Dev / debug scripts
-*.py
-!public/**
-!node_modules/**
-
-# Uploads (user data — Render has its own)
-public/uploads/*.jpg
-public/uploads/*.png
-public/uploads/*.webm
-public/uploads/*.jpeg
-!public/uploads/.gitkeep
-
-# OS
-.DS_Store
-Thumbs.db
-prepush_check.sh
+# backups
+*.bak
+*.bak.*
+*.bak2.*
+*.bakperf*.*
