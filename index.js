@@ -291,7 +291,7 @@ app.post('/api/username/set', auth, async (req, res) => {
 
 app.post('/api/onboard/profile', auth, async (req, res) => {
   try {
-    const { display_name, bio, avatar_url, birthday, gender } = req.body;
+    const { display_name, bio, avatar_url, birthday, gender, password } = req.body;
     const sets=[]; const vals=[]; let i=1;
     if (display_name){ sets.push('display_name=$' + (i++)); vals.push(display_name); }
     if (bio){ sets.push('bio=$' + (i++)); vals.push(bio); }
@@ -303,9 +303,13 @@ app.post('/api/onboard/profile', auth, async (req, res) => {
       if (age < 18) return res.status(403).json({ error: 'You must be at least 18' });
       sets.push('birthday=$' + (i++)); vals.push(birthday);
     }
+    if (password && String(password).length >= 6){
+      const hash = await bcrypt.hash(String(password), 10);
+      sets.push('password_hash=$' + (i++)); vals.push(hash);
+    }
     sets.push('onboard_stage=GREATEST(onboard_stage, 1)');
     vals.push(req.user.id);
-    const r = await pool.query('UPDATE users SET ' + sets.join(', ') + ' WHERE id=$' + i + ' RETURNING id,email,display_name,username,avatar_color,avatar_url,bio,birthday,onboard_stage', vals);
+    const r = await pool.query('UPDATE users SET ' + sets.join(', ') + ' WHERE id=$' + i + ' RETURNING id,email,display_name,username,avatar_color,avatar_url,bio,birthday,gender,onboard_stage', vals);
     res.json(r.rows[0]);
   } catch(e){ console.error('onboard profile:', e.message); res.status(500).json({ error: e.message || 'Server error' }); }
 });
@@ -1271,18 +1275,40 @@ app.post('/api/lock/reset-pin', auth, async (req, res) => {
     if (!/^\d{4}$/.test(String(new_pin||''))) return res.status(400).json({ error: 'New PIN must be 4 digits' });
     const me = await pool.query('SELECT totp_secret, totp_enabled, password_hash FROM users WHERE id=$1', [req.user.id]);
     const u = me.rows[0];
+
+    const hasRealPassword = u.password_hash && u.password_hash !== 'google-oauth';
+    const hasTotp = u.totp_enabled && u.totp_secret;
+
     let ok = false;
-    // 1) Try 2FA code first (if user has 2FA)
-    if (u.totp_enabled && u.totp_secret && code){
-      try { ok = speakeasy.totp.verify({ secret: u.totp_secret, encoding:'base32', token: String(code).trim(), window: 1 }); } catch(_){}
+
+    // Case 1: User has NEITHER 2FA NOR a real password → they're a pure Google user.
+    // They're already authenticated via JWT, so allow reset.
+    if (!hasTotp && !hasRealPassword){
+      ok = true;
     }
-    // 2) Fall back to password
-    if (!ok && password){
-      ok = await bcrypt.compare(String(password), u.password_hash);
+    // Case 2: User has 2FA → verify with TOTP code
+    else if (hasTotp && code){
+      try {
+        ok = speakeasy.totp.verify({
+          secret: u.totp_secret,
+          encoding: 'base32',
+          token: String(code).trim(),
+          window: 1
+        });
+      } catch(_){ ok = false; }
     }
+    // Case 3: User has a real password → verify with password
+    if (!ok && password && hasRealPassword){
+      try { ok = await bcrypt.compare(String(password), u.password_hash); } catch(_){ ok = false; }
+    }
+
     if (!ok) return res.status(401).json({ error: 'Invalid 2FA code or password' });
+
     const hash = await bcrypt.hash(String(new_pin), 10);
-    await pool.query('UPDATE users SET pin_hash=$1, pin_attempts=0, pin_lockout_until=NULL WHERE id=$2', [hash, req.user.id]);
+    await pool.query(
+      'UPDATE users SET pin_hash=$1, pin_attempts=0, pin_lockout_until=NULL WHERE id=$2',
+      [hash, req.user.id]
+    );
     res.json({ ok: true });
   } catch(e){ console.error(e); res.status(500).json({ error: 'Server error' }); }
 });
@@ -2071,6 +2097,39 @@ app.get('/api/statuses/mine/views', auth, async (req, res) => {
     `, [req.user.id]);
     const total = r.rows.reduce(function(sum, row){ return sum + Number(row.views); }, 0);
     res.json({ total: total, per_status: r.rows });
+  } catch(e){ console.error(e); res.status(500).json({ error: 'Server error' }); }
+});
+
+
+/* ---------- USER SUGGESTIONS (for onboarding + "find friends") ---------- */
+app.get('/api/users/suggestions', auth, async (req, res) => {
+  try {
+    const limit = Math.min(Number(req.query.limit) || 30, 60);
+    const r = await pool.query(`
+      SELECT id, display_name, username, avatar_color, avatar_url, bio
+      FROM users
+      WHERE id <> $1
+        AND onboarded = true
+      ORDER BY last_seen_at DESC NULLS LAST, created_at DESC
+      LIMIT $2
+    `, [req.user.id, limit]);
+
+    // Mark whether I already follow each
+    const mine = await pool.query('SELECT follows FROM users WHERE id=$1', [req.user.id]);
+    const follows = (mine.rows[0] && Array.isArray(mine.rows[0].follows)) ? mine.rows[0].follows : [];
+
+    const out = r.rows.map(function(u){
+      return {
+        id: u.id,
+        display_name: u.display_name,
+        username: u.username,
+        avatar_color: u.avatar_color,
+        avatar_url: u.avatar_url,
+        bio: u.bio,
+        following: follows.indexOf('user_' + u.id) !== -1
+      };
+    });
+    res.json(out);
   } catch(e){ console.error(e); res.status(500).json({ error: 'Server error' }); }
 });
 

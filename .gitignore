@@ -29,3 +29,4 @@ public/uploads/*.jpeg
 # OS
 .DS_Store
 Thumbs.db
+prepush_check.sh

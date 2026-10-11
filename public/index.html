@@ -677,13 +677,106 @@ body.dark .disappear-chip{background:rgba(255,255,255,.12);color:var(--ink)}
    ============================================================ */
 .my-status-eye{position:absolute;bottom:-2px;right:-2px;min-width:20px;height:20px;border-radius:10px;background:#7b8cff;color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 6px;border:2px solid var(--bg)}
 
+
+/* ============ WELCOME SCREEN ============ */
+#screen-welcome{
+  position:absolute;inset:0;background:#050505;color:#fff;
+  flex-direction:column;align-items:center;justify-content:center;
+  padding:40px 24px 140px;overflow:hidden;
+}
+#screen-welcome.active{display:flex}
+.wl-bg{position:absolute;inset:0;z-index:0;overflow:hidden;background:#050505;pointer-events:none}
+.wl-glow{position:absolute;border-radius:50%;filter:blur(50px);pointer-events:none}
+.wl-glow-1{width:520px;height:340px;top:-140px;left:50%;margin-left:-260px;background:radial-gradient(ellipse at center,rgba(80,130,255,.38) 0%,rgba(100,140,240,.16) 40%,transparent 75%);animation:wlFloat1 16s ease-in-out infinite}
+.wl-glow-2{width:300px;height:300px;bottom:-80px;left:-100px;background:radial-gradient(circle,rgba(60,100,200,.22) 0%,transparent 70%);animation:wlFloat2 20s ease-in-out infinite}
+.wl-glow-3{width:260px;height:260px;top:32%;right:-90px;background:radial-gradient(circle,rgba(150,130,110,.16) 0%,transparent 70%);animation:wlFloat3 22s ease-in-out infinite}
+@keyframes wlFloat1{0%,100%{transform:translateY(0)}50%{transform:translateY(18px)}}
+@keyframes wlFloat2{0%,100%{transform:translate(0,0)}50%{transform:translate(25px,-18px)}}
+@keyframes wlFloat3{0%,100%{transform:translate(0,0)}50%{transform:translate(-20px,12px)}}
+.wl-content{position:relative;z-index:10;display:flex;flex-direction:column;align-items:center;text-align:center;width:100%;max-width:400px}
+.wl-logo{margin-bottom:24px}
+.wl-logo svg{width:52px;height:42px;display:block}
+#screen-welcome h1{font-size:28px;font-weight:600;letter-spacing:-.5px;margin-bottom:12px;line-height:1.2;color:#fff}
+.wl-tagline{font-size:15.5px;font-weight:400;color:rgba(255,255,255,.62);line-height:1.5;margin-bottom:28px;max-width:280px}
+.wl-features{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-bottom:36px}
+.wl-feature{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:7px 13px;font-size:12.5px;color:rgba(255,255,255,.78)}
+.wl-btn{width:100%;max-width:300px;height:54px;background:#fff;color:#000;border:none;border-radius:27px;font-size:17px;font-weight:600;letter-spacing:-.2px;cursor:pointer;box-shadow:0 0 36px rgba(255,255,255,.1);transition:transform .15s,opacity .15s;font-family:inherit}
+.wl-btn:active{transform:scale(.97);opacity:.92}
+.wl-login{margin-top:20px;font-size:14.5px;color:rgba(255,255,255,.65)}
+.wl-login a{color:#fff;text-decoration:none;font-weight:500;cursor:pointer}
+.wl-bottom{position:absolute;bottom:0;left:0;right:0;z-index:10;padding:0 24px calc(28px + var(--safe-b));display:flex;flex-direction:column;align-items:center;gap:16px}
+.wl-legal{font-size:11.5px;color:rgba(255,255,255,.32);text-align:center;line-height:1.45;max-width:300px}
+.wl-legal a{color:rgba(255,255,255,.48);text-decoration:none;cursor:pointer}
+.wl-partners{display:flex;align-items:center;justify-content:center;gap:12px}
+.wl-partners>span{font-size:11px;color:rgba(255,255,255,.35);margin-right:4px;letter-spacing:.3px}
+.wl-partner{width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.1);transition:background .2s}
+.wl-partner:hover{background:rgba(255,255,255,.14)}
+.wl-partner svg{width:16px;height:16px}
+.wl-powered{font-size:10.5px;color:rgba(255,255,255,.28);letter-spacing:.8px;text-transform:uppercase;font-weight:500}
+.wl-powered strong{color:rgba(255,255,255,.42);font-weight:600}
+
+
+/* Hide nav on welcome + auth screens */
+body:has(#screen-welcome.active) .bottom-nav,
+body:has(#screen-welcome.active) #globalNav,
+body:has(#screen-auth.active) .bottom-nav,
+body:has(#screen-auth.active) #globalNav,
+body:has(#screen-onboarding.active) .bottom-nav,
+body:has(#screen-onboarding.active) #globalNav{
+  display:none !important;
+  visibility:hidden !important;
+  opacity:0 !important;
+  pointer-events:none !important;
+}
+
 </style>
 </head>
 <body>
 
 <div class="app">
 
-  <!-- ============ AUTH ============ -->
+<section class="screen" id="screen-welcome">
+    <div class="wl-bg">
+      <div class="wl-glow wl-glow-1"></div>
+      <div class="wl-glow wl-glow-2"></div>
+      <div class="wl-glow wl-glow-3"></div>
+    </div>
+    <div class="wl-content">
+      <div class="wl-logo">
+        <svg viewBox="0 0 48 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="12" cy="10" r="5" fill="white"/>
+          <circle cx="24" cy="8" r="5.5" fill="white"/>
+          <circle cx="36" cy="10" r="5" fill="white"/>
+          <path d="M7 18c0 0 2 14 5 16" stroke="white" stroke-width="3.5" stroke-linecap="round"/>
+          <path d="M19 17c0 0 1.5 16 5 18" stroke="white" stroke-width="3.8" stroke-linecap="round"/>
+          <path d="M31 18c0 0 2 14 5 16" stroke="white" stroke-width="3.5" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <h1>Welcome to Gist</h1>
+      <p class="wl-tagline">Secure chat over email.<br>Every message is end-to-end encrypted.</p>
+      <div class="wl-features">
+        <div class="wl-feature">📧 Email only</div>
+        <div class="wl-feature">🔒 E2E encrypted</div>
+        <div class="wl-feature">📱 No phone numbers</div>
+      </div>
+      <button class="wl-btn" onclick="openAuth('signup')">Get Started</button>
+      <p class="wl-login">Already have an account? <a onclick="openAuth('login')">Log in</a></p>
+    </div>
+    <div class="wl-bottom">
+      <p class="wl-legal">By tapping Get Started, I agree with the <a>Terms of Service</a> and <a>Privacy Policy</a>.</p>
+      <div class="wl-partners">
+        <span>Partners</span>
+        <div class="wl-partner" title="Gmail"><svg viewBox="0 0 24 24" fill="none"><path d="M2 6.5A2.5 2.5 0 014.5 4h15A2.5 2.5 0 0122 6.5v11a2.5 2.5 0 01-2.5 2.5h-15A2.5 2.5 0 012 17.5v-11z" fill="#EA4335"/><path d="M2 6.5l10 7.5 10-7.5" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/></svg></div>
+        <div class="wl-partner" title="WhatsApp"><svg viewBox="0 0 24 24" fill="#25D366"><path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38c1.45.79 3.08 1.21 4.74 1.21 5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.816 9.816 0 0012.04 2zm.01 1.67c2.2 0 4.26.86 5.82 2.42a8.225 8.225 0 012.41 5.83c0 4.54-3.7 8.23-8.24 8.23-1.48 0-2.93-.39-4.19-1.15l-.3-.17-3.12.82.83-3.04-.2-.32a8.188 8.188 0 01-1.26-4.38c.01-4.54 3.7-8.24 8.25-8.24zM8.53 7.33c-.16 0-.43.06-.66.31-.22.25-.87.85-.87 2.07 0 1.22.89 2.39 1 2.56.12.17 1.76 2.67 4.25 3.73.59.24 1.05.38 1.41.48.59.18 1.13.16 1.56.1.48-.07 1.46-.6 1.67-1.18.21-.58.21-1.07.15-1.18-.07-.1-.25-.16-.52-.3-.27-.11-1.56-.77-1.8-.86-.25-.09-.43-.16-.62.16-.19.32-.74.86-.91 1.03-.17.17-.33.19-.61.06-.27-.13-1.16-.43-2.2-1.36-.81-.72-1.36-1.61-1.52-1.88-.16-.27-.02-.42.12-.56.13-.13.27-.33.41-.5.14-.17.19-.29.28-.48.1-.19.05-.36-.02-.51-.08-.14-.62-1.49-.86-2.04-.22-.52-.45-.45-.62-.46-.16 0-.35-.01-.53-.01z"/></svg></div>
+        <div class="wl-partner" title="Facebook"><svg viewBox="0 0 24 24" fill="#1877F2"><path d="M24 12.07C24 5.41 18.63 0 12 0S0 5.41 0 12.07C0 18.1 4.39 23.1 10.13 24v-8.44H7.08v-3.49h3.04V9.41c0-3.02 1.8-4.7 4.54-4.7 1.31 0 2.68.24 2.68.24v2.97h-1.5c-1.5 0-1.96.93-1.96 1.89v2.26h3.32l-.53 3.5h-2.8V24C19.62 23.1 24 18.1 24 12.07"/></svg></div>
+        <div class="wl-partner" title="Pinterest"><svg viewBox="0 0 24 24" fill="#E60023"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.08 3.16 9.42 7.63 11.17-.1-.95-.2-2.4.04-3.44.22-.94 1.4-5.96 1.4-5.96s-.36-.72-.36-1.78c0-1.67.97-2.92 2.17-2.92 1.02 0 1.52.77 1.52 1.69 0 1.03-.66 2.57-1 4-.28 1.19.6 2.16 1.78 2.16 2.13 0 3.77-2.25 3.77-5.5 0-2.87-2.06-4.88-5.01-4.88-3.41 0-5.41 2.56-5.41 5.21 0 1.03.4 2.14.9 2.74.1.12.11.22.08.34l-.34 1.36c-.05.22-.18.27-.41.16-1.53-.71-2.49-2.95-2.49-4.75 0-3.87 2.81-7.42 8.11-7.42 4.26 0 7.57 3.04 7.57 7.1 0 4.24-2.67 7.65-6.38 7.65-1.25 0-2.42-.65-2.82-1.41l-.77 2.93c-.28 1.07-1.03 2.41-1.54 3.23C9.57 23.8 10.76 24 12 24c6.63 0 12-5.37 12-12S18.63 0 12 0z"/></svg></div>
+        <div class="wl-partner" title="Snapchat"><svg viewBox="0 0 24 24" fill="#FFFC00"><path d="M12.15 1.5c-2.1 0-3.8 1.5-4.3 3.6-.1.5-.2 1.1-.2 1.7 0 .3 0 .5.1.8-.9.3-1.5.9-1.7 1.7-.1.4-.1.8 0 1.1-.6.4-1 1-1.1 1.7-.1.5 0 1 .2 1.4-.4.3-.7.8-.8 1.3-.1.6 0 1.1.3 1.5-.3.2-.5.5-.6.9-.1.5 0 1 .3 1.4-.5.4-.8 1-.8 1.7 0 .7.3 1.3.8 1.7.1.7.5 1.3 1.1 1.7.4.3.9.4 1.4.4.2 0 .4 0 .6-.1.3.4.8.7 1.3.9.6.2 1.2.2 1.8.1.3.3.8.5 1.3.5s1-.2 1.3-.5c.6.1 1.2.1 1.8-.1.5-.2 1-.5 1.3-.9.2.1.4.1.6.1.5 0 1-.1 1.4-.4.6-.4 1-1 1.1-1.7.5-.4.8-1 .8-1.7 0-.7-.3-1.3-.8-1.7.3-.4.4-.9.3-1.4-.1-.4-.3-.7-.6-.9.3-.4.4-.9.3-1.5-.1-.5-.4-1-.8-1.3.2-.4.3-.9.2-1.4-.1-.7-.5-1.3-1.1-1.7.1-.3.1-.7 0-1.1-.2-.8-.8-1.4-1.7-1.7.1-.3.1-.5.1-.8 0-.6-.1-1.2-.2-1.7-.5-2.1-2.2-3.6-4.3-3.6h-.1z"/></svg></div>
+      </div>
+      <p class="wl-powered">Powered by <strong>Perion Development</strong></p>
+    </div>
+  </section>
+
+    <!-- ============ AUTH ============ -->
   <section class="screen" id="screen-auth">
     <div class="auth-shell">
       <div class="auth-header">
@@ -1206,6 +1299,21 @@ body.dark .disappear-chip{background:rgba(255,255,255,.12);color:var(--ink)}
   </div>
 
   <!-- ============ LIGHTBOX ============ -->
+  <div class="modal-wrap" id="forgot-pin-modal" style="z-index:999999">
+    <div class="modal">
+      <h3>Reset your PIN</h3>
+      <p>Enter your <b>account password</b> (the one you use to log in) to set a new 4-digit PIN.</p>
+      <input id="forgot-pin-pass" type="password" placeholder="Account password" autocomplete="current-password">
+      <input id="forgot-pin-new" placeholder="New 4-digit PIN" inputmode="numeric" maxlength="4" autocomplete="off" style="margin-top:10px">
+      <input id="forgot-pin-new2" placeholder="Confirm new PIN" inputmode="numeric" maxlength="4" autocomplete="off" style="margin-top:10px">
+      <div class="err" id="forgot-pin-err"></div>
+      <div class="modal-actions">
+        <button class="ghost" onclick="closeModal('forgot-pin-modal')">Cancel</button>
+        <button class="primary" onclick="submitForgotPin()">Save new PIN</button>
+      </div>
+    </div>
+  </div>
+
   <div class="lightbox" id="lightbox">
     <button class="close-lb" onclick="closeLightbox()">✕</button>
     <div id="lightbox-content"></div>
@@ -1294,19 +1402,7 @@ body.dark .disappear-chip{background:rgba(255,255,255,.12);color:var(--ink)}
     </div>
   </div>
 
-  <div class="modal-wrap" id="forgot-pin-modal">
-    <div class="modal">
-      <h3>Reset your PIN</h3>
-      <p>Verify with your account password to set a new PIN.</p>
-      <input id="forgot-pin-pass" type="password" placeholder="Account password">
-      <input id="forgot-pin-new" placeholder="New 4-digit PIN" inputmode="numeric" maxlength="4" style="margin-top:10px">
-      <div class="err" id="forgot-pin-err"></div>
-      <div class="modal-actions">
-        <button class="ghost" onclick="closeModal('forgot-pin-modal')">Cancel</button>
-        <button class="primary" onclick="submitForgotPin()">Save new PIN</button>
-      </div>
-    </div>
-  </div>
+  
 
   <div class="modal-wrap" id="pin-setup-modal">
     <div class="modal">
@@ -1596,7 +1692,7 @@ async function submitPwReset(){
 
 /* ---------- NAV ---------- */
 function updateNavVisibility(id){
-  const hide = (id==='screen-dm'||id==='screen-settings'||id==='screen-profile'||id==='screen-contact'||id==='screen-calls'||id==='screen-onboarding'||id==='screen-auth'||id==='screen-search');
+  const hide = (id==='screen-dm'||id==='screen-settings'||id==='screen-profile'||id==='screen-contact'||id==='screen-calls'||id==='screen-onboarding'||id==='screen-auth' || id==='screen-welcome'||id==='screen-search');
   document.body.classList.toggle('hide-nav', hide);
 }
 function setNavActive(navId){
@@ -3011,13 +3107,18 @@ async function submitPinSetup(){
 }
 async function maybeLockApp(){ if (!me) return; await refreshLockStatus(); if (_lockStatus.app_lock_enabled && _lockStatus.pin_set) openLockScreen('app', null); }
 function openForgotPin(){
-  const pass = document.getElementById('forgot-pin-pass');
-  const pin = document.getElementById('forgot-pin-new');
-  const err = document.getElementById('forgot-pin-err');
-  if (pass) pass.value = '';
-  if (pin) pin.value = '';
-  if (err) err.textContent = '';
-  openModal('forgot-pin-modal');
+  // Reset fields
+  const p = document.getElementById('forgot-pin-pass'); if (p) p.value = '';
+  const p1 = document.getElementById('forgot-pin-new'); if (p1) p1.value = '';
+  const p2 = document.getElementById('forgot-pin-new2'); if (p2) p2.value = '';
+  const err = document.getElementById('forgot-pin-err'); if (err) err.textContent = '';
+  // Show modal ON TOP of the lock screen
+  const modal = document.getElementById('forgot-pin-modal');
+  if (modal){
+    modal.style.zIndex = '999999';
+    modal.classList.add('show');
+    setTimeout(function(){ if (p) p.focus(); }, 100);
+  }
 }
 function dismissNotification(){ document.getElementById('notif-banner').classList.remove('show'); }
 function playNotifSound(){
@@ -3045,12 +3146,12 @@ async function boot(){
     try { localStorage.clear(); } catch(_){}
     token = null; me = null;
     document.querySelectorAll('.screen').forEach(function(s){ s.classList.remove('active'); });
-    const auth = document.getElementById('screen-auth'); if (auth) auth.classList.add('active');
+    const wel = document.getElementById('screen-welcome'); if (wel) wel.classList.add('active');
     try { history.replaceState(null, '', '/'); } catch(_){}
     window.__LOGGING_OUT = false;
     return;
   }
-  if (!token){ show('screen-auth'); return; }
+  if (!token){ show('screen-welcome'); return; }
   try {
     me = await api('/api/me');
     await enterApp();
@@ -3358,17 +3459,22 @@ async function openMyStatus(){
 }
 
 async function submitForgotPin(){
-  const password = document.getElementById('forgot-pin-pass').value;
-  const newPin = document.getElementById('forgot-pin-new').value.trim();
+  const password = (document.getElementById('forgot-pin-pass').value || '');
+  const pin1 = (document.getElementById('forgot-pin-new').value || '').trim();
+  const pin2 = (document.getElementById('forgot-pin-new2').value || '').trim();
   const err = document.getElementById('forgot-pin-err');
   err.textContent = '';
+
   if (!password){ err.textContent = 'Enter your account password'; return; }
-  if (!/^\d{4}$/.test(newPin)){ err.textContent = 'PIN must be 4 digits'; return; }
+  if (!/^\d{4}$/.test(pin1)){ err.textContent = 'New PIN must be 4 digits'; return; }
+  if (pin1 !== pin2){ err.textContent = 'PINs do not match'; return; }
+
   try {
-    await api('/api/lock/reset-pin', { method:'POST', body: JSON.stringify({ password, new_pin:newPin }) });
+    await api('/api/lock/reset-pin', { method:'POST', body: JSON.stringify({ password: password, new_pin: pin1 }) });
     closeModal('forgot-pin-modal');
-    toast('PIN reset');
+    if (typeof toast === 'function') toast('PIN reset successfully');
     await refreshLockStatus();
+    // Close the lock screen since the PIN was reset
     closeLockScreen();
   } catch(e){ err.textContent = e.message; }
 }
@@ -3411,27 +3517,6 @@ const OB_STATE = {
   allUsers: [],
   pickTab: 'communities'
 };
-
-async function showOnboarding(){
-  OB_STATE.step = 1;
-  OB_STATE.avatar_url = null;
-  OB_STATE.display_name = (me && me.display_name) || '';
-  OB_STATE.bio = '';
-  OB_STATE.username = '';
-  OB_STATE.username_ok = false;
-  OB_STATE.birthday = '';
-  OB_STATE.interests = [];
-  OB_STATE.communities = [];
-  OB_STATE.follows = [];
-  OB_STATE.permissions = { notifications: false, find_friends: false };
-  OB_STATE.pickTab = 'communities';
-
-  try { OB_STATE.allCommunities = await api('/api/communities'); } catch(_) { OB_STATE.allCommunities = []; }
-  try { OB_STATE.allUsers = await api('/api/users/suggested'); } catch(_) { OB_STATE.allUsers = []; }
-
-  show('screen-onboarding');
-  renderObStep();
-}
 
 function obProgress(){
   return '<div class="ob-prog">' +
@@ -3539,49 +3624,6 @@ function wireObStep2(){
   else obFetchSuggestions('');
 }
 
-async function obCheckUsername(){
-  const inp = document.getElementById('ob-username');
-  const status = document.getElementById('ob-username-status');
-  const btn = document.getElementById('ob-user-btn');
-  if (!inp || !status || !btn) return;
-  const u = (inp.value || '').trim().toLowerCase();
-  if (!/^[a-z0-9_]{3,20}$/.test(u)){
-    status.className = 'ob-status err';
-    status.textContent = 'Must be 3-20 chars: a-z, 0-9, _';
-    inp.classList.remove('ok'); inp.classList.add('err');
-    btn.disabled = true;
-    obFetchSuggestions(u.replace(/[^a-z0-9_]/g, ''));
-    return;
-  }
-  try {
-    await api('/api/username/set', { method:'POST', body: JSON.stringify({ username: u }) });
-    status.className = 'ob-status ok';
-    status.textContent = '✓ @' + u + ' is available';
-    inp.classList.remove('err'); inp.classList.add('ok');
-    OB_STATE.username = u;
-    OB_STATE.username_ok = true;
-    btn.disabled = false;
-  } catch(e) {
-    status.className = 'ob-status err';
-    status.textContent = e.message;
-    inp.classList.remove('ok'); inp.classList.add('err');
-    btn.disabled = true;
-    obFetchSuggestions(u.replace(/[^a-z0-9_]/g, ''));
-  }
-}
-
-async function obFetchSuggestions(base){
-  const box = document.getElementById('ob-username-suggest');
-  if (!box) return;
-  try {
-    const data = await api('/api/username/suggest?base=' + encodeURIComponent(base || 'user'));
-    if (!data.suggestions || !data.suggestions.length) { box.innerHTML = ''; return; }
-    box.innerHTML = data.suggestions.map(function(s){
-      return '<button type="button" onclick="obUseSuggestion(\'' + s + '\')">@' + s + '</button>';
-    }).join('');
-  } catch(_) { box.innerHTML = ''; }
-}
-
 function obUseSuggestion(u){
   const inp = document.getElementById('ob-username');
   if (inp) { inp.value = u; obCheckUsername(); }
@@ -3606,26 +3648,26 @@ function obStep3(){
 }
 
 async function obNext3(){
-  const v = (document.getElementById('ob-birthday').value || '').trim();
-  if (!v) { alert('Please enter your birthday'); return; }
-  const dob = new Date(v);
-  const age = Math.floor((Date.now() - dob.getTime()) / (365.25*24*3600*1000));
-  if (age < 18) { alert('You must be 18 or older'); return; }
-  OB_STATE.birthday = v;
+  if (OB.interests.length < 3){ alert('Pick at least 3'); return; }
+  try { await api('/api/onboard/interests', { method:'POST', body: JSON.stringify({ interests: OB.interests }) }); } catch(_){}
+
+  // Load real users to follow
+  OB.step = 4;
+  OB.loading = true;
+  obRender();
   try {
-    await api('/api/onboard/profile', { method:'POST', body: JSON.stringify({
-      display_name: OB_STATE.display_name,
-      bio: OB_STATE.bio,
-      avatar_url: OB_STATE.avatar_url,
-      birthday: v
-    })});
-    me.display_name = OB_STATE.display_name;
-    me.bio = OB_STATE.bio;
-    me.avatar_url = OB_STATE.avatar_url;
-    me.birthday = v;
-  } catch(e) { alert(e.message); return; }
-  OB_STATE.step = 4;
-  renderObStep();
+    const users = await api('/api/users/suggestions?limit=30');
+    OB.people = users || [];
+  } catch(_){ OB.people = []; }
+  OB.loading = false;
+
+  // If nobody to show → auto-skip to permissions
+  if (!OB.people.length){
+    OB.step = 5;
+    obRender();
+    return;
+  }
+  obRender();
 }
 
 function obStep4(){
@@ -3644,27 +3686,18 @@ function obStep4(){
     '<div class="ob-skip" onclick="obSkipStep()">Skip for now</div>';
 }
 
-function obToggleInterest(id){
-  const i = OB_STATE.interests.indexOf(id);
-  if (i === -1) OB_STATE.interests.push(id);
-  else OB_STATE.interests.splice(i, 1);
-  const btn = document.getElementById('ob-int-btn');
-  document.querySelectorAll('.ob-chip').forEach(function(el){
-    if (el.getAttribute('onclick').indexOf(id) !== -1){
-      el.classList.toggle('on', OB_STATE.interests.indexOf(id) !== -1);
-    }
-  });
-  if (btn) btn.disabled = OB_STATE.interests.length < 3;
-}
-
 async function obNext4(){
-  if (OB_STATE.interests.length < 3) { alert('Pick at least 3'); return; }
+  // Save followed users to backend as "follows"
   try {
-    await api('/api/onboard/interests', { method:'POST', body: JSON.stringify({ interests: OB_STATE.interests }) });
-    me.interests = OB_STATE.interests;
-  } catch(_) {}
-  OB_STATE.step = 5;
-  renderObStep();
+    const follows = OB.following.map(function(id){ return 'user_' + id; });
+    await api('/api/onboard/picks', { method:'POST', body: JSON.stringify({ follows: follows, joined_communities: [] }) });
+
+    // Also trigger the actual follow via /api/users/:id/follow for each
+    for (const uid of OB.following){
+      try { await api('/api/users/' + uid + '/follow', { method:'POST' }); } catch(_){}
+    }
+  } catch(_){}
+  OB.step = 5; obRender();
 }
 
 function obStep5(){
@@ -3757,14 +3790,6 @@ function obStep6(){
     '</div>' +
     '<button class="ob-btn" onclick="obFinishAll()">Finish 🎉</button>' +
     '<div class="ob-skip" onclick="obFinishAll()">Skip for now</div>';
-}
-
-function obTogglePerm(key){
-  OB_STATE.permissions[key] = !OB_STATE.permissions[key];
-  renderObStep();
-  if (key === 'notifications' && OB_STATE.permissions.notifications && typeof Notification !== 'undefined' && Notification.requestPermission) {
-    Notification.requestPermission();
-  }
 }
 
 function obSkipStep(){
@@ -4013,6 +4038,445 @@ function showNotif(m){
   };
   clearTimeout(window._notifTimer);
   window._notifTimer = setTimeout(function(){ dismissNotification(); }, 5000);
+}
+
+/* ============================================================
+   ONBOARDING — TikTok/Reddit style multi-step
+   ============================================================ */
+const OB_INTERESTS = [
+  {id:'comedy',label:'Comedy',ic:'😂'},{id:'dance',label:'Dance',ic:'💃'},
+  {id:'cooking',label:'Cooking',ic:'🍳'},{id:'sports',label:'Sports',ic:'⚽'},
+  {id:'beauty',label:'Beauty',ic:'💄'},{id:'tech',label:'Tech',ic:'💻'},
+  {id:'gaming',label:'Gaming',ic:'🎮'},{id:'movies',label:'Movies',ic:'🎬'},
+  {id:'art',label:'Art',ic:'🎨'},{id:'science',label:'Science',ic:'🔬'},
+  {id:'music',label:'Music',ic:'🎵'},{id:'fashion',label:'Fashion',ic:'👗'},
+  {id:'travel',label:'Travel',ic:'✈️'},{id:'fitness',label:'Fitness',ic:'🏋️'},
+  {id:'books',label:'Books',ic:'📚'}
+];
+const OB_COMMUNITIES = {
+  comedy:[{id:'c_jokes',name:'r/jokes',members:'2.1M'},{id:'c_standup',name:'r/standup',members:'540K'}],
+  tech:[{id:'c_tech',name:'r/technology',members:'5.2M'},{id:'c_prog',name:'r/programming',members:'3.1M'}],
+  music:[{id:'c_music',name:'r/music',members:'8.3M'}],
+  gaming:[{id:'c_gaming',name:'r/gaming',members:'6.8M'}],
+  sports:[{id:'c_sports',name:'r/sports',members:'4.6M'}],
+  movies:[{id:'c_movies',name:'r/movies',members:'5.9M'}],
+  science:[{id:'c_science',name:'r/science',members:'7.2M'}],
+  cooking:[{id:'c_cooking',name:'r/cooking',members:'3.4M'}],
+  art:[{id:'c_art',name:'r/art',members:'3.1M'}],
+  books:[{id:'c_books',name:'r/books',members:'5.4M'}],
+  fitness:[{id:'c_fitness',name:'r/fitness',members:'9.1M'}],
+  travel:[{id:'c_travel',name:'r/travel',members:'4.7M'}],
+  beauty:[{id:'c_beauty',name:'r/beauty',members:'780K'}],
+  dance:[{id:'c_dance',name:'r/dance',members:'320K'}],
+  fashion:[{id:'c_fashion',name:'r/fashion',members:'1.4M'}]
+};
+const OB_CREATORS = {
+  comedy:[{id:'cr_1',name:'@LaughDaily',followers:'4.2M'}],
+  tech:[{id:'cr_11',name:'@TechBro',followers:'4.7M'}],
+  music:[{id:'cr_21',name:'@MusicNow',followers:'6.8M'}],
+  gaming:[{id:'cr_13',name:'@ProGamerX',followers:'7.2M'}],
+  sports:[{id:'cr_7',name:'@SportsCenter',followers:'8.4M'}],
+  movies:[{id:'cr_15',name:'@FilmFanatic',followers:'2.8M'}],
+  science:[{id:'cr_19',name:'@ScienceSimplified',followers:'3.1M'}],
+  cooking:[{id:'cr_5',name:'@ChefAmara',followers:'3.3M'}],
+  art:[{id:'cr_17',name:'@ArtByTunde',followers:'1.6M'}],
+  books:[{id:'cr_29',name:'@BookLover',followers:'1.4M'}],
+  fitness:[{id:'cr_27',name:'@FitCoachJo',followers:'4.1M'}],
+  travel:[{id:'cr_25',name:'@WanderWorld',followers:'5.4M'}],
+  beauty:[{id:'cr_9',name:'@GlowWithEfe',followers:'5.6M'}],
+  dance:[{id:'cr_3',name:'@DanceMoves',followers:'6.1M'}],
+  fashion:[{id:'cr_23',name:'@StyleDaily',followers:'2.2M'}]
+};
+
+const OB = {
+  step: 0,
+  display_name: '', bio: '', avatar_url: null,
+  gender: '', password: '',
+  username: '', birthday: '',
+  interests: [],
+  people: [],           // real users fetched from /api/users/suggestions
+  following: [],        // user ids I chose to follow during onboarding
+  permissions: { notifications:false, find_friends:false },
+  loading: false
+};
+
+function showOnboarding(){
+  if (!me){ return; }
+  // Pre-fill name from login or email
+  OB.display_name = me.display_name || '';
+  OB.bio = '';
+  OB.avatar_url = me.avatar_url || null;
+  OB.gender = '';
+  OB.password = '';
+  OB.username = '';
+  OB.birthday = '';
+  OB.interests = [];
+  OB.people = [];
+  OB.following = [];
+  OB.permissions = { notifications:false, find_friends:false };
+  OB.step = 0;
+  document.body.classList.add('hide-nav');
+  show('screen-onboarding');
+  obRender();
+}
+
+function obRender(){
+  const root = document.getElementById('ob-root');
+  if (!root) return;
+  const needPassword = !(me && me.has_password);
+  const totalSteps = 6;
+  const progress = Array.from({length: totalSteps}, (_, i) =>
+    '<span class="' + (i <= OB.step ? 'on' : '') + '"></span>'
+  ).join('');
+
+  let body = '';
+
+  // STEP 0 — Name + photo + bio + gender + password (if needed)
+  if (OB.step === 0){
+    const avStyle = OB.avatar_url
+      ? 'background-image:url(' + OB.avatar_url + ');background-size:cover;background-position:center'
+      : 'background:linear-gradient(135deg,#7b8cff,#b58cff)';
+    body =
+      '<div class="ob-prog">' + progress + '</div>' +
+      '<h1 class="ob-title">Welcome to GistApp 👋</h1>' +
+      '<p class="ob-sub">Let\'s set up your profile. Takes 30 seconds.</p>' +
+
+      '<div class="ob-avatar-wrap" onclick="document.getElementById(\'ob-avatar-file\').click()">' +
+        '<div class="ob-avatar" id="ob-avatar" style="' + avStyle + '">' + (OB.avatar_url ? '' : esc(initials(OB.display_name || me.email || '?'))) + '</div>' +
+        '<div class="ob-avatar-hint">📷 ' + (OB.avatar_url ? 'Change photo' : 'Add photo') + '</div>' +
+      '</div>' +
+      '<input type="file" id="ob-avatar-file" accept="image/*" hidden>' +
+
+      '<div class="ob-field">' +
+        '<label>Display name</label>' +
+        '<input id="ob-name" placeholder="Your name" maxlength="40" value="' + esc(OB.display_name) + '">' +
+      '</div>' +
+
+      '<div class="ob-field">' +
+        '<label>Bio (optional)</label>' +
+        '<textarea id="ob-bio" placeholder="Say something about yourself" maxlength="140" rows="2">' + esc(OB.bio) + '</textarea>' +
+      '</div>' +
+
+      '<div class="ob-field">' +
+        '<label>Gender</label>' +
+        '<div class="ob-tabs" style="flex-wrap:wrap">' +
+          ['Male','Female','Other','Prefer not to say'].map(g =>
+            '<button type="button" class="' + (OB.gender === g ? 'on' : '') + '" onclick="obPickGender(\'' + g + '\')">' + g + '</button>'
+          ).join('') +
+        '</div>' +
+      '</div>' +
+
+      (needPassword ?
+        '<div class="ob-field">' +
+          '<label>Password</label>' +
+          '<input id="ob-password" type="password" placeholder="Set a password (min 6 chars)" autocomplete="new-password">' +
+          '<div class="ob-status" style="color:var(--sub);font-size:12px;margin-top:4px">You signed up with Google — add a password so you can also log in with email later.</div>' +
+        '</div>'
+      : '') +
+
+      '<button class="ob-btn" onclick="obNext0()">Continue →</button>';
+  }
+
+  // STEP 1 — Username
+  else if (OB.step === 1){
+    body =
+      '<div class="ob-prog">' + progress + '</div>' +
+      '<h1 class="ob-title">Choose your username</h1>' +
+      '<p class="ob-sub">3–20 characters. Letters, numbers, underscore.</p>' +
+      '<div class="ob-field">' +
+        '<label>Username</label>' +
+        '<input id="ob-username" placeholder="yourhandle" value="' + esc(OB.username) + '" maxlength="20" autocomplete="off">' +
+        '<div class="ob-status" id="ob-username-status"></div>' +
+        '<div class="ob-suggest" id="ob-username-suggest"></div>' +
+      '</div>' +
+      '<button class="ob-btn" id="ob-user-btn" onclick="obNext1()" disabled>Continue →</button>' +
+      '<div class="ob-skip" onclick="obSkipStep(1)">Skip for now</div>';
+    setTimeout(function(){ obWireUsername(); }, 50);
+  }
+
+  // STEP 2 — Birthday (18+)
+  else if (OB.step === 2){
+    const maxDate = new Date(Date.now() - 18*365.25*24*3600*1000).toISOString().slice(0,10);
+    body =
+      '<div class="ob-prog">' + progress + '</div>' +
+      '<h1 class="ob-title">When is your birthday?</h1>' +
+      '<p class="ob-sub">You must be 18 or older. We never share your birthday.</p>' +
+      '<div class="ob-field">' +
+        '<label>Date of birth</label>' +
+        '<input id="ob-birthday" type="date" value="' + esc(OB.birthday) + '" max="' + maxDate + '">' +
+      '</div>' +
+      '<button class="ob-btn" onclick="obNext2()">Continue →</button>' +
+      '<div class="ob-skip" onclick="obSkipStep(2)">Skip for now</div>';
+  }
+
+  // STEP 3 — Interests
+  else if (OB.step === 3){
+    body =
+      '<div class="ob-prog">' + progress + '</div>' +
+      '<h1 class="ob-title">Choose your interests</h1>' +
+      '<p class="ob-sub">Pick at least 3. Shapes your feed.</p>' +
+      '<div class="ob-grid">' +
+        OB_INTERESTS.map(i =>
+          '<button type="button" class="ob-chip ' + (OB.interests.indexOf(i.id) !== -1 ? 'on' : '') + '" onclick="obToggleInterest(\'' + i.id + '\')"><span class="ic">' + i.ic + '</span>' + i.label + '</button>'
+        ).join('') +
+      '</div>' +
+      '<button class="ob-btn" id="ob-int-btn" onclick="obNext3()" ' + (OB.interests.length < 3 ? 'disabled' : '') + '>Continue →</button>' +
+      '<div class="ob-skip" onclick="obSkipStep(3)">Skip for now</div>';
+  }
+
+  // STEP 4 — Discover people (real users)
+  else if (OB.step === 4){
+    const list = OB.people || [];
+    const picked = list.filter(function(u){ return OB.following.indexOf(u.id) !== -1; }).length;
+
+    if (OB.loading){
+      body =
+        '<div class="ob-prog">' + progress + '</div>' +
+        '<h1 class="ob-title">Discover</h1>' +
+        '<p class="ob-sub">Loading people…</p>' +
+        '<div style="text-align:center;padding:40px 20px;color:var(--sub)">Just a moment…</div>';
+    } else if (!list.length){
+      // No users to show — should not happen since we auto-skip, but fallback
+      body =
+        '<div class="ob-prog">' + progress + '</div>' +
+        '<h1 class="ob-title">Discover</h1>' +
+        '<p class="ob-sub">No other users yet.</p>' +
+        '<button class="ob-btn" onclick="obNext4()">Continue →</button>' +
+        '<div class="ob-skip" onclick="obNext4()">Skip</div>';
+    } else {
+      body =
+        '<div class="ob-prog">' + progress + '</div>' +
+        '<h1 class="ob-title">Find people</h1>' +
+        '<p class="ob-sub">Follow people to see their posts. You can always change this later.</p>' +
+        '<div class="ob-list">' +
+          list.slice(0, 30).map(function(u){
+            const on = OB.following.indexOf(u.id) !== -1;
+            const color = u.avatar_color || colorFor(u.display_name || '?');
+            const av = u.avatar_url
+              ? '<div class="av" style="background-image:url(' + u.avatar_url + ');background-size:cover;background-position:center"></div>'
+              : '<div class="av" style="background:' + color + '">' + esc(initials(u.display_name)) + '</div>';
+            return '<div class="ob-item ' + (on?'on':'') + '" onclick="obToggleFollow(' + u.id + ')">' +
+              av +
+              '<div class="info"><b>' + esc(u.display_name) + '</b>' +
+              '<small>' + (u.username ? '@' + esc(u.username) : (u.bio ? esc(u.bio).slice(0,40) : 'On GistApp')) + '</small></div>' +
+              '<button type="button" class="join">' + (on ? '✓ Following' : 'Follow') + '</button>' +
+            '</div>';
+          }).join('') +
+        '</div>' +
+        '<button class="ob-btn" onclick="obNext4()">Continue →</button>' +
+        '<div class="ob-skip" onclick="obSkipStep(4)">Skip for now</div>';
+    }
+  }
+
+  // STEP 5 — Permissions
+  else if (OB.step === 5){
+    body =
+      '<div class="ob-prog">' + progress + '</div>' +
+      '<h1 class="ob-title">A couple of things</h1>' +
+      '<p class="ob-sub">Both optional — change any time in Settings.</p>' +
+      '<div class="ob-perm ' + (OB.permissions.notifications?'on':'') + '" onclick="obTogglePerm(\'notifications\')">' +
+        '<div class="ic">🔔</div><div class="info"><b>Turn on notifications</b><small>Get notified about replies, mentions, likes.</small></div>' +
+      '</div>' +
+      '<div class="ob-perm ' + (OB.permissions.find_friends?'on':'') + '" onclick="obTogglePerm(\'find_friends\')">' +
+        '<div class="ic">👥</div><div class="info"><b>Find friends</b><small>Connect with people you already know.</small></div>' +
+      '</div>' +
+      '<button class="ob-btn" onclick="obFinish()">Finish 🎉</button>' +
+      '<div class="ob-skip" onclick="obFinish()">Skip for now</div>';
+  }
+
+  root.innerHTML = '<div class="ob-step">' + body + '</div>';
+
+  // Wire avatar upload
+  const avFile = document.getElementById('ob-avatar-file');
+  if (avFile) avFile.addEventListener('change', function(e){
+    const f = e.target.files[0]; if (!f) return;
+    if (f.size > 5*1024*1024){ alert('Max 5MB'); return; }
+    const fd = new FormData(); fd.append('file', f);
+    fetch('/api/upload', { method:'POST', headers:{ Authorization:'Bearer '+token }, body:fd })
+      .then(function(r){ return r.json(); })
+      .then(function(data){
+        if (data.error){ alert(data.error); return; }
+        OB.avatar_url = data.url;
+        const av = document.getElementById('ob-avatar');
+        av.textContent = '';
+        av.style.backgroundImage = 'url(' + data.url + ')';
+        av.style.backgroundSize = 'cover';
+        av.style.backgroundPosition = 'center';
+        const hint = document.querySelector('.ob-avatar-hint');
+        if (hint) hint.textContent = '📷 Change photo';
+      })
+      .catch(function(err){ alert(err.message); });
+  });
+}
+
+function obPickGender(g){
+  OB.gender = g;
+  obRender();
+}
+
+async function obNext0(){
+  const name = (document.getElementById('ob-name').value || '').trim();
+  const bio = (document.getElementById('ob-bio').value || '').trim();
+  if (!name){ alert('Enter a display name'); return; }
+  OB.display_name = name;
+  OB.bio = bio;
+
+  const pwEl = document.getElementById('ob-password');
+  if (pwEl){
+    const pw = pwEl.value;
+    if (pw && pw.length < 6){ alert('Password must be at least 6 characters'); return; }
+    OB.password = pw;
+  }
+  obRender();
+  OB.step = 1;
+  obRender();
+}
+
+function obWireUsername(){
+  const inp = document.getElementById('ob-username');
+  if (!inp) return;
+  inp.oninput = function(){
+    OB.username = this.value.trim().toLowerCase();
+    clearTimeout(window._obUserTimer);
+    window._obUserTimer = setTimeout(obCheckUsername, 400);
+  };
+  if (!OB.username) obFetchSuggestions('');
+}
+
+async function obFetchSuggestions(base){
+  try {
+    const data = await api('/api/username/suggest?base=' + encodeURIComponent(base || 'user'));
+    const box = document.getElementById('ob-username-suggest');
+    if (!box) return;
+    box.innerHTML = (data.suggestions||[]).map(function(s){
+      return '<button type="button" onclick="obPickUsername(\'' + s + '\')">@' + s + '</button>';
+    }).join('');
+  } catch(_){}
+}
+
+function obPickUsername(u){
+  const inp = document.getElementById('ob-username');
+  if (inp){ inp.value = u; OB.username = u; obCheckUsername(); }
+}
+
+async function obCheckUsername(){
+  const inp = document.getElementById('ob-username');
+  const status = document.getElementById('ob-username-status');
+  const btn = document.getElementById('ob-user-btn');
+  if (!inp || !status) return;
+  const u = (inp.value || '').trim().toLowerCase();
+  if (!/^[a-z0-9_]{3,20}$/.test(u)){
+    status.className = 'ob-status err';
+    status.textContent = '3–20 chars · a-z, 0-9, _ only';
+    inp.classList.remove('ok'); inp.classList.add('err');
+    if (btn) btn.disabled = true;
+    obFetchSuggestions(u.replace(/[^a-z0-9_]/g, ''));
+    return;
+  }
+  try {
+    const r = await api('/api/username/set', { method:'POST', body: JSON.stringify({ username: u }) });
+    status.className = 'ob-status ok';
+    status.textContent = '✓ @' + r.username + ' is available';
+    inp.classList.remove('err'); inp.classList.add('ok');
+    if (btn) btn.disabled = false;
+  } catch(e){
+    status.className = 'ob-status err';
+    status.textContent = e.message;
+    inp.classList.remove('ok'); inp.classList.add('err');
+    if (btn) btn.disabled = true;
+    obFetchSuggestions(u.replace(/[^a-z0-9_]/g, ''));
+  }
+}
+
+function obNext1(){ OB.step = 2; obRender(); }
+
+async function obNext2(){
+  const v = (document.getElementById('ob-birthday').value || '').trim();
+  if (!v){ alert('Pick your birthday'); return; }
+  const age = Math.floor((Date.now() - new Date(v).getTime()) / (365.25*24*3600*1000));
+  if (age < 18){ alert('You must be 18 or older'); return; }
+  OB.birthday = v;
+  await obSaveProfile();
+  OB.step = 3; obRender();
+}
+
+function obToggleInterest(id){
+  const i = OB.interests.indexOf(id);
+  if (i === -1) OB.interests.push(id);
+  else OB.interests.splice(i, 1);
+  document.querySelectorAll('.ob-chip').forEach(function(el){
+    const onclick = el.getAttribute('onclick') || '';
+    const m = onclick.match(/'([^']+)'/);
+    if (m) el.classList.toggle('on', OB.interests.indexOf(m[1]) !== -1);
+  });
+  const btn = document.getElementById('ob-int-btn');
+  if (btn) btn.disabled = OB.interests.length < 3;
+}
+
+async function obNext3(){
+  if (OB.interests.length < 3){ alert('Pick at least 3'); return; }
+  try { await api('/api/onboard/interests', { method:'POST', body: JSON.stringify({ interests: OB.interests }) }); } catch(_){}
+  OB.step = 4; obRender();
+}
+
+function obToggleFollow(userId){
+  const i = OB.following.indexOf(userId);
+  if (i === -1) OB.following.push(userId);
+  else OB.following.splice(i, 1);
+  obRender();
+}
+
+async function obNext4(){
+  try { await api('/api/onboard/picks', { method:'POST', body: JSON.stringify({ follows: OB.follows, joined_communities: OB.joined_communities }) }); } catch(_){}
+  OB.step = 5; obRender();
+}
+
+function obTogglePerm(k){
+  OB.permissions[k] = !OB.permissions[k];
+  obRender();
+  if (k === 'notifications' && OB.permissions.notifications && typeof Notification !== 'undefined' && Notification.requestPermission) Notification.requestPermission();
+}
+
+async function obFinish(){
+  try {
+    await api('/api/onboard/permissions', { method:'POST', body: JSON.stringify({ permissions: OB.permissions }) });
+    me.onboarded = true;
+    document.body.classList.remove('hide-nav');
+    await enterApp();
+  } catch(e){ alert(e.message); }
+}
+
+async function obSkipStep(step){
+  if (step === 2) await obSaveProfile();
+  if (step === 3){ try { await api('/api/onboard/interests', { method:'POST', body: JSON.stringify({ interests: OB.interests }) }); } catch(_){} }
+  if (step === 4){ try { await api('/api/onboard/picks', { method:'POST', body: JSON.stringify({ follows: [], joined_communities: [] }) }); } catch(_){} }
+  OB.step = step + 1;
+  obRender();
+}
+
+async function obSaveProfile(){
+  try {
+    const payload = {
+      display_name: OB.display_name,
+      bio: OB.bio || 'Hey there! I am using GistApp.',
+      avatar_url: OB.avatar_url,
+      gender: OB.gender || null,
+      password: OB.password || null,
+      birthday: OB.birthday || null
+    };
+    const r = await api('/api/onboard/profile', { method:'POST', body: JSON.stringify(payload) });
+    me = Object.assign({}, me, r);
+    if (OB.password) me.has_password = true;
+  } catch(e){ console.warn('save profile error', e.message); }
+}
+
+/* ============ WELCOME + AUTH ROUTING ============ */
+function openWelcome(){ document.body.classList.add('hide-nav');
+  show('screen-welcome');
+}
+function openAuth(mode){
+  if (typeof switchAuthMode === 'function') switchAuthMode(mode || 'signup');
+  show('screen-auth');
 }
 
 boot();
