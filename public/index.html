@@ -3710,6 +3710,9 @@ const OB_STATE = {
   allUsers: [],
   pickTab: 'communities'
 };
+// Aliases: 73 references in this file use `OB.`, but the state object
+// is declared as OB_STATE. Point both names at the same object.
+const OB = OB_STATE;
 
 function showOnboarding(){
   if (!me){ return; }
