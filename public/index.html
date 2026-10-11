@@ -1841,6 +1841,7 @@ function connectSocket(){
   socket.on('presence-list', function(ids){ onlineIds = new Set(ids.map(Number)); renderChats(); renderStories(); updateHeaderStatus(); });
   socket.on('presence', function(p){ if (p.online) onlineIds.add(Number(p.userId)); else onlineIds.delete(Number(p.userId)); renderChats(); renderStories(); updateHeaderStatus(); });
   socket.on('message', function(m){
+    try { if (!me || Number(m.sender_id) !== Number(me.id)) playReceiveSound(); } catch(_){}
     loadChats();
     if (!currentChat || Number(currentChat.id)!==Number(m.chat_id)) return;
     if (Number(m.sender_id)===Number(me.id)) return;
@@ -1917,6 +1918,70 @@ function connectSocket(){
   socket.on('call:rejected', function(){ setCallStatus('Call declined'); setTimeout(cleanupCall, 900); });
   socket.on('call:ended', function(){ setCallStatus('Call ended'); setTimeout(cleanupCall, 700); });
   socket.on('call:signal', function(p){ handleCallSignal(p.payload); });
+}
+
+/* ---------- chat sounds (Web Audio API, no files) ---------- */
+let _audioCtx = null;
+let _audioUnlocked = false;
+
+async function _ensureAudio(){
+  if (!_audioCtx){
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return null;
+    try { _audioCtx = new Ctx(); } catch(_){ return null; }
+  }
+  if (_audioCtx.state === 'suspended'){
+    try { await _audioCtx.resume(); } catch(_){}
+  }
+  return _audioCtx;
+}
+
+// Unlock on first user gesture (browser policy requires a tap)
+function _unlockAudioOnGesture(){
+  if (_audioUnlocked) return;
+  _audioUnlocked = true;
+  _ensureAudio().then(function(ctx){
+    if (ctx) console.log('🔓 audio unlocked, state =', ctx.state);
+  }).catch(function(){});
+  ['click','touchstart','keydown','pointerdown'].forEach(function(ev){
+    document.removeEventListener(ev, _unlockAudioOnGesture, true);
+  });
+}
+['click','touchstart','keydown','pointerdown'].forEach(function(ev){
+  document.addEventListener(ev, _unlockAudioOnGesture, true);
+});
+
+function _playChirp(freqs, step, gainPeak, dur){
+  _ensureAudio().then(function(ctx){
+    if (!ctx) return;
+    if (ctx.state !== 'running'){
+      console.log('⚠️  audio still suspended — tap the page first');
+      return;
+    }
+    const t = ctx.currentTime + 0.02;   // small schedule buffer
+    freqs.forEach(function(freq, i){
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.value = freq;
+      const start = t + i * step;
+      gain.gain.setValueAtTime(0, start);
+      gain.gain.linearRampToValueAtTime(gainPeak, start + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.001, start + dur);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(start);
+      osc.stop(start + dur + 0.02);
+    });
+  }).catch(function(e){ console.warn('sound error:', e); });
+}
+
+function playSendSound(){
+  console.log('🔊 playSendSound fired');
+  _playChirp([700, 1400], 0.06, 0.4, 0.18);
+}
+function playReceiveSound(){
+  console.log('🔊 playReceiveSound fired');
+  _playChirp([900, 600], 0.07, 0.35, 0.16);
 }
 
 /* ---------- DARK / FONT ---------- */
@@ -2277,6 +2342,7 @@ document.getElementById('file-pick').addEventListener('change', async function(e
     if (!msgs.querySelector('.bubble[data-id="'+m.id+'"]')) appendBubble(m, false);
     messagesCache.push(m);
     loadChatsDebounced();
+      playSendSound();
   } catch(err){ alert(err.message); }
   e.target.value = '';
 });
@@ -2371,6 +2437,7 @@ async function onRecordingStop(){
     if (!msgs.querySelector('.bubble[data-id="'+m.id+'"]')) appendBubble(m, false);
     messagesCache.push(m);
     loadChatsDebounced();
+      playSendSound();
   } catch(e){ toast(e.message || 'Voice send failed'); }
   updateMicSendToggle();
 }
