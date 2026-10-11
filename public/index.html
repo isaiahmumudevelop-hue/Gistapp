@@ -729,6 +729,46 @@ body:has(#screen-onboarding.active) #globalNav{
   pointer-events:none !important;
 }
 
+
+/* Legal screens */
+#screen-privacy, #screen-terms{background:var(--bg);z-index:100;overflow-y:auto}
+.legal-head{display:flex;align-items:center;gap:14px;padding:calc(14px + var(--safe-t)) 16px 12px;border-bottom:1px solid var(--line);background:var(--bg);position:sticky;top:0;z-index:2}
+.legal-head .icon-btn{background:var(--bg-2);color:var(--ink)}
+.legal-head h1{font-size:19px;font-weight:800;color:var(--ink);margin:0}
+.legal-body{padding:20px 22px calc(40px + var(--safe-b));color:var(--ink);font-size:14.5px;line-height:1.65;max-width:640px;margin:0 auto}
+.legal-body h3{font-size:16px;font-weight:800;margin:22px 0 6px;color:var(--ink)}
+.legal-body p{margin-bottom:12px;color:var(--sub)}
+.legal-body a{color:#7b8cff;text-decoration:underline}
+
+
+body:has(#screen-privacy.active) .bottom-nav,
+body:has(#screen-terms.active) .bottom-nav{display:none!important}
+
+
+/* ============ LEGAL PAGES (Privacy, Terms) ============ */
+#screen-privacy, #screen-terms{background:var(--bg);z-index:80;overflow:hidden}
+.legal-head{display:flex;align-items:center;gap:12px;padding:calc(14px + var(--safe-t)) 16px 14px;border-bottom:1px solid var(--line);background:var(--bg);flex-shrink:0;position:sticky;top:0;z-index:2}
+.legal-head h1{font-size:18px;font-weight:800;color:var(--ink);flex:1;letter-spacing:-.3px}
+.legal-body{flex:1;overflow-y:auto;padding:22px 22px calc(60px + var(--safe-b));scrollbar-width:none;max-width:720px;margin:0 auto;width:100%}
+.legal-body::-webkit-scrollbar{display:none}
+.legal-body h2{font-size:17px;font-weight:800;color:var(--ink);margin:26px 0 10px;letter-spacing:-.3px;scroll-margin-top:80px}
+.legal-body h2:first-child{margin-top:0}
+.legal-body h3{font-size:15px;font-weight:700;color:var(--ink);margin:18px 0 8px}
+.legal-body p{font-size:14.5px;line-height:1.7;color:var(--ink);margin-bottom:12px}
+.legal-body ul{margin:8px 0 14px 0;padding-left:20px}
+.legal-body li{font-size:14.5px;line-height:1.7;color:var(--ink);margin-bottom:6px}
+.legal-body strong{color:var(--ink);font-weight:700}
+.legal-meta{background:var(--bg-2);border-radius:14px;padding:14px 16px;margin-bottom:22px;font-size:13px;color:var(--sub);line-height:1.7}
+.legal-meta b{color:var(--ink);font-weight:700}
+.legal-meta code{display:inline-block;background:var(--bg-3);padding:2px 8px;border-radius:6px;font-family:ui-monospace,monospace;font-size:12.5px;color:var(--ink)}
+.legal-toc{background:var(--bg-2);border-radius:16px;padding:14px 18px;margin-bottom:20px}
+.legal-toc h3{font-size:13.5px;font-weight:800;color:var(--sub);text-transform:uppercase;letter-spacing:.5px;margin:0 0 8px}
+.legal-toc a{display:block;color:#7b8cff;font-size:14px;font-weight:600;text-decoration:none;padding:6px 0;border-bottom:1px solid var(--line);cursor:pointer}
+.legal-toc a:last-child{border-bottom:0}
+.legal-footer-note{margin-top:32px;padding-top:20px;border-top:1px solid var(--line);font-size:12.5px;color:var(--sub);line-height:1.7;text-align:center}
+.legal-footer-note b{color:var(--ink)}
+.legal-badge{display:inline-block;background:rgba(37,211,102,.15);color:#1a9d4e;font-size:11px;font-weight:700;letter-spacing:.4px;padding:4px 10px;border-radius:20px;margin-left:6px;vertical-align:middle}
+
 </style>
 </head>
 <body>
@@ -763,7 +803,7 @@ body:has(#screen-onboarding.active) #globalNav{
       <p class="wl-login">Already have an account? <a onclick="openAuth('login')">Log in</a></p>
     </div>
     <div class="wl-bottom">
-      <p class="wl-legal">By tapping Get Started, I agree with the <a>Terms of Service</a> and <a>Privacy Policy</a>.</p>
+      <p class="wl-legal">By tapping Get Started, I agree with the <a onclick="openLegal('screen-terms')" style="cursor:pointer">Terms of Service</a> and <a onclick="openLegal('screen-privacy')" style="cursor:pointer">Privacy Policy</a>.</p>
       <div class="wl-partners">
         <span>Partners</span>
         <div class="wl-partner" title="Gmail"><svg viewBox="0 0 24 24" fill="none"><path d="M2 6.5A2.5 2.5 0 014.5 4h15A2.5 2.5 0 0122 6.5v11a2.5 2.5 0 01-2.5 2.5h-15A2.5 2.5 0 012 17.5v-11z" fill="#EA4335"/><path d="M2 6.5l10 7.5 10-7.5" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/></svg></div>
@@ -803,7 +843,7 @@ body:has(#screen-onboarding.active) #globalNav{
             <button type="button" class="eye" onclick="togglePw('auth-pass-su',this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg></button>
           </div>
           <button class="auth-main-btn" id="auth-btn-su">Create account</button>
-          <p class="auth-terms">Signing up means you agree to the <a>Privacy Policy</a> and <a>Terms of Service</a>.</p>
+          <p class="auth-terms">Signing up means you agree to the <a onclick="openPrivacy()">Privacy Policy</a> and <a onclick="openTerms()">Terms of Service</a>.</p>
           <p class="auth-switch">Have an account? <a onclick="switchAuthMode('login')">Log in here</a></p>
         </div>
 
@@ -1135,6 +1175,57 @@ body:has(#screen-onboarding.active) #globalNav{
       </div>
     </div>
     <div class="gs-scroll" id="gs-results"></div>
+  </section>
+
+  <!-- LEGAL SCREENS -->
+  <section class="screen" id="screen-privacy">
+    <div class="legal-head">
+      <button class="icon-btn" onclick="closeLegal()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
+      </button>
+      <h1>Privacy Policy</h1>
+    </div>
+    <div class="legal-body">
+      <p><b>Last updated: October 2026</b></p>
+      <h3>1. Information we collect</h3>
+      <p>When you create an account we collect: your email address, display name, and optionally a profile photo, cover photo, and bio. We do not collect your phone number, location, or contacts.</p>
+      <h3>2. How we use your data</h3>
+      <p>Your email is used only to log you in and send account notifications (like verification links). Your messages are stored in our database so you can access them from any device.</p>
+      <h3>3. What we don't do</h3>
+      <p>We do not sell your data. We do not share it with advertisers. We do not track you across other websites.</p>
+      <h3>4. Your rights</h3>
+      <p>You can delete your account at any time from Settings, which removes all your data from our servers. You can also export your data.</p>
+      <h3>5. Security</h3>
+      <p>Passwords are hashed with bcrypt. Messages transit over encrypted HTTPS. Two-step verification is available for extra protection.</p>
+      <h3>6. Contact</h3>
+      <p>Questions? Email <a href="mailto:support@gistapp.app">support@gistapp.app</a></p>
+    </div>
+  </section>
+
+  <section class="screen" id="screen-terms">
+    <div class="legal-head">
+      <button class="icon-btn" onclick="closeLegal()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
+      </button>
+      <h1>Terms of Service</h1>
+    </div>
+    <div class="legal-body">
+      <p><b>Last updated: October 2026</b></p>
+      <h3>1. Acceptable use</h3>
+      <p>You agree not to use GistApp to harass, spam, or send illegal content. Accounts found violating this will be removed.</p>
+      <h3>2. Your account</h3>
+      <p>You are responsible for keeping your password secure. Do not share your account with others. You must be 18 or older to use GistApp.</p>
+      <h3>3. Your content</h3>
+      <p>You own the messages and media you post. By using GistApp you grant us a limited license to store and transmit your content so the service can function.</p>
+      <h3>4. Availability</h3>
+      <p>We aim for 99% uptime but do not guarantee the service will never go down. We are not liable for losses caused by outages.</p>
+      <h3>5. Changes</h3>
+      <p>We may update these terms. Continued use after changes means you accept the new terms.</p>
+      <h3>6. Termination</h3>
+      <p>You can delete your account at any time. We may suspend accounts that violate these terms.</p>
+      <h3>7. Contact</h3>
+      <p>Questions? Email <a href="mailto:support@gistapp.app">support@gistapp.app</a></p>
+    </div>
   </section>
 
   <!-- ============ BOTTOM NAV (global) ============ -->
@@ -1783,6 +1874,43 @@ function connectSocket(){
     }
   });
   socket.on('feed-new-post', function(){ if (document.getElementById('screen-feed').classList.contains('active')) loadFeed(); });
+  socket.on('feed-post-update', function(p){
+    if (!p || p.id == null) return;
+    const post = (_feedPosts||[]).find(function(x){ return Number(x.id)===Number(p.id); });
+    if (post && typeof p.like_count === 'number') post.like_count = p.like_count;
+    const art = document.querySelector('.post[data-post-id="'+p.id+'"]');
+    if (art && typeof p.like_count === 'number'){
+      const span = art.querySelector('.post-stats span');
+      if (span) span.textContent = p.like_count + ' likes';
+    }
+  });
+  socket.on('feed-update-post', function(p){
+    if (!p || p.id == null) return;
+    const post = (_feedPosts||[]).find(function(x){ return Number(x.id)===Number(p.id); });
+    if (post && p.body != null) post.body = p.body;
+    const art = document.querySelector('.post[data-post-id="'+p.id+'"]');
+    if (art && p.body != null){
+      const b = art.querySelector('.post-body');
+      if (b && typeof linkify === 'function') b.innerHTML = linkify(p.body);
+      else if (b) b.textContent = p.body;
+    }
+  });
+  socket.on('feed-delete-post', function(p){
+    if (!p || p.id == null) return;
+    _feedPosts = (_feedPosts||[]).filter(function(x){ return Number(x.id) !== Number(p.id); });
+    const art = document.querySelector('.post[data-post-id="'+p.id+'"]');
+    if (art) art.remove();
+  });
+  socket.on('feed-new-comment', function(p){
+    if (!p || p.post_id == null) return;
+    const post = (_feedPosts||[]).find(function(x){ return Number(x.id)===Number(p.post_id); });
+    if (post) post.comment_count = (post.comment_count||0) + 1;
+    const art = document.querySelector('.post[data-post-id="'+p.post_id+'"]');
+    if (art){
+      const spans = art.querySelectorAll('.post-stats span');
+      if (spans[1]) spans[1].textContent = (post ? post.comment_count : '?') + ' comments';
+    }
+  });
   socket.on('call:incoming', function(p){ incomingCallScreen(p); });
   socket.on('call:initiated', function(){ startOutgoingMedia().then(sendOffer); });
   socket.on('call:accepted', async function(){ stopRingtone(); if (pc && currentCall && currentCall.outgoing){ await sendOffer(); } });
@@ -1805,6 +1933,11 @@ function toggleDark(){
 }
 
 /* ---------- CHAT LIST ---------- */
+let _loadChatsTimer = null;
+function loadChatsDebounced(){
+  if (_loadChatsTimer) return;
+  _loadChatsTimer = setTimeout(function(){ _loadChatsTimer = null; loadChats(); }, 400);
+}
 async function loadChats(){ try { chatsCache = await api('/api/chats'); renderChats(); renderStories(); } catch(e){ console.error(e); } }
 async function loadRequests(){
   try {
@@ -1991,14 +2124,14 @@ function appendBubble(m, incoming){
     const auto = shouldAutoDownload();
     if (m.media_type === 'image'){
       if (auto){
-        inner = '<img src="' + m.media_url + '" onclick="openLightbox(\'image\',\'' + m.media_url + '\')">';
+        inner = '<img src="' + m.media_url + '" loading="lazy" decoding="async" onclick="openLightbox(\'image\',\'' + m.media_url + '\')">';
       } else {
         inner = '<div style="padding:20px;text-align:center;color:#8e8e93"><button class="btn" style="padding:10px 16px;background:rgba(123,140,255,.2);color:#7b8cff;border-radius:12px;border:none;cursor:pointer;font-family:inherit;font-weight:700" onclick="this.parentNode.innerHTML=\'<img src=&quot;' + m.media_url + '&quot; style=&quot;max-width:100%;border-radius:12px;cursor:pointer&quot; onclick=&quot;openLightbox(\\u0027image\\u0027,\\u0027' + m.media_url + '\\u0027)&quot;>\'">📷 Tap to download image</button></div>';
       }
     }
     else if (m.media_type === 'video'){
       if (auto){
-        inner = '<video src="' + m.media_url + '" controls></video>';
+        inner = '<video src="' + m.media_url + '" controls preload="metadata" playsinline></video>';
       } else {
         inner = '<div style="padding:20px;text-align:center;color:#8e8e93"><button class="btn" style="padding:10px 16px;background:rgba(123,140,255,.2);color:#7b8cff;border-radius:12px;border:none;cursor:pointer;font-family:inherit;font-weight:700" onclick="this.parentNode.innerHTML=\'<video src=&quot;' + m.media_url + '&quot; controls style=&quot;max-width:100%;border-radius:12px&quot;></video>\'">🎬 Tap to load video</button></div>';
       }
@@ -2128,7 +2261,7 @@ document.getElementById('dm-form').addEventListener('submit', async function(e){
     if (!msgs.querySelector('.bubble[data-id="'+m.id+'"]')) appendBubble(m, false);
     messagesCache.push(m);
     cancelReply();
-    loadChats();
+    loadChatsDebounced();
   } catch(e){ alert(e.message); }
 });
 function pickFile(){ document.getElementById('file-pick').click(); }
@@ -2143,7 +2276,7 @@ document.getElementById('file-pick').addEventListener('change', async function(e
     const msgs = document.getElementById('dm-messages');
     if (!msgs.querySelector('.bubble[data-id="'+m.id+'"]')) appendBubble(m, false);
     messagesCache.push(m);
-    loadChats();
+    loadChatsDebounced();
   } catch(err){ alert(err.message); }
   e.target.value = '';
 });
@@ -2237,7 +2370,7 @@ async function onRecordingStop(){
     const msgs = document.getElementById('dm-messages');
     if (!msgs.querySelector('.bubble[data-id="'+m.id+'"]')) appendBubble(m, false);
     messagesCache.push(m);
-    loadChats();
+    loadChatsDebounced();
   } catch(e){ toast(e.message || 'Voice send failed'); }
   updateMicSendToggle();
 }
@@ -2770,7 +2903,7 @@ function switchFeedTab(tab){
 async function loadFeed(){
   const box = document.getElementById('feed-scroll');
   if (!box) return;
-  box.innerHTML = '<div class="empty">Loading…</div>';
+  if (!_feedPosts || !_feedPosts.length) box.innerHTML = '<div class="empty">Loading…</div>';
   try {
     _feedPosts = await api('/api/feed?tab=' + _feedTab);
     if (!_feedPosts.length){ box.innerHTML = '<div class="empty">No posts yet.<br>Tap ＋ to share something.</div>'; return; }
@@ -2783,8 +2916,8 @@ function renderPostCard(p){
   const body = p.body ? '<div class="post-body">' + linkify(p.body) + '</div>' : '';
   let media = '';
   if (p.media_url){
-    if (p.media_type === 'image') media = '<div class="post-media" onclick="openLightbox(\'image\',\''+p.media_url+'\')"><img src="'+p.media_url+'"></div>';
-    else if (p.media_type === 'video') media = '<div class="post-media"><video src="'+p.media_url+'" controls></video></div>';
+    if (p.media_type === 'image') media = '<div class="post-media" onclick="openLightbox(\'image\',\''+p.media_url+'\')"><img src="'+p.media_url+'" loading="lazy" decoding="async"></div>';
+    else if (p.media_type === 'video') media = '<div class="post-media"><video src="'+p.media_url+'" controls preload="metadata" playsinline></video></div>';
   }
   const votes = (p.upvotes||0) - (p.downvotes||0);
   return '<article class="post" data-post-id="'+p.id+'"><div class="post-inner">' +
@@ -2793,10 +2926,10 @@ function renderPostCard(p){
     body + media +
     '<div class="post-stats"><span>'+(p.like_count||0)+' likes</span><span>'+(p.comment_count||0)+' comments</span></div>' +
     '<div class="post-actions">' +
-      '<button class="post-act like '+(p.liked?'on':'')+'" onclick="togglePostLike('+p.id+')"><svg viewBox="0 0 24 24" fill="'+(p.liked?'currentColor':'none')+'" stroke="currentColor" stroke-width="2"><path d="M12 21s-7-4.5-9-9.5C1.4 7.4 3.7 4.5 7 4.5c2 0 3.5 1 5 3 1.5-2 3-3 5-3 3.3 0 5.6 2.9 4 7-2 5-9 9.5-9 9.5z"/></svg>Like</button>' +
+      '<button class="post-act like '+(p.liked?'on':'')+'" data-post="'+p.id+'" onclick="togglePostLike('+p.id+')"><svg viewBox="0 0 24 24" fill="'+(p.liked?'currentColor':'none')+'" stroke="currentColor" stroke-width="2"><path d="M12 21s-7-4.5-9-9.5C1.4 7.4 3.7 4.5 7 4.5c2 0 3.5 1 5 3 1.5-2 3-3 5-3 3.3 0 5.6 2.9 4 7-2 5-9 9.5-9 9.5z"/></svg>Like</button>' +
       '<button class="post-act" onclick="openComments('+p.id+')">💬 Comment</button>' +
-      '<div class="post-vote-group"><button class="post-act up '+(p.my_vote===1?'on':'')+'" onclick="votePost('+p.id+',1)">▲</button><span class="post-vote-count">'+votes+'</span><button class="post-act down '+(p.my_vote===-1?'on':'')+'" onclick="votePost('+p.id+',-1)">▼</button></div>' +
-      '<button class="post-act save '+(p.saved?'on':'')+'" onclick="savePost('+p.id+')">🔖</button>' +
+      '<div class="post-vote-group"><button class="post-act up '+(p.my_vote===1?'on':'')+'" data-post="'+p.id+'" onclick="votePost('+p.id+',1)">▲</button><span class="post-vote-count">'+votes+'</span><button class="post-act down '+(p.my_vote===-1?'on':'')+'" data-post="'+p.id+'" onclick="votePost('+p.id+',-1)">▼</button></div>' +
+      '<button class="post-act save '+(p.saved?'on':'')+'" data-post="'+p.id+'" onclick="savePost('+p.id+')">🔖</button>' +
     '</div></div></article>';
 }
 function openPostMenu(e, id){
@@ -2811,9 +2944,66 @@ function openPostMenu(e, id){
   menu.style.left = 'auto'; menu.style.right = '10px'; menu.style.top = '70px';
   menu.classList.add('show');
 }
-async function togglePostLike(id){ try { const r = await api('/api/posts/'+id+'/like', { method:'POST' }); loadFeed(); } catch(e){ alert(e.message); } }
-async function votePost(id, v){ try { await api('/api/posts/'+id+'/vote', { method:'POST', body: JSON.stringify({ vote:v }) }); loadFeed(); } catch(e){ alert(e.message); } }
-async function savePost(id){ try { const r = await api('/api/posts/'+id+'/save', { method:'POST' }); toast(r.saved?'Saved':'Unsaved'); loadFeed(); } catch(e){ alert(e.message); } }
+async function togglePostLike(id){
+  const post = _feedPosts.find(function(x){ return Number(x.id)===Number(id); });
+  const btn  = document.querySelector('.post-act.like[data-post="'+id+'"]');
+  if (post){
+    post.liked = !post.liked;
+    post.like_count = Math.max(0, (post.like_count||0) + (post.liked ? 1 : -1));
+    paintLike(btn, post.liked, post.like_count);
+  }
+  try {
+    const r = await api('/api/posts/'+id+'/like', { method:'POST' });
+    if (post){ post.liked = r.liked; post.like_count = r.like_count; paintLike(btn, r.liked, r.like_count); }
+  } catch(e){
+    if (post){ post.liked = !post.liked; post.like_count = Math.max(0,(post.like_count||0)+(post.liked?1:-1)); paintLike(btn, post.liked, post.like_count); }
+    alert(e.message);
+  }
+}
+function paintLike(btn, liked, count){
+  if (!btn) return;
+  btn.classList.toggle('on', !!liked);
+  const svg = btn.querySelector('svg'); if (svg) svg.setAttribute('fill', liked ? 'currentColor' : 'none');
+  const art = btn.closest('.post'); if (!art) return;
+  const stats = art.querySelector('.post-stats span');
+  if (stats) stats.textContent = (count||0) + ' likes';
+}
+async function votePost(id, v){
+  const post = _feedPosts.find(function(x){ return Number(x.id)===Number(id); });
+  const upBtn = document.querySelector('.post-act.up[data-post="'+id+'"]');
+  const dnBtn = document.querySelector('.post-act.down[data-post="'+id+'"]');
+  if (post){
+    const prev = post.my_vote || 0;
+    if (prev === v){
+      post.my_vote = 0;
+      if (v===1) post.upvotes = Math.max(0,(post.upvotes||0)-1); else post.downvotes = Math.max(0,(post.downvotes||0)-1);
+    } else {
+      if (prev===1) post.upvotes = Math.max(0,(post.upvotes||0)-1);
+      if (prev===-1) post.downvotes = Math.max(0,(post.downvotes||0)-1);
+      post.my_vote = v;
+      if (v===1) post.upvotes = (post.upvotes||0)+1; else post.downvotes = (post.downvotes||0)+1;
+    }
+    if (upBtn) upBtn.classList.toggle('on', post.my_vote===1);
+    if (dnBtn) dnBtn.classList.toggle('on', post.my_vote===-1);
+    const cnt = document.querySelector('.post[data-post-id="'+id+'"] .post-vote-count');
+    if (cnt) cnt.textContent = (post.upvotes||0) - (post.downvotes||0);
+  }
+  try { await api('/api/posts/'+id+'/vote', { method:'POST', body: JSON.stringify({ vote:v }) }); }
+  catch(e){ alert(e.message); loadFeed(); }
+}
+async function savePost(id){
+  const post = _feedPosts.find(function(x){ return Number(x.id)===Number(id); });
+  const btn  = document.querySelector('.post-act.save[data-post="'+id+'"]');
+  if (post){ post.saved = !post.saved; if (btn) btn.classList.toggle('on', post.saved); }
+  try {
+    const r = await api('/api/posts/'+id+'/save', { method:'POST' });
+    if (post){ post.saved = r.saved; if (btn) btn.classList.toggle('on', r.saved); }
+    toast(r.saved?'Saved':'Unsaved');
+  } catch(e){
+    if (post){ post.saved = !post.saved; if (btn) btn.classList.toggle('on', post.saved); }
+    alert(e.message);
+  }
+}
 async function deletePost(id){ if (!confirm('Delete this post?')) return; try { await api('/api/posts/'+id, { method:'DELETE' }); loadFeed(); } catch(e){ alert(e.message); } }
 async function editPost(id){ const p = _feedPosts.find(function(x){ return Number(x.id)===Number(id); }); if (!p) return; const v = prompt('Edit post:', p.body||''); if (v===null) return; try { await api('/api/posts/'+id, { method:'PATCH', body: JSON.stringify({ body:v }) }); loadFeed(); } catch(e){ alert(e.message); } }
 function openSharePost(id){ _sharePostId = id; const c = prompt('Add a comment (optional):', ''); if (c===null) return; api('/api/posts/'+id+'/share', { method:'POST', body: JSON.stringify({ caption:c }) }).then(function(){ toast('Reposted'); loadFeed(); }).catch(function(e){ alert(e.message); }); }
@@ -4077,6 +4267,37 @@ function playNotifSound(){
     };
     play(880, 0, 0.15); play(1320, 0.12, 0.25);
   } catch(_){}
+}
+
+function openLegal(screenId){
+  document.body.classList.add('hide-nav');
+  show(screenId);
+}
+function closeLegal(){
+  show('screen-auth');
+}
+
+/* ================= LEGAL PAGES ================= */
+function openPrivacy(){
+  document.body.classList.add('hide-nav');
+  show('screen-privacy');
+  const sc = document.querySelector('#screen-privacy .legal-body');
+  if (sc) sc.scrollTop = 0;
+}
+function openTerms(){
+  document.body.classList.add('hide-nav');
+  show('screen-terms');
+  const sc = document.querySelector('#screen-terms .legal-body');
+  if (sc) sc.scrollTop = 0;
+}
+function closeLegal(screenId){
+  show('screen-auth');
+  document.body.classList.add('hide-nav');
+}
+function scrollLegal(id){
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 boot();

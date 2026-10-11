@@ -8,6 +8,7 @@ const cors       = require('cors');
 const path       = require('path');
 const fs         = require('fs');
 const multer     = require('multer');
+const cloudinary = require('cloudinary').v2;
 const pool       = require('./db');
 
 // Crash-proofing: log errors instead of dying
@@ -106,6 +107,22 @@ const storage = multer.diskStorage({
   filename: (_req,file,cb)=>cb(null, Date.now()+'-'+Math.random().toString(36).slice(2,8)+path.extname(file.originalname||''))
 });
 const upload = multer({ storage, limits: { fileSize: 20 * 1024 * 1024 } });
+
+/* ---------- cloudinary (permanent media storage) ---------- */
+const CLOUD_OK = !!(process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET);
+if (CLOUD_OK){
+  cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key:    process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET,
+    secure:     true
+  });
+  console.log('✅ Cloudinary ready');
+} else {
+  console.warn('⚠️  Cloudinary env vars missing — uploads will fail. Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET');
+}
+
+/* ---------- cloudinary (permanent media storage) ---------- */
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
@@ -560,45 +577,56 @@ app.get('/api/chats/:id/messages', auth, async (req,res)=>{
   const chatId = req.params.id;
   const q = (req.query.q||'').trim();
   const filter = req.query.filter || '';
+  const before = req.query.before;
+  const limit = Math.min(Number(req.query.limit) || 50, 100);
+
   const m = await isMember(chatId,req.user.id);
   if (!m) return res.status(403).json({error:'Not a member'});
   if (m.status !== 'accepted') return res.status(403).json({error:'Chat not accepted yet'});
 
   const params = [chatId];
-  let where = 'WHERE m.chat_id=$1';
+  let where = 'WHERE m.chat_id=$1 AND m.deleted_at IS NULL';
+  if (before){ params.push(before); where += ` AND m.id < $${params.length}`; }
   if (q){ params.push('%'+q.toLowerCase()+'%'); where += ` AND LOWER(m.body) LIKE $${params.length}`; }
   if (filter==='media') where += ' AND m.media_url IS NOT NULL';
   if (filter==='starred'){ params.push(req.user.id); where += ` AND m.starred_by ? $${params.length}`; }
   if (filter==='links') where += ` AND m.body ~* 'https?://'`;
+  params.push(limit);
 
   const r = await pool.query(`
     SELECT m.id, m.body, m.created_at, m.edited_at, m.sender_id, m.reactions, m.read_at,
            m.media_url, m.media_type, m.deleted_at, m.starred_by, m.pinned, m.reply_to_id,
            u.display_name, u.avatar_color, u.avatar_url,
-           (SELECT body FROM messages WHERE id=m.reply_to_id) AS reply_body,
-           (SELECT sender_id FROM messages WHERE id=m.reply_to_id) AS reply_sender_id,
-           (SELECT display_name FROM users WHERE id=(SELECT sender_id FROM messages WHERE id=m.reply_to_id)) AS reply_sender
-    FROM messages m JOIN users u ON u.id=m.sender_id
+           rp.body AS reply_body,
+           rp.sender_id AS reply_sender_id,
+           ru.display_name AS reply_sender
+    FROM messages m
+    JOIN users u ON u.id = m.sender_id
+    LEFT JOIN messages rp ON rp.id = m.reply_to_id
+    LEFT JOIN users   ru ON ru.id = rp.sender_id
     ${where}
-    ORDER BY m.pinned DESC, m.created_at ASC LIMIT 300
+    ORDER BY m.pinned DESC, m.created_at DESC
+    LIMIT $${params.length}
   `, params);
 
-  // get my block list once
-  let myBlocks = (await pool.query('SELECT blocked_ids FROM users WHERE id=$1',[req.user.id])).rows[0].blocked_ids; if (!Array.isArray(myBlocks)) myBlocks = [];
-  const myBlockSet = new Set(myBlocks.map(Number));
+  const blockRow = await pool.query('SELECT blocked_ids FROM users WHERE id=$1',[req.user.id]);
+  const myBlockSet = new Set(((blockRow.rows[0]||{}).blocked_ids || []).map(Number));
 
-  // Enforce avatar visibility + filter blocked
-  const msgs = await Promise.all(r.rows.map(async m => {
-    // hide messages from blocked users
-    if (myBlockSet.has(Number(m.sender_id))) return null;
-    // hide avatar if not permitted
-    if (m.avatar_url && m.sender_id !== req.user.id){
-      const ok = await canViewPhoto(req.user.id, m.sender_id);
-      if (!ok) m.avatar_url = null;
-    }
-    return m;
-  }));
-  res.json(msgs.filter(Boolean));
+  let rows = r.rows.filter(x => !myBlockSet.has(Number(x.sender_id)));
+
+  // single bulk avatar-visibility check (not per-message)
+  const senderIds = [...new Set(rows.map(x => x.sender_id).filter(x => x !== req.user.id))];
+  const visible = new Set();
+  for (const sid of senderIds){
+    try { if (await canViewPhoto(req.user.id, sid)) visible.add(sid); } catch(_){}
+  }
+  for (const x of rows){
+    if (x.avatar_url && x.sender_id !== req.user.id && !visible.has(x.sender_id)) x.avatar_url = null;
+  }
+
+  // UI expects oldest -> newest at the bottom of the list
+  rows.reverse();
+  res.json(rows);
 });
 
 app.post('/api/chats/:id/messages', auth, async (req,res)=>{
@@ -735,10 +763,38 @@ app.post('/api/chats/:id/read', auth, async (req,res)=>{
 });
 
 /* ---------- upload ---------- */
-app.post('/api/upload', auth, upload.single('file'), (req,res)=>{
+app.post('/api/upload', auth, upload.single('file'), async (req,res)=>{
   if (!req.file) return res.status(400).json({error:'No file'});
-  const type = req.file.mimetype.startsWith('image/')?'image':req.file.mimetype.startsWith('video/')?'video':req.file.mimetype.startsWith('audio/')?'audio':'file';
-  res.json({url:'/uploads/'+req.file.filename, type});
+  if (!CLOUD_OK){
+    try { fs.unlinkSync(req.file.path); } catch(_){}
+    return res.status(503).json({ error: 'Media storage not configured' });
+  }
+  const mime = req.file.mimetype || '';
+  const type = mime.startsWith('image/') ? 'image'
+             : mime.startsWith('video/') ? 'video'
+             : mime.startsWith('audio/') ? 'audio'
+             : 'file';
+  try {
+    const result = await cloudinary.uploader.upload(req.file.path, {
+      resource_type: 'auto',   // handles image / video / raw
+      folder: 'gistapp',
+      unique_filename: true,
+      overwrite: false
+    });
+    try { fs.unlinkSync(req.file.path); } catch(_){}   // clean temp file
+    res.json({
+      url: result.secure_url,
+      type,
+      width: result.width || null,
+      height: result.height || null,
+      duration: result.duration || null,
+      bytes: result.bytes || null
+    });
+  } catch(e){
+    try { fs.unlinkSync(req.file.path); } catch(_){}
+    console.error('cloudinary upload error:', e.message);
+    res.status(500).json({ error: 'Upload failed: ' + e.message });
+  }
 });
 
 /* ---------- block ---------- */
@@ -1105,37 +1161,37 @@ app.get('/api/feed', auth, async (req, res) => {
   try {
     const tab = req.query.tab || 'foryou';
     const uid = req.user.id;
-    const me = (await pool.query('SELECT interests, joined_communities, follows FROM users WHERE id=$1', [uid])).rows[0] || {};
-    const interests = me.interests || [];
-    const communities = me.joined_communities || [];
-
-    let orderClause = 'p.created_at DESC';
-    if (tab === 'foryou'){
-      // algorithmic: engagement + recency. Interests/communities weight.
-      orderClause = '(COUNT(DISTINCT pl.user_id) * 2 + COUNT(DISTINCT CASE WHEN pv.vote=1 THEN pv.user_id END) * 3) DESC, p.created_at DESC';
-    }
 
     const r = await pool.query(`
-      SELECT p.id, p.body, p.media_url, p.media_type, p.community, p.created_at, p.user_id,
+      SELECT
+        p.id, p.body, p.media_url, p.media_type, p.community, p.created_at, p.user_id,
         u.display_name, u.avatar_color, u.avatar_url,
-        (SELECT COUNT(*) FROM post_likes WHERE post_id=p.id) AS like_count,
-        (SELECT COUNT(*) FROM post_votes WHERE post_id=p.id AND vote=1) AS upvotes,
-        (SELECT COUNT(*) FROM post_votes WHERE post_id=p.id AND vote=-1) AS downvotes,
-        (SELECT COUNT(*) FROM post_comments WHERE post_id=p.id) AS comment_count,
-        EXISTS(SELECT 1 FROM post_likes WHERE post_id=p.id AND user_id=$1) AS liked,
-        EXISTS(SELECT 1 FROM post_saves WHERE post_id=p.id AND user_id=$1) AS saved,
-        (SELECT vote FROM post_votes WHERE post_id=p.id AND user_id=$1) AS my_vote
+        COALESCE(lc.like_count, 0)::int     AS like_count,
+        COALESCE(vc.up, 0)::int             AS upvotes,
+        COALESCE(vc.down, 0)::int           AS downvotes,
+        COALESCE(cc.comment_count, 0)::int  AS comment_count,
+        (ml.user_id IS NOT NULL)            AS liked,
+        (ms.user_id IS NOT NULL)            AS saved,
+        mv.vote                             AS my_vote,
+        (COALESCE(lc.like_count,0) * 2 + COALESCE(vc.up,0) * 3) AS score
       FROM posts p
       JOIN users u ON u.id = p.user_id
-      LEFT JOIN post_likes pl ON pl.post_id = p.id
-      LEFT JOIN post_votes pv ON pv.post_id = p.id
+      LEFT JOIN (SELECT post_id, COUNT(*) AS like_count FROM post_likes GROUP BY post_id) lc ON lc.post_id = p.id
+      LEFT JOIN (SELECT post_id,
+                        COUNT(*) FILTER (WHERE vote=1) AS up,
+                        COUNT(*) FILTER (WHERE vote=-1) AS down
+                 FROM post_votes GROUP BY post_id) vc ON vc.post_id = p.id
+      LEFT JOIN (SELECT post_id, COUNT(*) AS comment_count FROM post_comments GROUP BY post_id) cc ON cc.post_id = p.id
+      LEFT JOIN post_likes ml ON ml.post_id = p.id AND ml.user_id = $1
+      LEFT JOIN post_saves ms ON ms.post_id = p.id AND ms.user_id = $1
+      LEFT JOIN post_votes mv ON mv.post_id = p.id AND mv.user_id = $1
       WHERE p.deleted_at IS NULL
-      GROUP BY p.id, u.display_name, u.avatar_color, u.avatar_url
-      ORDER BY ${orderClause}
+      ORDER BY ${tab === 'foryou' ? 'score DESC, p.created_at DESC' : 'p.created_at DESC'}
       LIMIT 60
     `, [uid]);
+
     res.json(r.rows);
-  } catch(e){ console.error(e); res.status(500).json({ error: 'Server error' }); }
+  } catch(e){ console.error('feed error', e); res.status(500).json({ error: 'Server error' }); }
 });
 
 app.delete('/api/posts/:id', auth, async (req, res) => {
