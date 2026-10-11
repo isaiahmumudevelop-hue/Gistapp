@@ -994,11 +994,21 @@ body:has(#screen-onboarding.active) #globalNav{
         </div>
         <div class="cp-toggle-row" onclick="cpToggleDisappear()">
           <div><div class="lbl">Disappearing messages</div><div class="sublbl" id="cp-disappear-sub">Off</div></div>
+        <div class="cp-toggle-row" onclick="cpToggleCustomNotif()">
+          <div><div class="lbl">Custom notifications</div><div class="sublbl">Use a different sound</div></div>
+          <button type="button" class="sw" id="cp-custom-notif" onclick="event.stopPropagation();cpToggleCustomNotif()"></button>
+        </div>
+        <div class="cp-toggle-row" onclick="cpToggleMediaVis()">
+          <div><div class="lbl">Media visibility</div><div class="sublbl">Show new media in gallery</div></div>
+          <button type="button" class="sw on" id="cp-media-visible" onclick="event.stopPropagation();cpToggleMediaVis()"></button>
+        </div>
           <button type="button" class="sw" id="cp-disappear"></button>
         </div>
         <div class="cp-divider"></div>
         <div class="cp-action" onclick="cpToggleFavorite()"><span id="cp-fav-label">Add to favorites</span></div>
+        <div class="cp-action" id="cp-lock-btn" onclick="toggleChatLock(cpChat.id)"><span id="cp-lock-label">Lock chat</span></div>
         <div class="cp-action" onclick="cpToggleArchive()"><span id="cp-arch-label">Archive chat</span></div>
+        <div class="cp-action" id="cp-lock" onclick="toggleChatLock()">🔒 Lock chat</div>
         <div class="cp-action danger" onclick="cpBlock()">Block contact</div>
         <div class="cp-action danger" onclick="cpReport()">Report contact</div>
         <div style="height:20px"></div>
@@ -1297,6 +1307,8 @@ body:has(#screen-onboarding.active) #globalNav{
     </div>
     <button class="notif-close" onclick="dismissNotification()">✕</button>
   </div>
+
+  <div class="popmenu" id="popmenu"></div>
 
   <!-- ============ LIGHTBOX ============ -->
   <div class="modal-wrap" id="forgot-pin-modal" style="z-index:999999">
@@ -1783,7 +1795,7 @@ function connectSocket(){
 function applyDark(on){ document.body.classList.toggle('dark', !!on); }
 function applyFontSize(px){ document.documentElement.style.setProperty('--fs', px+'px'); }
 function toggleDark(){
-  const t = document.getElementById('pf-dark') || document.getElementById('prof-dark');
+  const t = document.getElementById('pf-dark') || document.getElementById('pf-dark');
   if (!t) return;
   const on = !t.classList.contains('on');
   t.classList.toggle('on', on);
@@ -2249,7 +2261,7 @@ async function openContactProfile(){
   document.getElementById('cp-mute').classList.toggle('on', !!cpChat.muted);
   document.getElementById('cp-fav-label').textContent = cpChat.favorite ? 'Remove from favorites' : 'Add to favorites';
   document.getElementById('cp-arch-label').textContent = cpChat.archived ? 'Unarchive chat' : 'Archive chat';
-  const lockBtn = document.getElementById('cp-lock');
+  const lockBtn = document.getElementById('cp-lock-btn');
   if (lockBtn){ const l = (_lockStatus.locked_chats||[]).map(Number).indexOf(Number(cpChat.id))!==-1; lockBtn.textContent = l ? 'Unlock chat' : 'Lock chat'; }
   show('screen-contact');
   loadContactMedia();
@@ -3120,15 +3132,6 @@ function openForgotPin(){
     setTimeout(function(){ if (p) p.focus(); }, 100);
   }
 }
-function dismissNotification(){ document.getElementById('notif-banner').classList.remove('show'); }
-function playNotifSound(){
-  try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    const play = function(freq, start, dur){ const o = ctx.createOscillator(); const g = ctx.createGain(); o.type='sine'; o.frequency.value=freq; g.gain.setValueAtTime(0.0001, ctx.currentTime+start); g.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime+start+0.02); g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime+start+dur); o.connect(g); g.connect(ctx.destination); o.start(ctx.currentTime+start); o.stop(ctx.currentTime+start+dur+0.05); };
-    play(880, 0, 0.15); play(1320, 0.12, 0.25);
-  } catch(_){}
-}
-
 /* ---------- LOGOUT ---------- */
 function logout(){
   window.__LOGGING_OUT = true;
@@ -3518,588 +3521,6 @@ const OB_STATE = {
   pickTab: 'communities'
 };
 
-function obProgress(){
-  return '<div class="ob-prog">' +
-    Array.from({length: OB_STATE.total}, function(_, i){
-      return '<span class="' + (i < OB_STATE.step ? 'on' : '') + '"></span>';
-    }).join('') +
-  '</div>';
-}
-
-function renderObStep(){
-  const root = document.getElementById('ob-root');
-  if (!root) return;
-  const s = OB_STATE;
-  let body = '';
-  if (s.step === 1) body = obStep1();
-  else if (s.step === 2) body = obStep2();
-  else if (s.step === 3) body = obStep3();
-  else if (s.step === 4) body = obStep4();
-  else if (s.step === 5) body = obStep5();
-  else if (s.step === 6) body = obStep6();
-
-  root.innerHTML = '<div class="ob-step">' + obProgress() + body + '</div>';
-
-  if (s.step === 1) wireObStep1();
-  if (s.step === 2) wireObStep2();
-}
-
-function obStep1(){
-  const s = OB_STATE;
-  const avStyle = s.avatar_url ? 'background-image:url(' + s.avatar_url + ');background-size:cover;background-position:center' : '';
-  return '<h1 class="ob-title">Welcome to GistApp</h1>' +
-    '<p class="ob-sub">Let\'s set up your profile in 30 seconds.</p>' +
-    '<div class="ob-avatar-wrap" onclick="document.getElementById(\'ob-avatar-file\').click()">' +
-      '<div class="ob-avatar" id="ob-avatar" style="' + avStyle + '">' + (s.avatar_url ? '' : esc(initials(s.display_name || (me && me.email) || '?'))) + '</div>' +
-      '<div class="ob-avatar-hint">' + (s.avatar_url ? '📷 Change photo' : '📷 Add photo (optional)') + '</div>' +
-    '</div>' +
-    '<input type="file" id="ob-avatar-file" accept="image/*" hidden>' +
-    '<div class="ob-field"><label>Display name</label>' +
-      '<input id="ob-name" placeholder="Your name" maxlength="40" value="' + esc(s.display_name) + '">' +
-    '</div>' +
-    '<div class="ob-field"><label>Bio (optional)</label>' +
-      '<textarea id="ob-bio" placeholder="Say something about yourself…" maxlength="140" rows="2">' + esc(s.bio) + '</textarea>' +
-    '</div>' +
-    '<button class="ob-btn" onclick="obNext1()">Continue</button>' +
-    '<div class="ob-skip" onclick="obFinishAll()">Skip onboarding</div>';
-}
-
-function wireObStep1(){
-  const f = document.getElementById('ob-avatar-file');
-  if (f) f.onchange = async function(){
-    const file = this.files[0]; if (!file) return;
-    if (file.size > 5*1024*1024) { alert('Image too big (max 5MB)'); return; }
-    const fd = new FormData(); fd.append('file', file);
-    try {
-      const res = await fetch('/api/upload', { method:'POST', headers:{ Authorization:'Bearer '+token }, body: fd });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Upload failed');
-      OB_STATE.avatar_url = data.url;
-      const av = document.getElementById('ob-avatar');
-      av.textContent = '';
-      av.style.backgroundImage = 'url(' + data.url + ')';
-      av.style.backgroundSize = 'cover';
-      av.style.backgroundPosition = 'center';
-      const hint = document.querySelector('.ob-avatar-hint');
-      if (hint) hint.textContent = '📷 Change photo';
-    } catch(e) { alert(e.message); }
-  };
-}
-
-function obNext1(){
-  const n = (document.getElementById('ob-name').value || '').trim();
-  if (!n) { alert('Please enter a display name'); return; }
-  OB_STATE.display_name = n;
-  OB_STATE.bio = (document.getElementById('ob-bio').value || '').trim();
-  OB_STATE.step = 2;
-  renderObStep();
-}
-
-function obStep2(){
-  const s = OB_STATE;
-  return '<h1 class="ob-title">Pick a username</h1>' +
-    '<p class="ob-sub">3-20 characters. Letters, numbers, and underscore.</p>' +
-    '<div class="ob-field">' +
-      '<label>Username</label>' +
-      '<input id="ob-username" placeholder="yourhandle" maxlength="20" autocomplete="off" spellcheck="false" value="' + esc(s.username) + '">' +
-      '<div class="ob-status" id="ob-username-status"></div>' +
-      '<div class="ob-suggest" id="ob-username-suggest"></div>' +
-    '</div>' +
-    '<button class="ob-btn" id="ob-user-btn" onclick="obNext2()" disabled>Continue</button>' +
-    '<div class="ob-skip" onclick="obSkipStep()">Skip for now</div>';
-}
-
-function wireObStep2(){
-  const inp = document.getElementById('ob-username');
-  if (!inp) return;
-  inp.oninput = function(){
-    OB_STATE.username = this.value.trim().toLowerCase();
-    OB_STATE.username_ok = false;
-    const btn = document.getElementById('ob-user-btn');
-    if (btn) btn.disabled = true;
-    clearTimeout(inp._t);
-    inp._t = setTimeout(obCheckUsername, 400);
-  };
-  if (OB_STATE.username) obCheckUsername();
-  else obFetchSuggestions('');
-}
-
-function obUseSuggestion(u){
-  const inp = document.getElementById('ob-username');
-  if (inp) { inp.value = u; obCheckUsername(); }
-}
-
-function obNext2(){
-  if (!OB_STATE.username_ok) { alert('Please pick a valid username'); return; }
-  OB_STATE.step = 3;
-  renderObStep();
-}
-
-function obStep3(){
-  const maxDate = new Date(Date.now() - 18*365.25*24*3600*1000).toISOString().slice(0, 10);
-  return '<h1 class="ob-title">Your birthday</h1>' +
-    '<p class="ob-sub">You must be 18 or older to use GistApp. We never share your birthday.</p>' +
-    '<div class="ob-field">' +
-      '<label>Date of birth</label>' +
-      '<input id="ob-birthday" type="date" max="' + maxDate + '" value="' + esc(OB_STATE.birthday) + '">' +
-    '</div>' +
-    '<button class="ob-btn" onclick="obNext3()">Continue</button>' +
-    '<div class="ob-skip" onclick="obSkipStep()">Skip for now</div>';
-}
-
-async function obNext3(){
-  if (OB.interests.length < 3){ alert('Pick at least 3'); return; }
-  try { await api('/api/onboard/interests', { method:'POST', body: JSON.stringify({ interests: OB.interests }) }); } catch(_){}
-
-  // Load real users to follow
-  OB.step = 4;
-  OB.loading = true;
-  obRender();
-  try {
-    const users = await api('/api/users/suggestions?limit=30');
-    OB.people = users || [];
-  } catch(_){ OB.people = []; }
-  OB.loading = false;
-
-  // If nobody to show → auto-skip to permissions
-  if (!OB.people.length){
-    OB.step = 5;
-    obRender();
-    return;
-  }
-  obRender();
-}
-
-function obStep4(){
-  const s = OB_STATE;
-  return '<h1 class="ob-title">What interests you?</h1>' +
-    '<p class="ob-sub">Pick at least 3. This shapes your feed and suggestions.</p>' +
-    '<div class="ob-grid">' +
-      OB_INTERESTS_LIST.map(function(i){
-        const on = s.interests.indexOf(i.id) !== -1;
-        return '<button type="button" class="ob-chip' + (on ? ' on' : '') + '" onclick="obToggleInterest(\'' + i.id + '\')">' +
-          '<span class="ic">' + i.emoji + '</span>' + i.label +
-        '</button>';
-      }).join('') +
-    '</div>' +
-    '<button class="ob-btn" id="ob-int-btn" onclick="obNext4()" ' + (s.interests.length < 3 ? 'disabled' : '') + '>Continue</button>' +
-    '<div class="ob-skip" onclick="obSkipStep()">Skip for now</div>';
-}
-
-async function obNext4(){
-  // Save followed users to backend as "follows"
-  try {
-    const follows = OB.following.map(function(id){ return 'user_' + id; });
-    await api('/api/onboard/picks', { method:'POST', body: JSON.stringify({ follows: follows, joined_communities: [] }) });
-
-    // Also trigger the actual follow via /api/users/:id/follow for each
-    for (const uid of OB.following){
-      try { await api('/api/users/' + uid + '/follow', { method:'POST' }); } catch(_){}
-    }
-  } catch(_){}
-  OB.step = 5; obRender();
-}
-
-function obStep5(){
-  const s = OB_STATE;
-  const tab = s.pickTab || 'communities';
-  const communities = s.allCommunities || [];
-  const users = s.allUsers || [];
-
-  let listHTML = '';
-  if (tab === 'communities') {
-    listHTML = communities.slice(0, 30).map(function(c){
-      const on = s.communities.indexOf(c.id) !== -1;
-      return '<div class="ob-item' + (on ? ' on' : '') + '" onclick="obToggleCommunity(' + c.id + ')">' +
-        '<div class="av">' + c.emoji + '</div>' +
-        '<div class="info"><b>' + esc(c.name) + '</b><small>' + (c.member_count || 0) + ' members</small></div>' +
-        '<button class="join">' + (on ? '✓ Joined' : 'Join') + '</button>' +
-      '</div>';
-    }).join('');
-    if (!listHTML) listHTML = '<div style="padding:20px;text-align:center;color:#8e8e96">No communities yet</div>';
-  } else {
-    listHTML = users.slice(0, 30).map(function(u){
-      const on = s.follows.indexOf(u.id) !== -1;
-      const color = u.avatar_color || colorFor(u.display_name);
-      const avHTML = u.avatar_url
-        ? '<div class="av" style="background-image:url(' + u.avatar_url + ');background-size:cover;background-position:center"></div>'
-        : '<div class="av" style="background:' + color + '">' + esc(initials(u.display_name)) + '</div>';
-      return '<div class="ob-item' + (on ? ' on' : '') + '" onclick="obToggleFollow(' + u.id + ')">' +
-        avHTML +
-        '<div class="info"><b>' + esc(u.display_name) + '</b><small>' + (u.username ? '@' + esc(u.username) : '') + '</small></div>' +
-        '<button class="join">' + (on ? '✓ Following' : 'Follow') + '</button>' +
-      '</div>';
-    }).join('');
-    if (!listHTML) listHTML = '<div style="padding:20px;text-align:center;color:#8e8e96">No other users yet</div>';
-  }
-
-  return '<h1 class="ob-title">Discover</h1>' +
-    '<p class="ob-sub">Join communities and follow people.</p>' +
-    '<div class="ob-tabs">' +
-      '<button type="button" class="' + (tab === 'communities' ? 'on' : '') + '" onclick="obSetTab(\'communities\')">Communities</button>' +
-      '<button type="button" class="' + (tab === 'people' ? 'on' : '') + '" onclick="obSetTab(\'people\')">People</button>' +
-    '</div>' +
-    '<div class="ob-list">' + listHTML + '</div>' +
-    '<button class="ob-btn" onclick="obNext5()">Continue</button>' +
-    '<div class="ob-skip" onclick="obSkipStep()">Skip for now</div>';
-}
-
-function obSetTab(t){
-  OB_STATE.pickTab = t;
-  renderObStep();
-}
-
-async function obToggleCommunity(id){
-  try {
-    const r = await api('/api/communities/' + id + '/toggle', { method: 'POST' });
-    const i = OB_STATE.communities.indexOf(id);
-    if (r.joined && i === -1) OB_STATE.communities.push(id);
-    if (!r.joined && i !== -1) OB_STATE.communities.splice(i, 1);
-    renderObStep();
-  } catch(e) { alert(e.message); }
-}
-
-function obToggleFollow(id){
-  const i = OB_STATE.follows.indexOf(id);
-  if (i === -1) OB_STATE.follows.push(id);
-  else OB_STATE.follows.splice(i, 1);
-  renderObStep();
-}
-
-async function obNext5(){
-  for (const uid of OB_STATE.follows) {
-    try { await api('/api/users/' + uid + '/follow', { method: 'POST' }); } catch(_) {}
-  }
-  OB_STATE.step = 6;
-  renderObStep();
-}
-
-function obStep6(){
-  const s = OB_STATE;
-  const notifOn = s.permissions.notifications;
-  const friendsOn = s.permissions.find_friends;
-  return '<h1 class="ob-title">A few more things</h1>' +
-    '<p class="ob-sub">Both are optional — change any time in Settings.</p>' +
-    '<div class="ob-perm' + (notifOn ? ' on' : '') + '" onclick="obTogglePerm(\'notifications\')">' +
-      '<div class="ic">🔔</div>' +
-      '<div class="info"><b>Turn on notifications</b><small>Get notified about replies, mentions, likes and trending posts.</small></div>' +
-    '</div>' +
-    '<div class="ob-perm' + (friendsOn ? ' on' : '') + '" onclick="obTogglePerm(\'find_friends\')">' +
-      '<div class="ic">👥</div>' +
-      '<div class="info"><b>Find friends</b><small>Connect with people you already know. We never post for you.</small></div>' +
-    '</div>' +
-    '<button class="ob-btn" onclick="obFinishAll()">Finish 🎉</button>' +
-    '<div class="ob-skip" onclick="obFinishAll()">Skip for now</div>';
-}
-
-function obSkipStep(){
-  if (OB_STATE.step < OB_STATE.total) {
-    OB_STATE.step += 1;
-    renderObStep();
-  } else {
-    obFinishAll();
-  }
-}
-
-async function obFinishAll(){
-  try {
-    await api('/api/onboard/permissions', { method:'POST', body: JSON.stringify({ permissions: OB_STATE.permissions }) });
-    me.onboarded = true;
-    if (typeof toast === 'function') toast('Welcome to GistApp!');
-    await enterApp();
-  } catch(e) { alert(e.message); }
-}
-
-/* ================= USER PROFILE — Follow / Like / Stats ================= */
-async function loadCpStats(){
-  if (!cpChat || !cpChat.other_id) return;
-  try {
-    const s = await api('/api/users/' + cpChat.other_id + '/profile-card');
-    document.getElementById('cp-posts-count').textContent = s.posts || 0;
-    document.getElementById('cp-followers-count').textContent = s.followers || 0;
-    document.getElementById('cp-following-count').textContent = s.following || 0;
-    document.getElementById('cp-likes-count').textContent = s.likes || 0;
-
-    const fb = document.getElementById('cp-follow-btn');
-    fb.classList.toggle('following', !!s.is_following);
-    fb.classList.toggle('not', !s.is_following);
-    fb.querySelector('span').textContent = s.is_following ? 'Following' : 'Follow';
-
-    const lb = document.getElementById('cp-like-btn');
-    lb.classList.toggle('liked', !!s.is_liked);
-    lb.classList.toggle('not', !s.is_liked);
-    lb.querySelector('span').textContent = s.is_liked ? 'Liked' : 'Like';
-
-    // Gender (if profile has it)
-    const genderEl = document.getElementById('cp-gender');
-    if (genderEl && s.gender) genderEl.textContent = '· ' + s.gender;
-  } catch(e){ console.warn('loadCpStats', e); }
-}
-
-async function toggleFollowCp(){
-  if (!cpChat || !cpChat.other_id) return;
-  try {
-    const r = await api('/api/users/' + cpChat.other_id + '/follow', { method:'POST' });
-    toast(r.following ? 'Following' : 'Unfollowed');
-    await loadCpStats();
-  } catch(e){ alert(e.message); }
-}
-
-async function toggleLikeCp(){
-  if (!cpChat || !cpChat.other_id) return;
-  try {
-    const r = await api('/api/users/' + cpChat.other_id + '/like', { method:'POST' });
-    toast(r.liked ? 'Liked ❤️' : 'Unliked');
-    await loadCpStats();
-  } catch(e){ alert(e.message); }
-}
-
-async function showUserList(kind){
-  if (!cpChat || !cpChat.other_id) return;
-  const title = kind === 'followers' ? 'Followers'
-              : kind === 'following' ? 'Following'
-              : kind === 'likers' ? 'Likes'
-              : 'Posts';
-  const body = document.getElementById('picker-body');
-  document.getElementById('picker-title').textContent = title;
-  body.innerHTML = '<div style="padding:20px;text-align:center;color:var(--sub)">Loading…</div>';
-  openModal('picker-modal');
-  try {
-    if (kind === 'posts'){
-      const rows = await api('/api/users/' + cpChat.other_id + '/posts').catch(function(){ return []; });
-      if (!rows.length){ body.innerHTML = '<div style="padding:24px;text-align:center;color:var(--sub)">No posts yet</div>'; return; }
-      body.innerHTML = rows.map(function(p){ return '<div class="picker-user"><div class="picker-avatar" style="background:var(--bg-2)">📝</div><div style="flex:1"><b>' + esc((p.body||'').slice(0,60)) + '</b><br><small>' + timeAgo(p.created_at) + '</small></div></div>'; }).join('');
-      return;
-    }
-    const endpoint = '/api/users/' + cpChat.other_id + '/' + kind;
-    const rows = await api(endpoint);
-    if (!rows.length){ body.innerHTML = '<div style="padding:24px;text-align:center;color:var(--sub)">No one here yet</div>'; return; }
-    body.innerHTML = rows.map(function(u){
-      const color = u.avatar_color || colorFor(u.display_name);
-      const av = u.avatar_url
-        ? '<div class="picker-avatar" style="background-image:url(' + u.avatar_url + ');background-size:cover;background-position:center"></div>'
-        : '<div class="picker-avatar" style="background:' + color + '">' + esc(initials(u.display_name)) + '</div>';
-      return '<div class="picker-user">' + av +
-        '<div style="flex:1"><b>' + esc(u.display_name) + '</b>' + (u.username ? '<br><small style="color:var(--sub);font-size:12px">@' + esc(u.username) + '</small>' : '') + '</div></div>';
-    }).join('');
-  } catch(e){
-    body.innerHTML = '<div style="padding:20px;color:#e5484d;text-align:center">' + esc(e.message) + '</div>';
-  }
-}
-
-/* ================= STATUS VIEW COUNT (own status) ================= */
-async function updateMyStatusEye(){
-  try {
-    const r = await api('/api/statuses/mine/views');
-    const eye = document.getElementById('my-status-eye');
-    if (eye){
-      if (r.total > 0){ eye.textContent = r.total; eye.style.display = 'flex'; }
-      else eye.style.display = 'none';
-    }
-  } catch(_){}
-}
-
-/* Patch loadStories to add eye badge on "My update" */
-var _origLoadStories = window.loadStories;
-if (typeof _origLoadStories === 'function'){
-  window.loadStories = async function(){
-    var r = await _origLoadStories.apply(this, arguments);
-    setTimeout(function(){
-      var my = document.getElementById('my-status-story');
-      if (my && !my.querySelector('.my-status-eye')){
-        var badge = document.createElement('div');
-        badge.className = 'my-status-eye';
-        badge.id = 'my-status-eye';
-        badge.textContent = '0';
-        badge.style.display = 'none';
-        my.querySelector('.ring').appendChild(badge);
-      }
-      updateMyStatusEye();
-    }, 150);
-    return r;
-  };
-}
-
-/* Patch openContactProfile to load stats */
-var _origOpenCP = window.openContactProfile;
-if (typeof _origOpenCP === 'function'){
-  window.openContactProfile = async function(){
-    var r = await _origOpenCP.apply(this, arguments);
-    setTimeout(loadCpStats, 100);
-    return r;
-  };
-}
-
-/* ================= FEED — click author → their profile ================= */
-/* Patch renderPostCard: make avatar + name clickable */
-var _origRenderPostCard = window.renderPostCard;
-if (typeof _origRenderPostCard === 'function'){
-  window.renderPostCard = function(p){
-    var html = _origRenderPostCard.apply(this, arguments);
-    // Wrap the post header avatar + name in a click handler
-    html = html.replace(
-      '<div class="post-head">',
-      '<div class="post-head" onclick="openAuthorProfile(' + p.user_id + ', event)">'
-    );
-    return html;
-  };
-}
-
-function openAuthorProfile(userId, e){
-  if (e && e.stopPropagation) e.stopPropagation();
-  // Find a chat with this user
-  const chat = chatsCache.find(function(c){ return Number(c.other_id) === Number(userId); });
-  if (chat){
-    const prev = currentChat;
-    currentChat = chat;
-    openContactProfile();
-    return;
-  }
-  // No chat — try to open a chat by email via search
-  // Fallback: fetch basic profile and show a lightweight modal
-  api('/api/users/' + userId + '/profile-card').then(function(s){
-    document.getElementById('picker-title').textContent = s.display_name || 'User';
-    document.getElementById('picker-body').innerHTML =
-      '<div style="text-align:center;padding:14px">' +
-        (s.avatar_url ? '<div class="avatar" style="width:80px;height:80px;margin:0 auto;background-image:url(' + s.avatar_url + ');background-size:cover;background-position:center"></div>'
-                      : '<div class="avatar" style="width:80px;height:80px;margin:0 auto;background:' + (s.avatar_color || '#7b8cff') + ';font-size:28px">' + (s.display_name ? s.display_name[0].toUpperCase() : '?') + '</div>') +
-        '<div style="font-size:18px;font-weight:800;margin-top:12px;color:var(--ink)">' + esc(s.display_name) + '</div>' +
-        (s.username ? '<div style="color:var(--sub);font-size:13px;margin-top:2px">@' + esc(s.username) + '</div>' : '') +
-        '<div class="prof-stats" style="margin-top:16px">' +
-          '<div class="prof-stat"><b>' + (s.posts||0) + '</b><small>Posts</small></div>' +
-          '<div class="prof-stat"><b>' + (s.followers||0) + '</b><small>Followers</small></div>' +
-          '<div class="prof-stat"><b>' + (s.following||0) + '</b><small>Following</small></div>' +
-          '<div class="prof-stat"><b>' + (s.likes||0) + '</b><small>Likes</small></div>' +
-        '</div>' +
-        '<div class="cp-action-buttons">' +
-          '<button class="follow-btn ' + (s.is_following?'following':'not') + '" onclick="quickFollow(' + s.id + ', this)"><span>' + (s.is_following?'Following':'Follow') + '</span></button>' +
-          '<button class="like-btn ' + (s.is_liked?'liked':'not') + '" onclick="quickLike(' + s.id + ', this)"><span>' + (s.is_liked?'Liked':'Like') + '</span></button>' +
-        '</div>' +
-      '</div>';
-    openModal('picker-modal');
-  }).catch(function(e){ alert(e.message); });
-}
-
-async function quickFollow(userId, btn){
-  try {
-    const r = await api('/api/users/' + userId + '/follow', { method:'POST' });
-    btn.classList.toggle('following', r.following);
-    btn.classList.toggle('not', !r.following);
-    btn.querySelector('span').textContent = r.following ? 'Following' : 'Follow';
-    toast(r.following ? 'Following' : 'Unfollowed');
-  } catch(e){ alert(e.message); }
-}
-async function quickLike(userId, btn){
-  try {
-    const r = await api('/api/users/' + userId + '/like', { method:'POST' });
-    btn.classList.toggle('liked', r.liked);
-    btn.classList.toggle('not', !r.liked);
-    btn.querySelector('span').textContent = r.liked ? 'Liked' : 'Like';
-    toast(r.liked ? 'Liked ❤️' : 'Unliked');
-  } catch(e){ alert(e.message); }
-}
-
-async function toggleChatLock(chatId){
-  try {
-    const r = await api('/api/chats/' + chatId + '/lock', { method:'POST' });
-    toast(r.locked ? 'Chat locked 🔒' : 'Chat unlocked');
-    await refreshLockStatus();
-    if (typeof renderChats === 'function') renderChats();
-    const cpLock = document.getElementById('cp-lock');
-    if (cpLock && cpChat && Number(cpChat.id) === Number(chatId)){
-      cpLock.textContent = r.locked ? 'Unlock chat' : 'Lock chat';
-    }
-  } catch(e){ alert(e.message); }
-}
-
-function showNotif(m){
-  if (!m) return;
-  if (Number(m.sender_id) === Number(me && me.id)) return;
-  if (typeof currentChat !== 'undefined' && currentChat && Number(currentChat.id) === Number(m.chat_id)) return;
-  const chat = (typeof chatsCache !== 'undefined' ? chatsCache : []).find(function(c){ return Number(c.id) === Number(m.chat_id); });
-  if (chat && chat.muted) return;
-  const highPriority = !!(userPrefs && userPrefs.high_priority);
-  if (highPriority && typeof playNotifSound === 'function') playNotifSound();
-  const title = m.display_name || (chat && (chat.other_name || chat.name)) || 'New message';
-  const body = m.body || (m.media_type === 'image' ? '📷 Photo' : (m.media_type === 'video' ? '🎬 Video' : (m.media_type === 'audio' ? '🎙 Voice message' : 'Sent an attachment')));
-  const banner = document.getElementById('notif-banner');
-  if (!banner) return;
-  document.getElementById('notif-title').textContent = title;
-  document.getElementById('notif-body').textContent = body;
-  const av = document.getElementById('notif-av');
-  const url = m.avatar_url || (chat && chat.other_url) || null;
-  if (url){ av.textContent = ''; av.style.background = 'url(' + url + ') center/cover'; }
-  else { av.textContent = initials(title); av.style.background = m.avatar_color || (chat && chat.other_color) || 'linear-gradient(135deg,#7b8cff,#b58cff)'; }
-  banner.classList.add('show');
-  banner.onclick = function(e){
-    if (e.target.closest('.notif-close')) return;
-    dismissNotification();
-    if (typeof openChat === 'function') openChat(Number(m.chat_id));
-  };
-  clearTimeout(window._notifTimer);
-  window._notifTimer = setTimeout(function(){ dismissNotification(); }, 5000);
-}
-
-/* ============================================================
-   ONBOARDING — TikTok/Reddit style multi-step
-   ============================================================ */
-const OB_INTERESTS = [
-  {id:'comedy',label:'Comedy',ic:'😂'},{id:'dance',label:'Dance',ic:'💃'},
-  {id:'cooking',label:'Cooking',ic:'🍳'},{id:'sports',label:'Sports',ic:'⚽'},
-  {id:'beauty',label:'Beauty',ic:'💄'},{id:'tech',label:'Tech',ic:'💻'},
-  {id:'gaming',label:'Gaming',ic:'🎮'},{id:'movies',label:'Movies',ic:'🎬'},
-  {id:'art',label:'Art',ic:'🎨'},{id:'science',label:'Science',ic:'🔬'},
-  {id:'music',label:'Music',ic:'🎵'},{id:'fashion',label:'Fashion',ic:'👗'},
-  {id:'travel',label:'Travel',ic:'✈️'},{id:'fitness',label:'Fitness',ic:'🏋️'},
-  {id:'books',label:'Books',ic:'📚'}
-];
-const OB_COMMUNITIES = {
-  comedy:[{id:'c_jokes',name:'r/jokes',members:'2.1M'},{id:'c_standup',name:'r/standup',members:'540K'}],
-  tech:[{id:'c_tech',name:'r/technology',members:'5.2M'},{id:'c_prog',name:'r/programming',members:'3.1M'}],
-  music:[{id:'c_music',name:'r/music',members:'8.3M'}],
-  gaming:[{id:'c_gaming',name:'r/gaming',members:'6.8M'}],
-  sports:[{id:'c_sports',name:'r/sports',members:'4.6M'}],
-  movies:[{id:'c_movies',name:'r/movies',members:'5.9M'}],
-  science:[{id:'c_science',name:'r/science',members:'7.2M'}],
-  cooking:[{id:'c_cooking',name:'r/cooking',members:'3.4M'}],
-  art:[{id:'c_art',name:'r/art',members:'3.1M'}],
-  books:[{id:'c_books',name:'r/books',members:'5.4M'}],
-  fitness:[{id:'c_fitness',name:'r/fitness',members:'9.1M'}],
-  travel:[{id:'c_travel',name:'r/travel',members:'4.7M'}],
-  beauty:[{id:'c_beauty',name:'r/beauty',members:'780K'}],
-  dance:[{id:'c_dance',name:'r/dance',members:'320K'}],
-  fashion:[{id:'c_fashion',name:'r/fashion',members:'1.4M'}]
-};
-const OB_CREATORS = {
-  comedy:[{id:'cr_1',name:'@LaughDaily',followers:'4.2M'}],
-  tech:[{id:'cr_11',name:'@TechBro',followers:'4.7M'}],
-  music:[{id:'cr_21',name:'@MusicNow',followers:'6.8M'}],
-  gaming:[{id:'cr_13',name:'@ProGamerX',followers:'7.2M'}],
-  sports:[{id:'cr_7',name:'@SportsCenter',followers:'8.4M'}],
-  movies:[{id:'cr_15',name:'@FilmFanatic',followers:'2.8M'}],
-  science:[{id:'cr_19',name:'@ScienceSimplified',followers:'3.1M'}],
-  cooking:[{id:'cr_5',name:'@ChefAmara',followers:'3.3M'}],
-  art:[{id:'cr_17',name:'@ArtByTunde',followers:'1.6M'}],
-  books:[{id:'cr_29',name:'@BookLover',followers:'1.4M'}],
-  fitness:[{id:'cr_27',name:'@FitCoachJo',followers:'4.1M'}],
-  travel:[{id:'cr_25',name:'@WanderWorld',followers:'5.4M'}],
-  beauty:[{id:'cr_9',name:'@GlowWithEfe',followers:'5.6M'}],
-  dance:[{id:'cr_3',name:'@DanceMoves',followers:'6.1M'}],
-  fashion:[{id:'cr_23',name:'@StyleDaily',followers:'2.2M'}]
-};
-
-const OB = {
-  step: 0,
-  display_name: '', bio: '', avatar_url: null,
-  gender: '', password: '',
-  username: '', birthday: '',
-  interests: [],
-  people: [],           // real users fetched from /api/users/suggestions
-  following: [],        // user ids I chose to follow during onboarding
-  permissions: { notifications:false, find_friends:false },
-  loading: false
-};
-
 function showOnboarding(){
   if (!me){ return; }
   // Pre-fill name from login or email
@@ -4477,6 +3898,185 @@ function openWelcome(){ document.body.classList.add('hide-nav');
 function openAuth(mode){
   if (typeof switchAuthMode === 'function') switchAuthMode(mode || 'signup');
   show('screen-auth');
+}
+
+async function finishOnboarding(){
+  try {
+    const name = (document.getElementById('ob-name') || {}).value || me.display_name || 'User';
+    const bio = (document.getElementById('ob-bio') || {}).value || '';
+    const username = ((document.getElementById('ob-username') || {}).value || '').trim().toLowerCase();
+    const birthday = (document.getElementById('ob-birthday') || {}).value || null;
+    const avatarUrl = window._obAvatarUrl || me.avatar_url || null;
+    const interests = window._obInterests || [];
+    const follows = window._obFollows || [];
+    const communities = window._obCommunities || [];
+    const permissions = window._obPermissions || {};
+
+    if (username && /^[a-z0-9_]{3,20}$/.test(username)){
+      try { await api('/api/username/set', { method:'POST', body: JSON.stringify({ username }) }); } catch(_){}
+    }
+    await api('/api/onboard/profile', { method:'POST', body: JSON.stringify({
+      display_name: name, bio: bio || 'Hey there! I am using GistApp.',
+      avatar_url: avatarUrl, birthday: birthday || null
+    })});
+    if (interests.length){
+      try { await api('/api/onboard/interests', { method:'POST', body: JSON.stringify({ interests }) }); } catch(_){}
+    }
+    try { await api('/api/onboard/picks', { method:'POST', body: JSON.stringify({ follows, joined_communities: communities }) }); } catch(_){}
+    try { await api('/api/onboard/permissions', { method:'POST', body: JSON.stringify({ permissions }) }); } catch(_){}
+
+    me.onboarded = true;
+    me.display_name = name;
+    if (avatarUrl) me.avatar_url = avatarUrl;
+    await enterApp();
+  } catch(e){
+    if (typeof toast === 'function') toast(e.message);
+    else alert(e.message);
+  }
+}
+
+function openDisappearPicker(){
+  showPicker('Disappearing messages', ['Off','24 hours','7 days','90 days'], 'disappearing');
+}
+
+async function saveEdit(){
+  const id = Number(document.getElementById('edit-text').dataset.id);
+  const body = document.getElementById('edit-text').value.trim();
+  if (!id || !body) return;
+  try {
+    await api('/api/messages/' + id + '/edit', { method:'PATCH', body: JSON.stringify({ body }) });
+    const b = document.querySelector('.bubble[data-id="' + id + '"]');
+    if (b){
+      const t = b.querySelector('.t');
+      b.innerHTML = linkify(body) + ' <i style="opacity:.55;font-size:11px">(edited)</i>' + (t ? t.outerHTML : '');
+      const m = messagesCache.find(function(x){ return Number(x.id) === id; });
+      if (m) renderReacts(b, m.reactions || {});
+    }
+    closeModal('edit-modal');
+    toast('Message updated');
+  } catch(e){ alert(e.message); }
+}
+
+function toggle(el){
+  if (!el) return;
+  if (typeof el === 'string') el = document.getElementById(el);
+  if (el && el.classList) el.classList.toggle('on');
+}
+
+/* === ORPHAN FUNCTIONS RESTORED === */
+function showUserList(type){
+  if (typeof toast === 'function') toast('Showing ' + type + ' — coming soon');
+  // Could open a list view — for now, just scroll to media section
+}
+
+async function toggleFollowCp(){
+  if (!cpChat || !cpChat.other_id){ if (typeof toast === 'function') toast('No user'); return; }
+  try {
+    const r = await api('/api/users/' + cpChat.other_id + '/follow', { method:'POST' });
+    const btn = document.getElementById('cp-follow-btn');
+    if (btn){
+      btn.classList.toggle('not', !r.following);
+      btn.classList.toggle('following', r.following);
+      btn.textContent = r.following ? 'Following' : 'Follow';
+    }
+    if (typeof toast === 'function') toast(r.following ? 'Following' : 'Unfollowed');
+  } catch(e){ alert(e.message); }
+}
+
+async function toggleLikeCp(){
+  if (!cpChat || !cpChat.other_id){ if (typeof toast === 'function') toast('No user'); return; }
+  try {
+    const btn = document.getElementById('cp-like-btn');
+    const wasLiked = btn && btn.classList.contains('liked');
+    // Like is same as follow for now (could be a separate endpoint)
+    const r = await api('/api/users/' + cpChat.other_id + '/follow', { method:'POST' });
+    if (btn){
+      btn.classList.toggle('liked', r.following);
+      btn.textContent = r.following ? '❤️ Liked' : 'Like';
+    }
+    if (typeof toast === 'function') toast(r.following ? 'Liked' : 'Unliked');
+  } catch(e){ alert(e.message); }
+}
+
+/* ================= CHAT LOCK — used by contact profile ================= */
+async function toggleChatLock(chatId){
+  if (!chatId && cpChat) chatId = cpChat.id;
+  if (!chatId && currentChat) chatId = currentChat.id;
+  if (!chatId){ toast('No chat selected'); return; }
+  await refreshLockStatus();
+  if (!_lockStatus.pin_set){
+    toast('Set a PIN first');
+    openPinSetup();
+    return;
+  }
+  try {
+    const r = await api('/api/chats/' + chatId + '/lock', { method: 'POST' });
+    toast(r.locked ? 'Chat locked 🔒' : 'Chat unlocked');
+    await refreshLockStatus();
+    renderChats();
+    // Update the contact profile label if we're viewing it
+    const lockBtn = document.getElementById('cp-lock');
+    if (lockBtn && cpChat && Number(cpChat.id) === Number(chatId)){
+      const locked = (_lockStatus.locked_chats || []).map(Number).indexOf(Number(chatId)) !== -1;
+      lockBtn.textContent = locked ? 'Unlock chat' : 'Lock chat';
+    }
+  } catch(e){ alert(e.message); }
+}
+
+/* ================= IN-APP NOTIFICATION ================= */
+let _notifTimer = null;
+function showNotif(m){
+  if (!m) return;
+  if (Number(m.sender_id) === Number(me.id)) return;
+  // Skip if user is already looking at this chat
+  if (currentChat && Number(currentChat.id) === Number(m.chat_id)) return;
+  // Skip muted chats
+  const chat = chatsCache.find(function(c){ return Number(c.id) === Number(m.chat_id); });
+  if (chat && chat.muted) return;
+  // Play sound if high priority enabled
+  if (userPrefs && userPrefs.high_priority && typeof playNotifSound === 'function') playNotifSound();
+
+  const b = document.getElementById('notif-banner');
+  if (!b) return;
+  const title = document.getElementById('notif-title');
+  const body = document.getElementById('notif-body');
+  const av = document.getElementById('notif-av');
+
+  if (title) title.textContent = m.display_name || 'New message';
+  if (body) body.textContent = m.body || (m.media_type ? '[' + m.media_type + ']' : 'New message');
+  if (av){
+    if (m.avatar_url){ av.textContent = ''; av.style.background = 'url(' + m.avatar_url + ') center/cover'; }
+    else { av.textContent = initials(m.display_name || '?'); av.style.background = m.avatar_color || 'linear-gradient(135deg,#7b8cff,#b58cff)'; }
+  }
+  b.classList.add('show');
+  b.onclick = function(e){
+    if (e.target.closest('.notif-close')) return;
+    dismissNotification();
+    openChat(Number(m.chat_id));
+  };
+  clearTimeout(_notifTimer);
+  _notifTimer = setTimeout(dismissNotification, 5000);
+}
+
+function dismissNotification(){
+  const b = document.getElementById('notif-banner');
+  if (b) b.classList.remove('show');
+}
+
+function playNotifSound(){
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const play = function(freq, start, dur){
+      const o = ctx.createOscillator(); const g = ctx.createGain();
+      o.type = 'sine'; o.frequency.value = freq;
+      g.gain.setValueAtTime(0.0001, ctx.currentTime + start);
+      g.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime + start + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + start + dur);
+      o.connect(g); g.connect(ctx.destination);
+      o.start(ctx.currentTime + start); o.stop(ctx.currentTime + start + dur + 0.05);
+    };
+    play(880, 0, 0.15); play(1320, 0.12, 0.25);
+  } catch(_){}
 }
 
 boot();
