@@ -35,8 +35,9 @@ const qrcode       = require('qrcode');
 /* ---------- mailer (Gmail SMTP) ---------- */
 const mailer = nodemailer.createTransport({
   host: 'smtp.gmail.com',
-  port: 465,
-  secure: true,
+  port: 587,
+  secure: false,
+  requireTLS: true,
   auth: {
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS
@@ -345,29 +346,68 @@ app.post('/api/username/set', auth, async (req, res) => {
   } catch(e){ console.error('username error:', e.message); res.status(500).json({ error: e.message || 'Server error' }); }
 });
 
+// GISTAPP_ONBOARD_FIX_V1
 app.post('/api/onboard/profile', auth, async (req, res) => {
   try {
     const { display_name, bio, avatar_url, birthday, gender, password } = req.body;
-    const sets=[]; const vals=[]; let i=1;
-    if (display_name){ sets.push('display_name=$' + (i++)); vals.push(display_name); }
-    if (bio){ sets.push('bio=$' + (i++)); vals.push(bio); }
-    if (avatar_url){ sets.push('avatar_url=$' + (i++)); vals.push(avatar_url); }
-    if (gender){ sets.push('gender=$' + (i++)); vals.push(gender); }
+    const sets = [];
+    const vals = [];
+    let i = 1;
+
+    const push = (col, val) => { sets.push(col + '=$' + (i++)); vals.push(val); };
+
+    if (display_name && String(display_name).trim()) push('display_name', String(display_name).trim());
+    if (bio && String(bio).trim()) push('bio', String(bio).trim());
+    if (avatar_url) push('avatar_url', avatar_url);
+    if (gender) push('gender', gender);
+
     if (birthday){
       const dob = new Date(birthday);
       const age = Math.floor((Date.now() - dob.getTime()) / (365.25 * 24 * 3600 * 1000));
+      if (isNaN(age)) return res.status(400).json({ error: 'Invalid birthday' });
       if (age < 18) return res.status(403).json({ error: 'You must be at least 18' });
-      sets.push('birthday=$' + (i++)); vals.push(birthday);
+      push('birthday', birthday);
     }
+
     if (password && String(password).length >= 6){
       const hash = await bcrypt.hash(String(password), 10);
-      sets.push('password_hash=$' + (i++)); vals.push(hash);
+      push('password_hash', hash);
     }
-    sets.push('onboard_stage=GREATEST(onboard_stage, 1)');
+
+    // Always bump onboard_stage — COALESCE handles NULL properly
+    sets.push('onboard_stage=GREATEST(COALESCE(onboard_stage, 0), 1)');
+
+    // Where clause
     vals.push(req.user.id);
-    const r = await pool.query('UPDATE users SET ' + sets.join(', ') + ' WHERE id=$' + i + ' RETURNING id,email,display_name,username,avatar_color,avatar_url,bio,birthday,gender,onboard_stage', vals);
-    res.json(r.rows[0]);
-  } catch(e){ console.error('onboard profile:', e.message); res.status(500).json({ error: e.message || 'Server error' }); }
+    const whereClause = ' WHERE id=$' + i;
+
+    // Safety: ensure we have at least one SET
+    if (sets.length === 0){
+      return res.status(400).json({ error: 'No fields to update' });
+    }
+
+    const sql = 'UPDATE users SET ' + sets.join(', ') + whereClause +
+      ' RETURNING id,email,display_name,username,avatar_color,avatar_url,bio,birthday,gender,onboard_stage';
+
+    try {
+      const r = await pool.query(sql, vals);
+      if (!r.rowCount) return res.status(404).json({ error: 'User not found' });
+      res.json(r.rows[0]);
+    } catch (dbErr){
+      console.error('onboard profile DB error:', {
+        msg: dbErr && dbErr.message,
+        code: dbErr && dbErr.code,
+        detail: dbErr && dbErr.detail,
+        hint: dbErr && dbErr.hint,
+        sql: sql,
+        vals: vals.map(v => typeof v === 'string' ? v.slice(0, 60) : v)
+      });
+      return res.status(500).json({ error: (dbErr && (dbErr.message || dbErr.detail)) || 'DB error' });
+    }
+  } catch(e){
+    console.error('onboard profile OUTER error:', e && e.message, e && e.stack ? e.stack.split('\n')[1] : '');
+    res.status(500).json({ error: (e && e.message) || 'Server error' });
+  }
 });
 
 app.post('/api/onboard/interests', auth, async (req, res) => {

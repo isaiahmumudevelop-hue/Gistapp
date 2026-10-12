@@ -858,7 +858,6 @@ body:has(#screen-terms.active) .bottom-nav{display:none!important}
           <div id="g-recaptcha-signup"
            class="g-recaptcha"
            data-sitekey="6LcIOestAAAAAPVC-ZLbbKVr6Fh7WyUbrsYWOnvg"
-           data-size="invisible"
            data-callback="onRecaptchaSolved"></div>
           <button class="auth-main-btn" id="auth-btn-su" data-i18n="Create account">Create account</button>
           <p class="auth-terms">Signing up means you agree to the <a onclick="openPrivacy()">Privacy Policy</a> and <a onclick="openTerms()">Terms of Service</a>.</p>
@@ -1724,17 +1723,16 @@ function onRecaptchaSolved(token){
   if (_recaptchaCallback){ const cb = _recaptchaCallback; _recaptchaCallback = null; cb(token); }
 }
 function requestCaptcha(){
-  return new Promise(function(resolve, reject){
+  return new Promise(function(resolve){
     try {
-      if (typeof grecaptcha === 'undefined'){ resolve(null); return; }
+      if (typeof grecaptcha === 'undefined'){ resolve(''); return; }
       grecaptcha.ready(function(){
-        // If already solved and token still valid, use it
-        const existing = grecaptcha.getResponse();
-        if (existing){ resolve(existing); return; }
-        _recaptchaCallback = resolve;
-        grecaptcha.execute();
+        const token = grecaptcha.getResponse();
+        if (token){ resolve(token); return; }
+        // Checkbox not ticked yet — resolve empty, backend will reject
+        resolve('');
       });
-    } catch(e){ resolve(null); }
+    } catch(e){ resolve(''); }
   });
 }
 async function submitSignup(){
