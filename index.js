@@ -50,6 +50,39 @@ mailer.verify((err) => {
   else console.log('✅ SMTP ready');
 });
 
+/* ---------- reCAPTCHA verify (GISTAPP_RECAPTCHA_V1) ---------- */
+const RECAPTCHA_SECRET = process.env.RECAPTCHA_SECRET || '';
+const RECAPTCHA_ENABLED = !!RECAPTCHA_SECRET;
+async function verifyRecaptcha(token, remoteIp){
+  if (!RECAPTCHA_ENABLED) return { ok: true, skipped: true };
+
+  // GISTAPP_RECAPTCHA_LOCALHOST_BYPASS: localhost can't use reCAPTCHA
+  // (Google requires a real TLD). Skip verification when IP is local.
+  const ip = String(remoteIp || '').replace('::ffff:', '');
+  if (ip === '127.0.0.1' || ip === '::1' || ip === 'localhost') {
+    return { ok: true, skipped: true, reason: 'localhost' };
+  }
+
+  if (!token) return { ok: false, error: 'Captcha required' };
+  try {
+    const body = new URLSearchParams({ secret: RECAPTCHA_SECRET, response: token });
+    if (remoteIp) body.append('remoteip', remoteIp);
+    const r = await fetch('https://www.google.com/recaptcha/api/siteverify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: body.toString()
+    });
+    const data = await r.json();
+    if (!data.success) return { ok: false, error: (data['error-codes'] || ['Captcha failed']).join(', ') };
+    return { ok: true, score: data.score };
+  } catch(e){
+    // On network failure, allow through to avoid locking users out (fail-open)
+    console.warn('reCAPTCHA verify error:', e.message);
+    return { ok: true, skipped: true };
+  }
+}
+
+
 function makeToken(){
   return require('crypto').randomBytes(24).toString('hex');
 }
@@ -196,6 +229,12 @@ app.post('/api/onboard', auth, async (req,res) => {
 /* ---------- auth ---------- */
 app.post('/api/signup', async (req,res)=>{
   try {
+    // GISTAPP_RECAPTCHA_V1: verify captcha before doing anything else
+    {
+      const captchaToken = (req.body && (req.body.captcha || req.body.recaptcha)) || '';
+      const rv = await verifyRecaptcha(captchaToken, req.ip);
+      if (!rv.ok){ return res.status(400).json({ error: rv.error || 'Captcha verification failed' }); }
+    }
     const { email, password, display_name } = req.body;
     if (!email || !password) return res.status(400).json({error:'Email and password required'});
     const exists = await pool.query('SELECT id FROM users WHERE email=$1',[email.toLowerCase()]);

@@ -1,6 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  <script src="https://www.google.com/recaptcha/api.js" async defer></script>
+  <!-- GISTAPP_RECAPTCHA_V1 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#7b8cff">
@@ -523,6 +525,17 @@ body.dark .modal-actions .primary{background:#7b8cff}
 .sc-caption{width:100%;padding:14px 18px;border-radius:16px;background:rgba(255,255,255,.1);border:none;color:#fff;font-size:15px;font-family:inherit;outline:none;box-sizing:border-box}
 .sc-change{align-self:center;padding:10px 18px;border-radius:14px;background:rgba(255,255,255,.08);color:#fff;border:none;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
 .viewers-modal{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:2500;display:none;align-items:flex-end;justify-content:center}
+
+  /* GISTAPP_VIEWERS_V1: viewer row styles */
+  .vw-row{display:flex;align-items:center;gap:12px;padding:12px 20px;cursor:pointer;transition:background .15s}
+  .vw-row:hover{background:rgba(123,140,255,.08)}
+  .vw-av{width:42px;height:42px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:15px;background-size:cover;background-position:center}
+  .vw-meta{flex:1;min-width:0;display:flex;flex-direction:column}
+  .vw-meta b{font-size:14.5px;color:var(--ink,#1c1c22);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .vw-meta small{font-size:12px;color:var(--muted,#8e8e96);margin-top:2px}
+  .vw-msg{background:rgba(123,140,255,.14);color:#7b8cff;border:none;width:34px;height:34px;border-radius:50%;cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .vw-msg:hover{background:rgba(123,140,255,.24)}
+
 .viewers-modal.show{display:flex}
 .viewers-sheet{width:100%;max-width:520px;background:var(--bg);border-top-left-radius:24px;border-top-right-radius:24px;padding:20px 20px calc(24px + var(--safe-b));max-height:70vh;overflow-y:auto;color:var(--ink)}
 .viewers-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
@@ -837,23 +850,28 @@ body:has(#screen-terms.active) .bottom-nav{display:none!important}
             <input id="auth-first" type="text" placeholder="First Name" autocomplete="given-name" style="margin-bottom:0">
             <input id="auth-last" type="text" placeholder="Last Name" autocomplete="family-name" style="margin-bottom:0">
           </div>
-          <input id="auth-email-su" type="email" placeholder="Email" autocomplete="email" spellcheck="false">
+          <input id="auth-email-su" type="email" data-i18n-placeholder="Email" placeholder="Email" autocomplete="email" spellcheck="false">
           <div class="pw-wrap">
-            <input id="auth-pass-su" type="password" placeholder="Password" autocomplete="new-password">
+            <input id="auth-pass-su" type="password" data-i18n-placeholder="Password" placeholder="Password" autocomplete="new-password">
             <button type="button" class="eye" onclick="togglePw('auth-pass-su',this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg></button>
           </div>
-          <button class="auth-main-btn" id="auth-btn-su">Create account</button>
+          <div id="g-recaptcha-signup"
+           class="g-recaptcha"
+           data-sitekey="6LcIOestAAAAAPVC-ZLbbKVr6Fh7WyUbrsYWOnvg"
+           data-size="invisible"
+           data-callback="onRecaptchaSolved"></div>
+          <button class="auth-main-btn" id="auth-btn-su" data-i18n="Create account">Create account</button>
           <p class="auth-terms">Signing up means you agree to the <a onclick="openPrivacy()">Privacy Policy</a> and <a onclick="openTerms()">Terms of Service</a>.</p>
           <p class="auth-switch">Have an account? <a onclick="switchAuthMode('login')">Log in here</a></p>
         </div>
 
         <div id="auth-login-fields" style="display:none">
-          <input id="auth-email" type="email" placeholder="Email" autocomplete="email" spellcheck="false">
+          <input id="auth-email" type="email" data-i18n-placeholder="Email" placeholder="Email" autocomplete="email" spellcheck="false">
           <div class="pw-wrap">
-            <input id="auth-pass" type="password" placeholder="Password" autocomplete="current-password">
+            <input id="auth-pass" type="password" data-i18n-placeholder="Password" placeholder="Password" autocomplete="current-password">
             <button type="button" class="eye" onclick="togglePw('auth-pass',this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg></button>
           </div>
-          <button class="auth-main-btn" id="auth-btn">Log in</button>
+          <button class="auth-main-btn" id="auth-btn" data-i18n="Log in">Log in</button>
           <p class="auth-forgot">Request a <a onclick="openPwReset()">New Password</a></p>
           <p class="auth-switch">New here? <a onclick="switchAuthMode('signup')">Create an account</a></p>
         </div>
@@ -1131,14 +1149,14 @@ body:has(#screen-terms.active) .bottom-nav{display:none!important}
       <button class="hd-btn x-btn" onclick="closeSettings()">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
       </button>
-      <div class="hd-title">Settings</div>
+      <div class="hd-title" data-i18n="Settings">Settings</div>
       <button class="hd-btn search-btn" onclick="toggleSettingsSearch()">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
       </button>
     </div>
     <div class="set-search-bar" id="set-search-bar">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
-      <input type="text" id="set-search-input" placeholder="Search settings…" autocomplete="off">
+      <input type="text" id="set-search-input" placeholder="Search settings…" data-i18n-placeholder="Search" autocomplete="off">
     </div>
     <div class="set-scroll">
       <div class="set-inner">
@@ -1160,7 +1178,7 @@ body:has(#screen-terms.active) .bottom-nav{display:none!important}
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
         </button>
       </div>
-      <h1 class="list-title">Calls</h1>
+      <h1 class="list-title" data-i18n="Calls">Calls</h1>
     </div>
     <div class="chat-scroll" id="calls-list"></div>
   </section>
@@ -1238,7 +1256,7 @@ body:has(#screen-terms.active) .bottom-nav{display:none!important}
     </button>
     <button class="new-chat-btn" onclick="openSheet()">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
-      New Chat
+      <span data-i18n="New Chat">New Chat</span>
     </button>
     <button class="nav-ic" onclick="openCallsTab()">
       <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 3.5h3l1.5 4-2 1.5a12 12 0 0 0 6 6l1.5-2 4 1.5v3a2 2 0 0 1-2.2 2A16.5 16.5 0 0 1 4.5 5.7a2 2 0 0 1 2-2.2z"/></svg>
@@ -1428,7 +1446,7 @@ body:has(#screen-terms.active) .bottom-nav{display:none!important}
     <div class="grab"></div>
     <div class="sheet-opt" onclick="openNewChat()">
       <div class="ic"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 01-8.5 8.3 8.6 8.6 0 01-3.7-.8L3 20l1-5.6a8.1 8.1 0 01-.9-3.8A8.4 8.4 0 0111.5 2.3 8.4 8.4 0 0121 11.5z"/></svg></div>
-      <div><b>New Chat</b><small>Start a chat by email</small></div>
+      <div><b data-i18n="New Chat">New Chat</b><small data-i18n="Start a chat by email">Start a chat by email</small></div>
     </div>
     <div class="sheet-opt" onclick="openNewGroup()">
       <div class="ic"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-5.8 6.5-5.8s6.5 2.2 6.5 5.8"/><path d="M18 8v6M15 11h6"/></svg></div>
@@ -1444,7 +1462,7 @@ body:has(#screen-terms.active) .bottom-nav{display:none!important}
   <!-- ============ MODALS ============ -->
   <div class="modal-wrap" id="email-modal">
     <div class="modal">
-      <h3>New Chat</h3>
+      <h3 data-i18n="New Chat">New Chat</h3>
       <p>Enter the email of someone registered. If found, a request is sent to them.</p>
       <input id="new-email" type="email" placeholder="friend@example.com" spellcheck="false">
       <div class="err" id="modal-err"></div>
@@ -1700,6 +1718,25 @@ function togglePw(id, btn){
   }
 }
 
+/* GISTAPP_RECAPTCHA_V1 */
+let _recaptchaCallback = null;
+function onRecaptchaSolved(token){
+  if (_recaptchaCallback){ const cb = _recaptchaCallback; _recaptchaCallback = null; cb(token); }
+}
+function requestCaptcha(){
+  return new Promise(function(resolve, reject){
+    try {
+      if (typeof grecaptcha === 'undefined'){ resolve(null); return; }
+      grecaptcha.ready(function(){
+        // If already solved and token still valid, use it
+        const existing = grecaptcha.getResponse();
+        if (existing){ resolve(existing); return; }
+        _recaptchaCallback = resolve;
+        grecaptcha.execute();
+      });
+    } catch(e){ resolve(null); }
+  });
+}
 async function submitSignup(){
   const errEl = document.getElementById('auth-err');
   errEl.textContent = '';
@@ -1711,7 +1748,10 @@ async function submitSignup(){
   if (!email || !password){ errEl.textContent = 'Email and password required.'; return; }
   if (password.length < 6){ errEl.textContent = 'Password must be at least 6 characters.'; return; }
   try {
-    const data = await api('/api/signup', { method:'POST', body: JSON.stringify({ email, password, display_name }) });
+    // GISTAPP_RECAPTCHA_V1: fetch captcha token before signup
+    let captchaToken = '';
+    try { captchaToken = (await requestCaptcha()) || ''; } catch(_){}
+    const data = await api('/api/signup', { method:'POST', body: JSON.stringify({ email, password, display_name, captcha: captchaToken }) });
     if (data.needsVerification){ showVerify(email, data.emailSent, data.emailError); return; }
     token = data.token; localStorage.setItem('token', token); me = data.user;
     if (me && me.onboarded === false){ showOnboarding(); return; }
@@ -2043,6 +2083,8 @@ function renderChats(){
       // all → hide archived by default
       if (c.archived) return false;
     }
+// GISTAPP_I18N_TAGS_V3: re-translate after chat list renders
+setTimeout(function(){ try { applyLanguage(); } catch(_){} }, 0);
     if (q && !displayName(c).toLowerCase().includes(q)) return false;
     return true;
   });
@@ -2151,6 +2193,16 @@ function doOpenChat(summary){
   }
   updateHeaderStatus();
   show('screen-dm');
+  // GISTAPP_DRAFTS_V1: restore draft for this chat
+  try {
+    const _draft = getDraft(summary.id);
+    const _dt = document.getElementById('dm-text');
+    if (_dt){
+      _dt.value = _draft || '';
+      updateMicSendToggle();
+      showDraftPill(!!_draft);
+    }
+  } catch(_){}
   const msgs = document.getElementById('dm-messages');
   msgs.innerHTML = '<div class="empty" style="color:#5f5b80">Loading…</div>';
   api('/api/chats/' + summary.id + '/messages').then(function(rows){
@@ -2299,9 +2351,71 @@ function openLightbox(type, url){
 }
 function closeLightbox(){ document.getElementById('lightbox').classList.remove('show'); document.getElementById('lightbox-content').innerHTML = ''; }
 
+/* ---------- message drafts (GISTAPP_DRAFTS_V1) ---------- */
+let _drafts = null;
+function _loadDrafts(){
+  if (_drafts !== null) return _drafts;
+  try { _drafts = JSON.parse(localStorage.getItem('gistapp_drafts') || '{}') || {}; }
+  catch(_){ _drafts = {}; }
+  return _drafts;
+}
+function _persistDrafts(){
+  try { localStorage.setItem('gistapp_drafts', JSON.stringify(_drafts || {})); } catch(_){}
+}
+function saveDraft(chatId, body){
+  if (!chatId) return;
+  _loadDrafts();
+  const key = String(chatId);
+  const hasText = body && body.trim().length > 0;
+  if (hasText) _drafts[key] = { body: body, at: Date.now() };
+  else delete _drafts[key];
+  _persistDrafts();
+}
+function getDraft(chatId){
+  if (!chatId) return '';
+  _loadDrafts();
+  const d = _drafts[String(chatId)];
+  return (d && d.body) || '';
+}
+function clearDraft(chatId){
+  if (!chatId) return;
+  _loadDrafts();
+  delete _drafts[String(chatId)];
+  _persistDrafts();
+}
+function clearAllDrafts(){
+  _drafts = {};
+  _persistDrafts();
+}
+let _draftSaveTimer = null;
+function saveDraftDebounced(chatId, body){
+  clearTimeout(_draftSaveTimer);
+  _draftSaveTimer = setTimeout(function(){ saveDraft(chatId, body); }, 350);
+}
+function showDraftPill(on){
+  const form = document.getElementById('dm-form');
+  if (!form) return;
+  let pill = document.getElementById('dm-draft-pill');
+  if (!pill){
+    pill = document.createElement('div');
+    pill.id = 'dm-draft-pill';
+    pill.textContent = 'Draft';
+    pill.style.cssText = 'position:absolute;top:-9px;left:16px;font-size:10px;font-weight:800;letter-spacing:.6px;color:#7b8cff;background:rgba(123,140,255,.18);padding:2px 8px;border-radius:8px;pointer-events:none;transition:opacity .2s;text-transform:uppercase';
+    form.style.position = 'relative';
+    form.appendChild(pill);
+  }
+  pill.style.opacity = on ? '1' : '0';
+}
 /* ---------- SEND MESSAGE ---------- */
 document.getElementById('dm-text').addEventListener('input', function(){
   updateMicSendToggle();
+  // GISTAPP_DRAFTS_V1: save draft as user types
+  try {
+    if (currentChat){
+      saveDraftDebounced(currentChat.id, this.value);
+      showDraftPill(!!this.value.trim());
+    }
+  } catch(_){}
   if (!socket || !currentChat) return;
   socket.emit('typing', { chatId: currentChat.id, typing: true });
   clearTimeout(typingTimer);
@@ -2318,6 +2432,8 @@ document.getElementById('dm-form').addEventListener('submit', async function(e){
   lastSend = { body, t: now };
   inp.value = '';
   updateMicSendToggle();
+    // GISTAPP_DRAFTS_V1: clear draft after send
+    try { clearDraft(currentChat.id); showDraftPill(false); } catch(_){}
   try {
     const payload = { body };
     if (replyTo) payload.reply_to_id = replyTo;
@@ -2663,17 +2779,19 @@ function renderSettingsSections(){
     return '<span class="chev">' + setSvg('chev',2) + '</span>';
   };
   document.getElementById('set-sections').innerHTML = SETTINGS_SECTIONS.map(function(sec){
-    return '<div class="sgroup"><div class="sgroup-label">' + esc(sec.title) + '</div>' +
+    return '<div class="sgroup\"><div class="sgroup-label\">' + esc(t(sec.title)) + '</div>' +
       sec.rows.map(function(r){
         return '<button class="srow' + (r.danger?' danger':'') + '" data-key="' + (r.key||'') + '">' +
           '<span class="icw">' + setSvg(r.icon) + '</span>' +
-          '<span class="rt"><span class="lbl">' + esc(r.label) + '</span>' + (r.sub ? '<span class="sub">' + esc(r.sub) + '</span>' : '') + '</span>' +
+          '<span class=\"rt\"><span class="lbl\" data-i18n=\"' + esc(r.label) + '\">' + esc(t(r.label)) + '</span>' + (r.sub ? '<span class="sub\">' + esc(t(r.sub)) + '</span>' : '') + '</span>' +
           rightOf(r) + '</button>';
       }).join('') + '</div>';
   }).join('');
   document.querySelectorAll('#set-sections .srow').forEach(function(btn){
     btn.addEventListener('click', function(){ handleSettingClick(btn.dataset.key); });
   });
+    // GISTAPP_I18N_TAGS_V3
+    try { applyLanguage(); } catch(_){}
 }
 function findRow(key){ for (const sec of SETTINGS_SECTIONS) for (const r of sec.rows) if (r.key === key) return r; return null; }
 function togglePref(key){
@@ -2707,7 +2825,7 @@ function showPicker(title, options, key){
   const current = userPrefs[key] || options[0];
   document.getElementById('picker-title').textContent = title;
   document.getElementById('picker-body').innerHTML = options.map(function(o){
-    return '<button class="picker-row' + (o===current?' on':'') + '" onclick="pickOption(\''+key+'\',\''+o+'\')">' + esc(o) + (o===current?'<span class="picker-check">✓</span>':'') + '</button>';
+    return '<button class="picker-row' + (o===current?' on':'') + '" onclick="pickOption(\''+key+'\',\''+o+'\')">' + esc(t(o)) + (o===current?'<span class=\"picker-check\">✓</span>':'') + '</button>';
   }).join('');
   openModal('picker-modal');
 }
@@ -3271,13 +3389,75 @@ function renderSVFrame(){
   document.getElementById('sv-media').innerHTML = s.media_type === 'video' ? '<video src="'+s.media_url+'" autoplay playsinline onended="svNext()"></video>' : '<img src="'+s.media_url+'">';
   document.getElementById('sv-caption').textContent = s.caption || '';
   if (Number(_svUser.id) !== Number(me.id)) api('/api/statuses/'+s.id+'/view', { method:'POST' }).catch(function(){});
+  // GISTAPP_VIEWERS_V1: show viewer count only for own status
+  var vw = document.getElementById('sv-viewers');
+  if (vw){
+    if (Number(_svUser.id) === Number(me.id)){
+      vw.style.display = 'flex';
+      var cnt = document.getElementById('sv-viewers-count');
+      if (cnt) cnt.textContent = (typeof s.view_count === 'number') ? s.view_count : '—';
+    } else {
+      vw.style.display = 'none';
+    }
+  }
   clearTimeout(_svTimer);
   _svTimer = setTimeout(svNext, s.media_type === 'video' ? 15000 : 5000);
 }
 function svNext(){ clearTimeout(_svTimer); _svIndex++; if (_svIndex >= _svQueue.length){ closeStatusViewer(); return; } renderSVBars(); renderSVFrame(); }
 function svPrev(){ clearTimeout(_svTimer); _svIndex = Math.max(0, _svIndex-1); renderSVBars(); renderSVFrame(); }
 function closeStatusViewer(){ clearTimeout(_svTimer); document.getElementById('status-viewer').classList.remove('show'); document.getElementById('sv-media').innerHTML = ''; _svQueue = []; _svIndex = 0; loadStories(); }
-function openViewersList(){ toast('Viewer list — coming soon'); }
+/* GISTAPP_VIEWERS_V1 */
+async function openViewersList(){
+  const s = _svQueue[_svIndex];
+  if (!s) return;
+  const modal = document.getElementById('viewers-modal');
+  const list  = document.getElementById('viewers-list');
+  const total = document.getElementById('viewers-total');
+  if (!modal || !list) return;
+
+  list.innerHTML = '<div style="padding:32px 20px;text-align:center;color:var(--muted,#8e8e96);font-size:14px">Loading…</div>';
+  total.textContent = '…';
+  modal.classList.add('show');
+
+  try {
+    const rows = await api('/api/statuses/' + s.id + '/viewers');
+    total.textContent = rows.length;
+    if (!rows.length){
+      list.innerHTML = '<div style="padding:40px 20px;text-align:center;color:var(--muted,#8e8e96);font-size:14px">'
+        + '<div style="font-size:32px;margin-bottom:8px">👀</div>'
+        + 'No views yet' + '</div>';
+      return;
+    }
+    list.innerHTML = rows.map(function(u){
+      const name  = u.display_name || 'Someone';
+      const color = u.avatar_color || colorFor(name);
+      const av = u.avatar_url
+        ? '<div class="vw-av" style="background-image:url(' + esc(u.avatar_url) + ')"></div>'
+        : '<div class="vw-av" style="background:' + color + '">' + esc(initials(name)) + '</div>';
+      return '<div class="vw-row" data-uid="' + u.id + '">' + av +
+        '<div class="vw-meta"><b>' + esc(name) + '</b>' +
+        '<small>' + timeAgo(u.viewed_at) + '</small></div>' +
+        '<button class="vw-msg" data-uid="' + u.id + '" title="Message">💬</button></div>';
+    }).join('');
+    // wire "message" buttons → open DM
+    list.querySelectorAll('.vw-msg').forEach(function(b){
+      b.addEventListener('click', async function(e){
+        e.stopPropagation();
+        const uid = Number(b.dataset.uid);
+        try {
+          const r = await api('/api/chats/dm', { method:'POST', body: JSON.stringify({ user_id: uid }) });
+          closeViewersList();
+          closeStatusViewer();
+          setTimeout(function(){ openChat(r.chat_id); }, 250);
+        } catch(err){ toast(err.message || 'Could not open chat'); }
+      });
+    });
+  } catch(e){
+    total.textContent = '0';
+    list.innerHTML = '<div style="padding:32px 20px;text-align:center;color:#ff3b30;font-size:14px">' + esc(e.message) + '</div>';
+  }
+}
+
 function closeViewersList(){ document.getElementById('viewers-modal').classList.remove('show'); }
 
 /* ---------- WALLPAPER ---------- */
@@ -3401,6 +3581,9 @@ function logout(){
 }
 
 /* ---------- BOOT ---------- */
+// GISTAPP_I18N_TAGS_V1: apply saved language before first render
+try { if (typeof applyLanguage === 'function') applyLanguage(); } catch(_){}
+
 async function boot(){
   if (window.location.search.indexOf('logout=') !== -1){
     try { localStorage.clear(); } catch(_){}
@@ -3444,6 +3627,122 @@ document.getElementById('new-email').addEventListener('keydown', function(e){ if
 /* PWA */
 if ('serviceWorker' in navigator){ window.addEventListener('load', function(){ navigator.serviceWorker.register('/sw.js').catch(function(){}); }); }
 window.addEventListener('beforeinstallprompt', function(e){ e.preventDefault(); _deferredPrompt = e; });
+// GISTAPP_PWA_INSTALL_V1
+(function(){
+  const BANNER_ID = 'pwa-install-banner';
+  const HIDDEN_KEY = 'pwa_banner_dismissed_at';
+  function isStandalone(){
+    return window.matchMedia('(display-mode: standalone)').matches
+        || window.navigator.standalone === true;
+  }
+  function dismissedRecently(){
+    const t = Number(localStorage.getItem(HIDDEN_KEY) || 0);
+    return t && (Date.now() - t) < 7 * 24 * 3600 * 1000; // 7 days
+  }
+  function ensureStyle(){
+    if (document.getElementById(BANNER_ID + '-style')) return;
+    const s = document.createElement('style');
+    s.id = BANNER_ID + '-style';
+    s.textContent = `
+      #${BANNER_ID}{
+        position:fixed;left:12px;right:12px;bottom:76px;z-index:9998;
+        background:linear-gradient(135deg,#7b8cff,#a86bff);color:#fff;
+        border-radius:16px;padding:14px 16px;display:flex;align-items:center;gap:12px;
+        box-shadow:0 8px 24px rgba(123,140,255,.35);
+        font-family:inherit;transform:translateY(120%);opacity:0;
+        transition:transform .35s ease,opacity .35s ease;
+      }
+      #${BANNER_ID}.show{transform:translateY(0);opacity:1;}
+      #${BANNER_ID} .pi-icon{font-size:22px;flex-shrink:0;}
+      #${BANNER_ID} .pi-text{flex:1;line-height:1.35;font-size:13.5px;font-weight:600;}
+      #${BANNER_ID} .pi-text small{display:block;font-weight:400;opacity:.85;font-size:11.5px;margin-top:2px;}
+      #${BANNER_ID} .pi-btn{background:#fff;color:#7b8cff;border:none;padding:8px 14px;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit;}
+      #${BANNER_ID} .pi-close{background:transparent;border:none;color:#fff;font-size:20px;opacity:.7;cursor:pointer;padding:0 4px;font-family:inherit;}
+      #${BANNER_ID} .pi-close:hover{opacity:1;}
+    `;
+    document.head.appendChild(s);
+  }
+  function showBanner(){
+    if (isStandalone()) return;
+    if (dismissedRecently()) return;
+    if (document.getElementById(BANNER_ID)) return;
+    ensureStyle();
+    const b = document.createElement('div');
+    b.id = BANNER_ID;
+    b.innerHTML =
+      '<span class="pi-icon">📱</span>' +
+      '<div class="pi-text">Install GistApp<small>Faster, works offline, no browser bar</small></div>' +
+      '<button class="pi-btn" type="button">Install</button>' +
+      '<button class="pi-close" type="button" aria-label="Dismiss">×</button>';
+    document.body.appendChild(b);
+    requestAnimationFrame(function(){ b.classList.add('show'); });
+
+    b.querySelector('.pi-btn').addEventListener('click', async function(){
+      const p = _deferredPrompt;
+      if (!p){
+        // Fallback instructions (iOS)
+        alert('To install: tap Share → Add to Home Screen');
+        return;
+      }
+      b.classList.remove('show');
+      setTimeout(function(){ b.remove(); }, 350);
+      p.prompt();
+      try {
+        const choice = await p.userChoice;
+        console.log('PWA install choice:', choice.outcome);
+        if (choice.outcome !== 'accepted') localStorage.setItem(HIDDEN_KEY, String(Date.now()));
+      } catch(_){}
+      _deferredPrompt = null;
+    });
+
+    b.querySelector('.pi-close').addEventListener('click', function(){
+      b.classList.remove('show');
+      setTimeout(function(){ b.remove(); }, 350);
+      localStorage.setItem(HIDDEN_KEY, String(Date.now()));
+    });
+  }
+
+  window.addEventListener('appinstalled', function(){
+    console.log('✅ PWA installed');
+    localStorage.removeItem(HIDDEN_KEY);
+    const b = document.getElementById(BANNER_ID);
+    if (b){ b.classList.remove('show'); setTimeout(function(){ b.remove(); }, 350); }
+  });
+
+  // Show banner 3s after load if we captured the prompt event
+  setInterval(function(){
+    if (_deferredPrompt && !isStandalone() && !dismissedRecently()){
+      const b = document.getElementById(BANNER_ID);
+      if (!b) showBanner();
+    }
+  }, 3000);
+
+  // iOS Safari fallback — no beforeinstallprompt, but user can still install manually
+  (function iosFallback(){
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+    if (!isIOS || !isSafari || isStandalone() || dismissedRecently()) return;
+    setTimeout(function(){
+      if (isStandalone() || dismissedRecently()) return;
+      if (document.getElementById(BANNER_ID)) return;
+      ensureStyle();
+      const b = document.createElement('div');
+      b.id = BANNER_ID;
+      b.innerHTML =
+        '<span class="pi-icon">📱</span>' +
+        '<div class="pi-text">Install GistApp<small>Tap Share → Add to Home Screen</small></div>' +
+        '<button class="pi-close" type="button" aria-label="Dismiss">×</button>';
+      document.body.appendChild(b);
+      requestAnimationFrame(function(){ b.classList.add('show'); });
+      b.querySelector('.pi-close').addEventListener('click', function(){
+        b.classList.remove('show');
+        setTimeout(function(){ b.remove(); }, 350);
+        localStorage.setItem(HIDDEN_KEY, String(Date.now()));
+      });
+    }, 5000);
+  })();
+})();
+// END GISTAPP_PWA_INSTALL_V1
 
 /* Visibility change → maybe lock */
 document.addEventListener('visibilitychange', function(){
@@ -3550,61 +3849,282 @@ function shouldAutoDownload(){
    ============================================================ */
 const TRANSLATIONS = {
   'English': {
-    'Chats': 'Chats', 'Calls': 'Calls', 'Settings': 'Settings',
-    'New Chat': 'New Chat', 'Search': 'Search', 'Message': 'Message',
-    'Send': 'Send', 'Type a message': 'Type a message',
-    'Profile': 'Profile', 'Log out': 'Log out', 'Save changes': 'Save changes',
-    'Appearance': 'Appearance', 'Account': 'Account', 'Privacy': 'Privacy',
-    'Notifications': 'Notifications', 'Storage': 'Storage', 'Other': 'Other'
+    'Chats':'Chats','Calls':'Calls','Settings':'Settings','Feed':'Feed','Status':'Status',
+    'New Chat':'New Chat','New Group':'New Group','Search':'Search','Message':'Message',
+    'Send':'Send','Type a message':'Type a message','Reply':'Reply','Forward':'Forward',
+    'Delete':'Delete','Edit':'Edit','Copy':'Copy','Cancel':'Cancel','Save':'Save',
+    'Save changes':'Save changes','Done':'Done','OK':'OK','Confirm':'Confirm',
+    'Login':'Login','Sign up':'Sign up','Log out':'Log out','Email':'Email','Password':'Password',
+    'Forgot password':'Forgot password','Continue with Google':'Continue with Google',
+    'Create account':'Create account','Profile':'Profile','Bio':'Bio','Username':'Username',
+    'Name':'Name','Birthday':'Birthday','Gender':'Gender','Follow':'Follow','Unfollow':'Unfollow',
+    'Followers':'Followers','Following':'Following','Like':'Like','Comment':'Comment','Share':'Share',
+    'Post':'Post','Delete post':'Delete post','Edit post':'Edit post','Post something':'Post something',
+    'Appearance':'Appearance','Account':'Account','Privacy':'Privacy','Notifications':'Notifications',
+    'Storage':'Storage','Other':'Other','Language':'Language','Dark mode':'Dark mode','Font size':'Font size',
+    'Wallpaper':'Wallpaper','My Status':'My Status','Add to My Status':'Add to My Status','Viewers':'Viewers',
+    'Voice call':'Voice call','Video call':'Video call','Incoming call':'Incoming call','Missed call':'Missed call',
+    'Decline':'Decline','Accept':'Accept','End call':'End call','Loading':'Loading','Error':'Error',
+    'Are you sure?':'Are you sure?','Yes':'Yes','No':'No','Install App':'Install App'
   },
   'Español': {
-    'Chats': 'Chats', 'Calls': 'Llamadas', 'Settings': 'Ajustes',
-    'New Chat': 'Nuevo chat', 'Search': 'Buscar', 'Message': 'Mensaje',
-    'Send': 'Enviar', 'Type a message': 'Escribe un mensaje',
-    'Profile': 'Perfil', 'Log out': 'Cerrar sesión', 'Save changes': 'Guardar',
-    'Appearance': 'Apariencia', 'Account': 'Cuenta', 'Privacy': 'Privacidad',
-    'Notifications': 'Notificaciones', 'Storage': 'Almacenamiento', 'Other': 'Otros'
+    'Chats':'Chats','Calls':'Llamadas','Settings':'Ajustes','Feed':'Inicio','Status':'Estados',
+    'New Chat':'Nuevo chat','New Group':'Nuevo grupo','Search':'Buscar','Message':'Mensaje',
+    'Send':'Enviar','Type a message':'Escribe un mensaje','Reply':'Responder','Forward':'Reenviar',
+    'Delete':'Eliminar','Edit':'Editar','Copy':'Copiar','Cancel':'Cancelar','Save':'Guardar',
+    'Save changes':'Guardar cambios','Done':'Listo','OK':'OK','Confirm':'Confirmar',
+    'Login':'Iniciar sesión','Sign up':'Registrarse','Log out':'Cerrar sesión','Email':'Correo',
+    'Password':'Contraseña','Forgot password':'Olvidé mi contraseña',
+    'Continue with Google':'Continuar con Google','Create account':'Crear cuenta',
+    'Profile':'Perfil','Bio':'Biografía','Username':'Usuario','Name':'Nombre','Birthday':'Cumpleaños',
+    'Gender':'Género','Follow':'Seguir','Unfollow':'Dejar de seguir','Followers':'Seguidores',
+    'Following':'Siguiendo','Like':'Me gusta','Comment':'Comentar','Share':'Compartir','Post':'Publicar',
+    'Delete post':'Eliminar publicación','Edit post':'Editar publicación','Post something':'Publica algo',
+    'Appearance':'Apariencia','Account':'Cuenta','Privacy':'Privacidad','Notifications':'Notificaciones',
+    'Storage':'Almacenamiento','Other':'Otros','Language':'Idioma','Dark mode':'Modo oscuro',
+    'Font size':'Tamaño de fuente','Wallpaper':'Fondo','My Status':'Mi estado',
+    'Add to My Status':'Añadir a mi estado','Viewers':'Espectadores','Voice call':'Llamada de voz',
+    'Video call':'Videollamada','Incoming call':'Llamada entrante','Missed call':'Llamada perdida',
+    'Decline':'Rechazar','Accept':'Aceptar','End call':'Colgar','Loading':'Cargando','Error':'Error',
+    'Are you sure?':'¿Estás seguro?','Yes':'Sí','No':'No','Install App':'Instalar app'
   },
   'Français': {
-    'Chats': 'Discussions', 'Calls': 'Appels', 'Settings': 'Paramètres',
-    'New Chat': 'Nouveau chat', 'Search': 'Rechercher', 'Message': 'Message',
-    'Send': 'Envoyer', 'Type a message': 'Tapez un message',
-    'Profile': 'Profil', 'Log out': 'Déconnexion', 'Save changes': 'Enregistrer',
-    'Appearance': 'Apparence', 'Account': 'Compte', 'Privacy': 'Confidentialité',
-    'Notifications': 'Notifications', 'Storage': 'Stockage', 'Other': 'Autre'
+    'Chats':'Discussions','Calls':'Appels','Settings':'Paramètres','Feed':'Fil','Status':'Statuts',
+    'New Chat':'Nouveau chat','New Group':'Nouveau groupe','Search':'Rechercher','Message':'Message',
+    'Send':'Envoyer','Type a message':'Tapez un message','Reply':'Répondre','Forward':'Transférer',
+    'Delete':'Supprimer','Edit':'Modifier','Copy':'Copier','Cancel':'Annuler','Save':'Enregistrer',
+    'Save changes':'Enregistrer','Done':'Terminé','OK':'OK','Confirm':'Confirmer',
+    'Login':'Connexion','Sign up':'S\'inscrire','Log out':'Déconnexion','Email':'E-mail',
+    'Password':'Mot de passe','Forgot password':'Mot de passe oublié',
+    'Continue with Google':'Continuer avec Google','Create account':'Créer un compte',
+    'Profile':'Profil','Bio':'Bio','Username':'Nom d\'utilisateur','Name':'Nom','Birthday':'Anniversaire',
+    'Gender':'Genre','Follow':'Suivre','Unfollow':'Ne plus suivre','Followers':'Abonnés',
+    'Following':'Abonnements','Like':'J\'aime','Comment':'Commenter','Share':'Partager','Post':'Publier',
+    'Delete post':'Supprimer la publication','Edit post':'Modifier la publication',
+    'Post something':'Publiez quelque chose','Appearance':'Apparence','Account':'Compte',
+    'Privacy':'Confidentialité','Notifications':'Notifications','Storage':'Stockage','Other':'Autre',
+    'Language':'Langue','Dark mode':'Mode sombre','Font size':'Taille de police','Wallpaper':'Fond',
+    'My Status':'Mon statut','Add to My Status':'Ajouter à mon statut','Viewers':'Spectateurs',
+    'Voice call':'Appel vocal','Video call':'Appel vidéo','Incoming call':'Appel entrant',
+    'Missed call':'Appel manqué','Decline':'Refuser','Accept':'Accepter','End call':'Raccrocher',
+    'Loading':'Chargement','Error':'Erreur','Are you sure?':'Êtes-vous sûr ?','Yes':'Oui','No':'Non',
+    'Install App':'Installer l\'app'
   },
   'हिन्दी': {
-    'Chats': 'चैट', 'Calls': 'कॉल', 'Settings': 'सेटिंग्स',
-    'New Chat': 'नई चैट', 'Search': 'खोजें', 'Message': 'संदेश',
-    'Send': 'भेजें', 'Type a message': 'संदेश लिखें',
-    'Profile': 'प्रोफ़ाइल', 'Log out': 'लॉग आउट', 'Save changes': 'सहेजें',
-    'Appearance': 'रूप', 'Account': 'खाता', 'Privacy': 'गोपनीयता',
-    'Notifications': 'सूचनाएं', 'Storage': 'संग्रहण', 'Other': 'अन्य'
+    'Chats':'चैट','Calls':'कॉल','Settings':'सेटिंग्स','Feed':'फ़ीड','Status':'स्टेटस',
+    'New Chat':'नई चैट','New Group':'नया ग्रुप','Search':'खोजें','Message':'संदेश',
+    'Send':'भेजें','Type a message':'संदेश लिखें','Reply':'जवाब','Forward':'फ़ॉरवर्ड',
+    'Delete':'हटाएं','Edit':'संपादित','Copy':'कॉपी','Cancel':'रद्द','Save':'सहेजें',
+    'Save changes':'सहेजें','Done':'हो गया','OK':'ठीक','Confirm':'पुष्टि',
+    'Login':'लॉग इन','Sign up':'साइन अप','Log out':'लॉग आउट','Email':'ईमेल',
+    'Password':'पासवर्ड','Forgot password':'पासवर्ड भूल गए','Continue with Google':'Google से जारी रखें',
+    'Create account':'खाता बनाएं','Profile':'प्रोफ़ाइल','Bio':'परिचय','Username':'यूज़रनेम',
+    'Name':'नाम','Birthday':'जन्मदिन','Gender':'लिंग','Follow':'फ़ॉलो','Unfollow':'अनफ़ॉलो',
+    'Followers':'फ़ॉलोअर','Following':'फ़ॉलोइंग','Like':'पसंद','Comment':'टिप्पणी','Share':'शेयर',
+    'Post':'पोस्ट','Delete post':'पोस्ट हटाएं','Edit post':'पोस्ट संपादित','Post something':'कुछ पोस्ट करें',
+    'Appearance':'रूप','Account':'खाता','Privacy':'गोपनीयता','Notifications':'सूचनाएं',
+    'Storage':'संग्रहण','Other':'अन्य','Language':'भाषा','Dark mode':'डार्क मोड',
+    'Font size':'फ़ॉन्ट आकार','Wallpaper':'वॉलपेपर','My Status':'मेरा स्टेटस',
+    'Add to My Status':'स्टेटस में जोड़ें','Viewers':'दर्शक','Voice call':'वॉइस कॉल',
+    'Video call':'वीडियो कॉल','Incoming call':'इनकमिंग कॉल','Missed call':'मिस्ड कॉल',
+    'Decline':'अस्वीकार','Accept':'स्वीकार','End call':'कॉल समाप्त','Loading':'लोड हो रहा',
+    'Error':'त्रुटि','Are you sure?':'क्या आप सुनिश्चित हैं?','Yes':'हाँ','No':'नहीं','Install App':'ऐप इंस्टॉल करें'
   },
   'Yorùbá': {
-    'Chats': 'Ìjíròrò', 'Calls': 'Ìpè', 'Settings': 'Ètò',
-    'New Chat': 'Ìjíròrò tuntun', 'Search': 'Wá', 'Message': 'Ìfiránṣẹ́',
-    'Send': 'Firanṣẹ', 'Type a message': 'Kọ ìfiránṣẹ́',
-    'Profile': 'Profáìlì', 'Log out': 'Jáde', 'Save changes': 'Fipamọ́',
-    'Appearance': 'Ìrísí', 'Account': 'Àkọsílẹ̀', 'Privacy': 'Àṣírí',
-    'Notifications': 'Ìfitónilétí', 'Storage': 'Ìpamọ́', 'Other': 'Mìíràn'
+    'Chats':'Ìjíròrò','Calls':'Ìpè','Settings':'Ètò','Feed':'Ìwé-ìròyìn','Status':'Ipò',
+    'New Chat':'Ìjíròrò tuntun','New Group':'Ẹgbẹ́ tuntun','Search':'Wá','Message':'Ìfiránṣẹ́',
+    'Send':'Firanṣẹ','Type a message':'Kọ ìfiránṣẹ́','Reply':'Dáhùn','Forward':'Fi ránṣẹ́',
+    'Delete':'Paarẹ́','Edit':'Ṣàtúnṣe','Copy':'Ṣe àdàkọ','Cancel':'Fagilé','Save':'Fipamọ́',
+    'Save changes':'Fipamọ́','Done':'Ó ti parí','OK':'Ó dára','Confirm':'Ìjẹ́rìí',
+    'Login':'Wọlé','Sign up':'Forúkọ sílẹ̀','Log out':'Jáde','Email':'Ímeèlì',
+    'Password':'Ọ̀rọ̀ ìkọ̀kọ̀','Forgot password':'Ọ̀rọ̀ ìkọ̀kọ̀ gbàgbé',
+    'Continue with Google':'Tẹ̀síwájú pẹ̀lú Google','Create account':'Ṣí àkọsílẹ̀',
+    'Profile':'Profáìlì','Bio':'Ìtàn ara','Username':'Orúkọ ìṣàmúlò','Name':'Orúkọ',
+    'Birthday':'Ọjọ́ ìbí','Gender':'Ìbálòpọ̀','Follow':'Tẹ̀lé','Unfollow':'Má tẹ̀lé',
+    'Followers':'Olùtẹ̀lé','Following':'Tẹ̀lé','Like':'Fẹ́ràn','Comment':'Ọ̀rọ̀',
+    'Share':'Pín','Post':'Fi sórí','Delete post':'Paarẹ́ àkọsílẹ̀','Edit post':'Ṣàtúnṣe àkọsílẹ̀',
+    'Post something':'Fi nǹkan sórí','Appearance':'Ìrísí','Account':'Àkọsílẹ̀','Privacy':'Àṣírí',
+    'Notifications':'Ìfitónilétí','Storage':'Ìpamọ́','Other':'Mìíràn','Language':'Èdè',
+    'Dark mode':'Ipò òkùnkùn','Font size':'Ìwọ̀n ìkọ̀wé','Wallpaper':'Ìṣe ilé','My Status':'Ipò mi',
+    'Add to My Status':'Fi kún ipò mi','Viewers':'Àwọn olùwò','Voice call':'Ìpè ohùn',
+    'Video call':'Ìpè fídíò','Incoming call':'Ìpè tí ń bọ̀','Missed call':'Ìpè tí ó pàdánù',
+    'Decline':'Kọ̀','Accept':'Gbà','End call':'Parí ìpè','Loading':'Ń gbé wọlé','Error':'Àṣìṣe',
+    'Are you sure?':'Ṣé ó dá ọ lójú?','Yes':'Bẹ́ẹ̀ ni','No':'Bẹ́ẹ̀ kọ́','Install App':'Fi app sórí'
+  },
+  'Igbo': {
+    'Chats':'Mkparịta ụka','Calls':'Oku','Settings':'Ntọala','Feed':'Ozi','Status':'Ọnọdụ',
+    'New Chat':'Mkparịta ụka ọhụrụ','New Group':'Otu ọhụrụ','Search':'Chọọ','Message':'Ozi',
+    'Send':'Zipu','Type a message':'Dee ozi','Reply':'Zaghachi','Forward':'Ziga n\'ihu',
+    'Delete':'Hichapụ','Edit':'Dezie','Copy':'Detuo','Cancel':'Kagbuo','Save':'Chekwaa',
+    'Save changes':'Chekwaa mgbanwe','Done':'Emeela','OK':'Ọ dị mma','Confirm':'Kwenye',
+    'Login':'Banye','Sign up':'Debanye aha','Log out':'Pụọ','Email':'Ozi-e','Password':'Okwuntughe',
+    'Forgot password':'Chefuru okwuntughe','Continue with Google':'Gaa n\'ihu na Google',
+    'Create account':'Mepụta akaụntụ','Profile':'Profaịlụ','Bio':'Ndụ','Username':'Aha njirimara',
+    'Name':'Aha','Birthday':'Ụbọchị ọmụmụ','Gender':'Okike','Follow':'Soro','Unfollow':'Kwụsị iso',
+    'Followers':'Ndị na-eso','Following':'Na-eso','Like':'Masịrị','Comment':'Okwu','Share':'Kekọrịta',
+    'Post':'Bipute','Delete post':'Hichapụ biputere','Edit post':'Dezie biputere',
+    'Post something':'Bipụta ihe','Appearance':'Ọdịdị','Account':'Akaụntụ','Privacy':'Nzuzo',
+    'Notifications':'Ngosi','Storage':'Nchekwa','Other':'Ndị ọzọ','Language':'Asụsụ',
+    'Dark mode':'Ọnọdụ ọchịchịrị','Font size':'Nha mkpụrụ okwu','Wallpaper':'Mkpuchi azụ',
+    'My Status':'Ọnọdụ m','Add to My Status':'Tinye na ọkwa m','Viewers':'Ndị na-ele',
+    'Voice call':'Oku olu','Video call':'Oku vidiyo','Incoming call':'Oku na-abata',
+    'Missed call':'Oku funahụrụ','Decline':'Jụ','Accept':'Nabata','End call':'Kwụsị oku',
+    'Loading':'Na-ebu','Error':'Njehie','Are you sure?':'Ị doro anya?','Yes':'Ee','No':'Mba',
+    'Install App':'Wụnye Ngwa'
+  },
+  'Hausa': {
+    'Chats':'Tattaunawa','Calls':'Kira','Settings':'Saiti','Feed':'Labarai','Status':'Matsayi',
+    'New Chat':'Sabuwar tattaunawa','New Group':'Sabuwar ƙungiya','Search':'Bincika','Message':'Saƙo',
+    'Send':'Aika','Type a message':'Rubuta saƙo','Reply':'Amsa','Forward':'Tura gaba',
+    'Delete':'Share','Edit':'Gyara','Copy':'Kwafi','Cancel':'Soke','Save':'Ajiye',
+    'Save changes':'Ajiye canje-canje','Done':'An gama','OK':'To','Confirm':'Tabbatar',
+    'Login':'Shiga','Sign up':'Yi rijista','Log out':'Fita','Email':'Imel','Password':'Kalmar sirri',
+    'Forgot password':'An manta kalmar sirri','Continue with Google':'Ci gaba da Google',
+    'Create account':'Ƙirƙiri asusu','Profile':'Bayanan martaba','Bio':'Tarihin rayuwa',
+    'Username':'Sunan mai amfani','Name':'Suna','Birthday':'Ranar haihuwa','Gender':'Jinsi',
+    'Follow':'Bi','Unfollow':'Daina bi','Followers':'Mabiya','Following':'Ana bi','Like':'So',
+    'Comment':'Sharhi','Share':'Raba','Post':'Aiwatar','Delete post':'Share post',
+    'Edit post':'Gyara post','Post something':'Aika wani abu','Appearance':'Kamanni',
+    'Account':'Asusu','Privacy':'Sirri','Notifications':'Sanarwa','Storage':'Ajiya','Other':'Sauran',
+    'Language':'Harshe','Dark mode':'Yanayin duhu','Font size':'Girman rubutu','Wallpaper':'Fuskar bango',
+    'My Status':'Matsayina','Add to My Status':'Ƙara zuwa matsayina','Viewers':'Masu kallo',
+    'Voice call':'Kiran murya','Video call':'Kiran bidiyo','Incoming call':'Kira mai shigowa',
+    'Missed call':'Kiran da ya ɓace','Decline':'Ƙi','Accept':'Karɓa','End call':'Ƙare kira',
+    'Loading':'Ana ɗauka','Error':'Kuskure','Are you sure?':'Ka tabbata?','Yes':'Eh','No':'A\'a',
+    'Install App':'Shigar da Manhaja'
+  },
+  'Português': {
+    'Chats':'Conversas','Calls':'Chamadas','Settings':'Configurações','Feed':'Feed','Status':'Status',
+    'New Chat':'Nova conversa','New Group':'Novo grupo','Search':'Pesquisar','Message':'Mensagem',
+    'Send':'Enviar','Type a message':'Digite uma mensagem','Reply':'Responder','Forward':'Encaminhar',
+    'Delete':'Excluir','Edit':'Editar','Copy':'Copiar','Cancel':'Cancelar','Save':'Salvar',
+    'Save changes':'Salvar alterações','Done':'Concluído','OK':'OK','Confirm':'Confirmar',
+    'Login':'Entrar','Sign up':'Cadastrar','Log out':'Sair','Email':'E-mail','Password':'Senha',
+    'Forgot password':'Esqueci a senha','Continue with Google':'Continuar com Google',
+    'Create account':'Criar conta','Profile':'Perfil','Bio':'Bio','Username':'Usuário','Name':'Nome',
+    'Birthday':'Aniversário','Gender':'Gênero','Follow':'Seguir','Unfollow':'Deixar de seguir',
+    'Followers':'Seguidores','Following':'Seguindo','Like':'Curtir','Comment':'Comentar',
+    'Share':'Compartilhar','Post':'Publicar','Delete post':'Excluir publicação',
+    'Edit post':'Editar publicação','Post something':'Publique algo','Appearance':'Aparência',
+    'Account':'Conta','Privacy':'Privacidade','Notifications':'Notificações','Storage':'Armazenamento',
+    'Other':'Outro','Language':'Idioma','Dark mode':'Modo escuro','Font size':'Tamanho da fonte',
+    'Wallpaper':'Papel de parede','My Status':'Meu status','Add to My Status':'Adicionar ao meu status',
+    'Viewers':'Visualizações','Voice call':'Chamada de voz','Video call':'Chamada de vídeo',
+    'Incoming call':'Chamada recebida','Missed call':'Chamada perdida','Decline':'Recusar',
+    'Accept':'Aceitar','End call':'Encerrar chamada','Loading':'Carregando','Error':'Erro',
+    'Are you sure?':'Tem certeza?','Yes':'Sim','No':'Não','Install App':'Instalar app'
+  },
+  'Deutsch': {
+    'Chats':'Chats','Calls':'Anrufe','Settings':'Einstellungen','Feed':'Feed','Status':'Status',
+    'New Chat':'Neuer Chat','New Group':'Neue Gruppe','Search':'Suchen','Message':'Nachricht',
+    'Send':'Senden','Type a message':'Nachricht schreiben','Reply':'Antworten','Forward':'Weiterleiten',
+    'Delete':'Löschen','Edit':'Bearbeiten','Copy':'Kopieren','Cancel':'Abbrechen','Save':'Speichern',
+    'Save changes':'Änderungen speichern','Done':'Fertig','OK':'OK','Confirm':'Bestätigen',
+    'Login':'Anmelden','Sign up':'Registrieren','Log out':'Abmelden','Email':'E-Mail','Password':'Passwort',
+    'Forgot password':'Passwort vergessen','Continue with Google':'Mit Google fortfahren',
+    'Create account':'Konto erstellen','Profile':'Profil','Bio':'Bio','Username':'Benutzername',
+    'Name':'Name','Birthday':'Geburtstag','Gender':'Geschlecht','Follow':'Folgen','Unfollow':'Entfolgen',
+    'Followers':'Follower','Following':'Gefolgt','Like':'Gefällt mir','Comment':'Kommentieren',
+    'Share':'Teilen','Post':'Posten','Delete post':'Beitrag löschen','Edit post':'Beitrag bearbeiten',
+    'Post something':'Etwas posten','Appearance':'Erscheinungsbild','Account':'Konto','Privacy':'Datenschutz',
+    'Notifications':'Benachrichtigungen','Storage':'Speicher','Other':'Andere','Language':'Sprache',
+    'Dark mode':'Dunkelmodus','Font size':'Schriftgröße','Wallpaper':'Hintergrund',
+    'My Status':'Mein Status','Add to My Status':'Zu meinem Status hinzufügen','Viewers':'Zuschauer',
+    'Voice call':'Sprachanruf','Video call':'Videoanruf','Incoming call':'Eingehender Anruf',
+    'Missed call':'Verpasster Anruf','Decline':'Ablehnen','Accept':'Annehmen','End call':'Auflegen',
+    'Loading':'Lädt','Error':'Fehler','Are you sure?':'Bist du sicher?','Yes':'Ja','No':'Nein',
+    'Install App':'App installieren'
+  },
+  '日本語': {
+    'Chats':'チャット','Calls':'通話','Settings':'設定','Feed':'フィード','Status':'ステータス',
+    'New Chat':'新しいチャット','New Group':'新しいグループ','Search':'検索','Message':'メッセージ',
+    'Send':'送信','Type a message':'メッセージを入力','Reply':'返信','Forward':'転送',
+    'Delete':'削除','Edit':'編集','Copy':'コピー','Cancel':'キャンセル','Save':'保存',
+    'Save changes':'変更を保存','Done':'完了','OK':'OK','Confirm':'確認',
+    'Login':'ログイン','Sign up':'新規登録','Log out':'ログアウト','Email':'メール',
+    'Password':'パスワード','Forgot password':'パスワードを忘れた','Continue with Google':'Googleで続行',
+    'Create account':'アカウント作成','Profile':'プロフィール','Bio':'自己紹介','Username':'ユーザー名',
+    'Name':'名前','Birthday':'誕生日','Gender':'性別','Follow':'フォロー','Unfollow':'フォロー解除',
+    'Followers':'フォロワー','Following':'フォロー中','Like':'いいね','Comment':'コメント',
+    'Share':'共有','Post':'投稿','Delete post':'投稿を削除','Edit post':'投稿を編集',
+    'Post something':'何か投稿する','Appearance':'外観','Account':'アカウント','Privacy':'プライバシー',
+    'Notifications':'通知','Storage':'ストレージ','Other':'その他','Language':'言語',
+    'Dark mode':'ダークモード','Font size':'フォントサイズ','Wallpaper':'壁紙',
+    'My Status':'マイステータス','Add to My Status':'マイステータスに追加','Viewers':'閲覧者',
+    'Voice call':'音声通話','Video call':'ビデオ通話','Incoming call':'着信',
+    'Missed call':'不在着信','Decline':'拒否','Accept':'承認','End call':'通話終了',
+    'Loading':'読み込み中','Error':'エラー','Are you sure?':'本当によろしいですか?',
+    'Yes':'はい','No':'いいえ','Install App':'アプリをインストール'
+  },
+  'العربية': {
+    'Chats':'الدردشات','Calls':'المكالمات','Settings':'الإعدادات','Feed':'الأخبار','Status':'الحالة',
+    'New Chat':'محادثة جديدة','New Group':'مجموعة جديدة','Search':'بحث','Message':'رسالة',
+    'Send':'إرسال','Type a message':'اكتب رسالة','Reply':'رد','Forward':'إعادة توجيه',
+    'Delete':'حذف','Edit':'تعديل','Copy':'نسخ','Cancel':'إلغاء','Save':'حفظ',
+    'Save changes':'حفظ التغييرات','Done':'تم','OK':'موافق','Confirm':'تأكيد',
+    'Login':'تسجيل الدخول','Sign up':'التسجيل','Log out':'تسجيل الخروج','Email':'البريد الإلكتروني',
+    'Password':'كلمة المرور','Forgot password':'نسيت كلمة المرور','Continue with Google':'المتابعة باستخدام Google',
+    'Create account':'إنشاء حساب','Profile':'الملف الشخصي','Bio':'نبذة','Username':'اسم المستخدم',
+    'Name':'الاسم','Birthday':'عيد الميلاد','Gender':'الجنس','Follow':'متابعة','Unfollow':'إلغاء المتابعة',
+    'Followers':'المتابعون','Following':'يتابع','Like':'إعجاب','Comment':'تعليق',
+    'Share':'مشاركة','Post':'نشر','Delete post':'حذف المنشور','Edit post':'تعديل المنشور',
+    'Post something':'انشر شيئًا','Appearance':'المظهر','Account':'الحساب','Privacy':'الخصوصية',
+    'Notifications':'الإشعارات','Storage':'التخزين','Other':'أخرى','Language':'اللغة',
+    'Dark mode':'الوضع الداكن','Font size':'حجم الخط','Wallpaper':'خلفية',
+    'My Status':'حالتي','Add to My Status':'أضف إلى حالتي','Viewers':'المشاهدون',
+    'Voice call':'مكالمة صوتية','Video call':'مكالمة فيديو','Incoming call':'مكالمة واردة',
+    'Missed call':'مكالمة فائتة','Decline':'رفض','Accept':'قبول','End call':'إنهاء المكالمة',
+    'Loading':'جاري التحميل','Error':'خطأ','Are you sure?':'هل أنت متأكد؟','Yes':'نعم','No':'لا',
+    'Install App':'تثبيت التطبيق'
   }
 };
+// GISTAPP_I18N_V2
+
+// RTL languages
+const RTL_LANGS = ['العربية','עברית','فارسی','اردو'];
+
+// Pick best matching language from browser
+function detectBrowserLanguage(){
+  const langs = navigator.languages || [navigator.language || 'en'];
+  const map = {
+    'en':'English','es':'Español','fr':'Français','hi':'हिन्दी','yo':'Yorùbá',
+    'ig':'Igbo','ha':'Hausa','pt':'Português','de':'Deutsch','ja':'日本語','ar':'العربية'
+  };
+  for (let i = 0; i < langs.length; i++){
+    const code = (langs[i] || '').toLowerCase().split('-')[0];
+    if (map[code]) return map[code];
+  }
+  return 'English';
+}
 
 function t(key){
-  const lang = (userPrefs && userPrefs.language) || 'English';
+  let lang = (userPrefs && userPrefs.language);
+  if (!lang){
+    lang = localStorage.getItem('gistapp_lang') || detectBrowserLanguage();
+  }
   const dict = TRANSLATIONS[lang] || TRANSLATIONS['English'];
-  return dict[key] || key;
+  return dict[key] || TRANSLATIONS['English'][key] || key;
 }
 
 function applyLanguage(){
+  const lang = (userPrefs && userPrefs.language) || localStorage.getItem('gistapp_lang') || detectBrowserLanguage();
+  // Persist choice
+  localStorage.setItem('gistapp_lang', lang);
+  // RTL for Arabic/Hebrew/Farsi/Urdu
+  const isRTL = RTL_LANGS.indexOf(lang) !== -1;
+  document.documentElement.setAttribute('dir', isRTL ? 'rtl' : 'ltr');
+  document.documentElement.setAttribute('lang', lang);
+  // Translate text nodes
   document.querySelectorAll('[data-i18n]').forEach(function(el){
-    const key = el.dataset.i18n;
-    el.textContent = t(key);
+    el.textContent = t(el.dataset.i18n);
   });
-  // Placeholders
+  // Translate placeholders
   document.querySelectorAll('[data-i18n-placeholder]').forEach(function(el){
     el.placeholder = t(el.dataset.i18nPlaceholder);
+  });
+  // Translate title attributes
+  document.querySelectorAll('[data-i18n-title]').forEach(function(el){
+    el.title = t(el.dataset.i18nTitle);
   });
 }
 
@@ -3712,7 +4232,15 @@ async function openMyStatus(){
     const mine = data.mine || [];
     if (!mine.length){ openStatusComposer(); return; }
     _svUser = { id: me.id, name: 'My update', color: me.avatar_color || colorFor(me.display_name), url: me.avatar_url || null };
-    _svQueue = mine.map(function(x){ return { id:x.id, media_url:x.media_url, media_type:x.media_type, caption:x.caption, created_at:x.created_at, seen:true }; });
+    // GISTAPP_VIEWERS_V1: attach view counts
+  var counts = {};
+  try {
+    var c = await api('/api/statuses/mine/counts');
+    (c || []).forEach(function(row){ counts[row.status_id || row.id] = row.views || row.view_count || row.count || 0; });
+  } catch(_){}
+  _svQueue = mine.map(function(x){
+    return { id:x.id, media_url:x.media_url, media_type:x.media_type, caption:x.caption, created_at:x.created_at, seen:true, view_count: counts[x.id] || 0 };
+  });
     _svIndex = 0;
     showStatusViewer();
   } catch(e){ alert(e.message); }

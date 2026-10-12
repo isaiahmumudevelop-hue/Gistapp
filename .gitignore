@@ -27,3 +27,22 @@ test_perf.js
 *.bak2.*
 *.bakperf*.*
 .env
+
+# my specific backup patterns
+*.bakcloud*
+*.bakcloudfix*
+*.bakdedupe*
+*.bakperf*
+index.js.backup-*
+add_legal.py
+dump.sh
+
+# specific backups from patches
+*.bakcloud*
+*.bakcloudfix*
+*.bakdedupe*
+*.bakperf*
+*.bakfallback*
+index.js.backup-*
+add_legal.py
+dump.sh
