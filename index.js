@@ -1,5 +1,7 @@
 require('dotenv').config();
 const express    = require('express');
+const rateLimit  = require('express-rate-limit');  // GISTAPP_RATE_LIMIT_V1
+const { ipKeyGenerator } = require('express-rate-limit');  // GISTAPP_IPV6_FIX — normalize IPv6 to /56 subnet
 const http       = require('http');
 const { Server } = require('socket.io');
 const bcrypt     = require('bcryptjs');
@@ -9,6 +11,7 @@ const path       = require('path');
 const fs         = require('fs');
 const multer     = require('multer');
 const cloudinary = require('cloudinary').v2;
+const ImageKit = require('@imagekit/nodejs'); // GISTAPP_IMAGEKIT_V1
 const pool       = require('./db');
 
 // Crash-proofing: log errors instead of dying
@@ -143,6 +146,74 @@ async function sendVerificationEmail(toEmail, token, displayName){
 
 
 const app    = express();
+
+/* ========== GISTAPP_RATE_LIMIT_V1 ========== */
+// Trust proxy (Render sits behind a reverse proxy)
+app.set('trust proxy', 1);
+
+// Global: 200 requests / minute per IP for any /api/* route
+const globalLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 200,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests. Please slow down.' },
+  skip: (req) => req.method === 'OPTIONS',
+});
+
+// Signup: 3 accounts / hour per IP
+const signupLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 3,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many accounts created from this IP. Try again later.' },
+  keyGenerator: (req) => ipKeyGenerator(req.ip),  // GISTAPP_IPV6_FIX
+});
+
+// Login: 10 attempts / 15 min per IP + email combo (prevents brute-force)
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many login attempts. Try again in 15 minutes.' },
+  keyGenerator: (req) => ipKeyGenerator(req.ip) + '|' + String((req.body && req.body.email) || '').toLowerCase(),  // GISTAPP_IPV6_FIX
+});
+
+// Forgot-password: 5 requests / hour per IP
+const pwResetLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many password reset requests. Try again later.' },
+});
+
+// Verify-resend: 3 requests / hour per email
+const resendLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 3,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many resend requests. Try again later.' },
+  keyGenerator: (req) => ipKeyGenerator(req.ip) + '|' + String((req.body && req.body.email) || '').toLowerCase(),  // GISTAPP_IPV6_FIX
+});
+
+// Upload: 60 files / hour per user
+const uploadLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Upload limit reached. Try again in an hour.' },
+});
+
+// Apply global limiter to every /api/* request
+app.use('/api', globalLimiter);
+
+console.log('✅ Rate limiting enabled (global 200/min, signup 3/hr, login 10/15min)');
+
 const server = http.createServer(app);
 const io     = new Server(server, { cors: { origin: '*' } });
 const JWT_SECRET = process.env.JWT_SECRET || 'dev_secret';
@@ -157,18 +228,18 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage, limits: { fileSize: 20 * 1024 * 1024 } });
 
-/* ---------- cloudinary (permanent media storage) ---------- */
-const CLOUD_OK = !!(process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET);
-if (CLOUD_OK){
-  cloudinary.config({
-    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-    api_key:    process.env.CLOUDINARY_API_KEY,
-    api_secret: process.env.CLOUDINARY_API_SECRET,
-    secure:     true
+/* ---------- imagekit (permanent media storage) ---------- GISTAPP_IMAGEKIT_V1 */
+const IMAGEKIT_OK = !!(process.env.IMAGEKIT_PUBLIC_KEY && process.env.IMAGEKIT_PRIVATE_KEY && process.env.IMAGEKIT_URL_ENDPOINT);
+let imagekit = null;
+if (IMAGEKIT_OK){
+  imagekit = new ImageKit({
+    publicKey:   process.env.IMAGEKIT_PUBLIC_KEY,
+    privateKey:  process.env.IMAGEKIT_PRIVATE_KEY,
+    urlEndpoint: process.env.IMAGEKIT_URL_ENDPOINT
   });
-  console.log('✅ Cloudinary ready');
+  console.log('✅ ImageKit ready');
 } else {
-  console.warn('⚠️  Cloudinary env vars missing — uploads will fail. Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET');
+  console.warn('⚠️  ImageKit env vars missing — uploads will fail');
 }
 
 /* ---------- cloudinary (permanent media storage) ---------- */
@@ -178,14 +249,48 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 /* ---------- helpers ---------- */
-function auth(req,res,next){
+// GISTAPP_AUTH_HARDENING — block unverified users from writes
+async function auth(req,res,next){
   const h = req.headers.authorization||'';
   const token = h.startsWith('Bearer ')?h.slice(7):null;
   if (!token) return res.status(401).json({error:'No token'});
-  try { req.user = jwt.verify(token, JWT_SECRET); next(); }
-  catch { res.status(401).json({error:'Invalid token'}); }
+  let payload;
+  try { payload = jwt.verify(token, JWT_SECRET); }
+  catch { return res.status(401).json({error:'Invalid token'}); }
+
+  // Trust the JWT fast path if it says verified or has google_id
+  let isVerified = payload.verified === true || !!payload.google_id;
+
+  if (!isVerified){
+    // Slow path — check DB (handles legacy tokens issued before hardening)
+    try {
+      const r = await pool.query('SELECT verified, google_id FROM users WHERE id=$1', [payload.id]);
+      if (!r.rowCount) return res.status(401).json({error:'User not found'});
+      const u = r.rows[0];
+      isVerified = !!u.verified || !!u.google_id;
+    } catch(e){
+      // On DB failure, fail-open to avoid locking users out during outages
+      console.warn('auth verify check failed:', e.message);
+      isVerified = true;
+    }
+  }
+
+  // Block non-GET requests for unverified users
+  if (!isVerified && req.method !== 'GET'){
+    return res.status(403).json({ error: 'Verify your email first', needsVerification: true });
+  }
+
+  req.user = payload;
+  req.user.verified = isVerified;
+  next();
 }
-const sign = u => jwt.sign({id:u.id,email:u.email}, JWT_SECRET, {expiresIn:'30d'});
+// GISTAPP_SIGNUP_HARDENING — carry verified + google_id in JWT
+const sign = u => jwt.sign({
+  id: u.id,
+  email: u.email,
+  verified: !!u.verified,
+  google_id: u.google_id || null
+}, JWT_SECRET, {expiresIn:'30d'});
 
 async function isMember(chatId,userId){ const r = await pool.query('SELECT status,is_admin,muted,archived,favorite FROM chat_members WHERE chat_id=$1 AND user_id=$2',[chatId,userId]); return r.rows[0]; }
 async function isAdmin(chatId,userId){ const r = await pool.query("SELECT is_admin FROM chat_members WHERE chat_id=$1 AND user_id=$2 AND is_admin=true",[chatId,userId]); return r.rowCount>0; }
@@ -243,7 +348,7 @@ app.post('/api/onboard', auth, async (req,res) => {
 });
 
 /* ---------- auth ---------- */
-app.post('/api/signup', async (req,res)=>{
+app.post('/api/signup', signupLimiter, async (req,res)=>{
   try {
     // GISTAPP_RECAPTCHA_V1: verify captcha before doing anything else
     {
@@ -251,8 +356,41 @@ app.post('/api/signup', async (req,res)=>{
       const rv = await verifyRecaptcha(captchaToken, req.ip);
       if (!rv.ok){ return res.status(400).json({ error: rv.error || 'Captcha verification failed' }); }
     }
-    const { email, password, display_name } = req.body;
+    // GISTAPP_SIGNUP_HARDENING — server-side signup checks
+    const { email, password, display_name, terms_accepted, website } = req.body;
+
+    // Honeypot: bots fill hidden fields
+    if (website){ return res.status(400).json({ error: 'Signup rejected' }); }
+
+    // Terms must be accepted
+    if (!terms_accepted){ return res.status(400).json({ error: 'You must accept the Terms of Service and Privacy Policy' }); }
+
     if (!email || !password) return res.status(400).json({error:'Email and password required'});
+
+    // Password strength: 8+ chars, letters AND numbers
+    const pw = String(password);
+    if (pw.length < 8 || !/[a-zA-Z]/.test(pw) || !/[0-9]/.test(pw)){
+      return res.status(400).json({ error: 'Password must be 8+ characters with both letters and numbers' });
+    }
+
+    // Disposable email block
+    const DISPOSABLE = new Set([
+      'tempmail.com','tempmail.net','10minutemail.com','10minutemail.net','guerrillamail.com','guerrillamail.net',
+      'mailinator.com','trashmail.com','yopmail.com','yopmail.fr','throwawaymail.com','sharklasers.com',
+      'temp-mail.org','temp-mail.io','fakeinbox.com','maildrop.cc','dispostable.com','mintemail.com',
+      'mohmal.com','mytrashmail.com','spam4.me','spambox.us','getnada.com','guerrillamail.org',
+      'mailnesia.com','mailcatch.com','inboxbear.com','throwaway.email','tempinbox.com','harakirimail.com',
+      'mailmetrash.com','thankyou2010.com','mt2009.com','trash2009.com','trashymail.com','tyldd.com',
+      'uggsrock.com','wegwerfmail.de','wegwerfmail.net','wegwerfmail.org','spam.la','binkmail.com',
+      'bobmail.info','chammy.info','devnullmail.com','letthemeatspam.com','mail-temporaire.fr',
+      'mail.mezimages.net','mailzilla.com','mbx.cc','mega.zik.dj','meltmail.com','messagebeamer.de'
+    ]);
+    const emailDomain = String(email).toLowerCase().split('@')[1] || '';
+    if (DISPOSABLE.has(emailDomain)){ return res.status(400).json({ error: 'Please use a permanent email address (disposable emails not allowed)' }); }
+
+    // Phone-number-as-email block (some spam patterns)
+    if (/^\d{6,}@/.test(email)){ return res.status(400).json({ error: 'Invalid email format' }); }
+
     const exists = await pool.query('SELECT id FROM users WHERE email=$1',[email.toLowerCase()]);
     if (exists.rowCount) return res.status(409).json({error:'Email already registered'});
     const hash = await bcrypt.hash(password,10);
@@ -278,7 +416,7 @@ app.post('/api/signup', async (req,res)=>{
       .catch(mailErr => console.error('❌ Email send failed:', mailErr.message));
   } catch(e){ console.error(e); res.status(500).json({error:'Server error'}); }
 });
-app.post('/api/login', async (req,res)=>{
+app.post('/api/login', loginLimiter, async (req,res)=>{
   try {
     const { email, password } = req.body;
     const r = await pool.query('SELECT * FROM users WHERE email=$1',[email.toLowerCase()]);
@@ -857,9 +995,9 @@ app.post('/api/chats/:id/read', auth, async (req,res)=>{
 });
 
 /* ---------- upload ---------- */
-app.post('/api/upload', auth, upload.single('file'), async (req,res)=>{
+app.post('/api/upload', uploadLimiter, auth, upload.single('file'), async (req,res)=>{
   if (!req.file) return res.status(400).json({error:'No file'});
-  if (!CLOUD_OK){
+  if (!IMAGEKIT_OK){
     try { fs.unlinkSync(req.file.path); } catch(_){}
     return res.status(503).json({ error: 'Media storage not configured' });
   }
@@ -869,25 +1007,25 @@ app.post('/api/upload', auth, upload.single('file'), async (req,res)=>{
              : mime.startsWith('audio/') ? 'audio'
              : 'file';
   try {
-    const result = await cloudinary.uploader.upload(req.file.path, {
-      resource_type: 'auto',   // handles image / video / raw
-      folder: 'gistapp',
-      unique_filename: true,
-      overwrite: false
+    const result = await imagekit.upload({
+      file:      fs.readFileSync(req.file.path),
+      fileName:  req.file.filename,
+      folder:    '/gistapp',
+      useUniqueFileName: true
     });
-    try { fs.unlinkSync(req.file.path); } catch(_){}   // clean temp file
+    try { fs.unlinkSync(req.file.path); } catch(_){}
     res.json({
-      url: result.secure_url,
+      url:      result.url,
       type,
-      width: result.width || null,
-      height: result.height || null,
+      width:    result.width || null,
+      height:   result.height || null,
       duration: result.duration || null,
-      bytes: result.bytes || null
+      bytes:    result.size || null
     });
   } catch(e){
     try { fs.unlinkSync(req.file.path); } catch(_){}
-    console.error('cloudinary upload error:', e.message);
-    res.status(500).json({ error: 'Upload failed: ' + e.message });
+    console.error('ImageKit upload error:', e.message);
+    res.status(500).json({ error: 'Upload failed: ' + (e.message || 'unknown error') });
   }
 });
 
@@ -1052,7 +1190,7 @@ app.get('/verify-email-change', async (req, res) => {
 });
 
 /* ---------- resend verification ---------- */
-app.post('/api/verify/resend', async (req, res) => {
+app.post('/api/verify/resend', resendLimiter, async (req, res) => {
   try {
     const email = (req.body.email || '').toLowerCase().trim();
     if (!email) return res.status(400).json({ error: 'Email required' });
@@ -1734,7 +1872,7 @@ app.post('/api/lock/reset-action', auth, async (req, res) => {
 });
 
 /* ================= PASSWORD RESET ================= */
-app.post('/api/pw-reset/request', async (req, res) => {
+app.post('/api/pw-reset/request', pwResetLimiter, async (req, res) => {
   try {
     const email = String(req.body.email || '').toLowerCase().trim();
     if (!email) return res.status(400).json({ error: 'Email required' });

@@ -82,3 +82,24 @@ show_schema.js
 *.bakbootob.*
 *.baksignuptoken.*
 *.baksignuptoken2.*
+
+*.bakimagekit.*
+*.bakimagekitroute.*
+
+# batch backups
+*.bakhardening.*
+*.bakhardeningv2.*
+*.bakhardeningv3.*
+*.bakipv6.*
+*.bakratelimit.*
+*.bakuploadlim.*
+*.bakapito.*
+*.bakbirthdayfix.*
+*.bakdiscover2.*
+*.bakemoji.*
+*.bakintalias.*
+*.bakobfix2.*
+*.bakonbv2.*
+*.bakpolish.*
+*.bakwarmup.*
+diagnose_auth.js

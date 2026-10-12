@@ -87,7 +87,39 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--ink);tran
 .verify-wrap .v-resend{background:transparent;border:none;color:#6a62b8;font-weight:700;font-size:14px;cursor:pointer;padding:10px;font-family:inherit}
 
 /* ============ ONBOARDING ============ */
-#screen-onboarding{background:linear-gradient(160deg,#8b8fd6 0%,#b3a9dd 55%,#f4f1ff 100%);z-index:90;align-items:center;justify-content:center;padding:24px;overflow-y:auto}
+#screen-onboarding{background:#050505;z-index:90;align-items:center;justify-content:center;padding:24px 20px calc(24px + var(--safe-b,0px));overflow-y:auto}
+#screen-onboarding::before{content:"";position:absolute;width:340px;height:340px;border-radius:50%;background:#e85a3c;top:-100px;left:-120px;filter:blur(90px);opacity:.55;animation:orbA 18s ease-in-out infinite;pointer-events:none}
+#screen-onboarding::after{content:"";position:absolute;width:320px;height:320px;border-radius:50%;background:#4caf7a;bottom:-120px;right:-110px;filter:blur(90px);opacity:.55;animation:orbB 22s ease-in-out infinite;pointer-events:none}
+/* GISTAPP_OB_POLISH_V1 */
+#ob-root{position:relative;z-index:10;background:#fff;border-radius:28px;padding:32px 24px 28px;width:100%;max-width:440px;box-shadow:0 20px 60px rgba(0,0,0,.35);color:#1c1c22;font-size:15px}
+#ob-root .ob-title{font-size:24px}
+#ob-root .ob-sub{font-size:14px;color:#8e8e96;margin:0 0 20px}
+#ob-root .ob-field{margin:0 0 14px}
+#ob-root .ob-field label{font-size:12px;font-weight:700;letter-spacing:.5px;color:#8e8e96;text-transform:uppercase;display:block;margin-bottom:6px}
+#ob-root input, #ob-root textarea{width:100%;height:52px;background:#f3f4f6;border:none;border-radius:14px;padding:0 16px;font-size:15px;color:#1c1c22;outline:none;font-family:inherit;box-sizing:border-box}
+#ob-root textarea{height:auto;padding:14px 16px;min-height:60px;resize:none}
+#ob-root .ob-btn{width:100%;height:54px;background:#111;color:#fff;border:none;border-radius:14px;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer;margin-top:16px}
+#ob-root .ob-btn:disabled{opacity:.4;cursor:not-allowed}
+#ob-root .ob-skip{text-align:center;color:#8e8e96;font-size:13.5px;padding:14px 0 0;cursor:pointer}
+#ob-root .ob-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:8px 0 4px}
+#ob-root .ob-chip{background:#f3f4f6;color:#1c1c22;border:1.5px solid #e5e3ee;border-radius:14px;padding:14px 8px;font-size:12.5px;font-weight:600;font-family:inherit;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center}
+#ob-root .ob-chip .ic{font-size:20px;line-height:1}
+#ob-root .ob-chip.on{background:rgba(123,140,255,.15);border-color:#7b8cff;color:#5a6cff}
+#ob-root .ob-list{display:flex;flex-direction:column;gap:8px;margin:8px 0}
+#ob-root .ob-item{display:flex;align-items:center;gap:12px;padding:10px 12px;background:#f8f7fc;border-radius:14px;cursor:pointer;border:1.5px solid transparent}
+#ob-root .ob-item.on{background:rgba(123,140,255,.12);border-color:#7b8cff}
+#ob-root .ob-item .av{width:42px;height:42px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:14px;background-size:cover;background-position:center}
+#ob-root .ob-item .info{flex:1;min-width:0;display:flex;flex-direction:column}
+#ob-root .ob-item .info b{font-size:14.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#ob-root .ob-item .info small{font-size:12px;color:#8e8e96;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#ob-root .ob-item .join{background:#111;color:#fff;border:none;padding:8px 14px;border-radius:10px;font-size:12.5px;font-weight:700;font-family:inherit;cursor:pointer;flex-shrink:0}
+#ob-root .ob-item.on .join{background:rgba(123,140,255,.2);color:#5a6cff}
+body.dark #ob-root{background:#14141a;color:#fff}
+body.dark #ob-root .ob-title{color:#fff}
+body.dark #ob-root input, body.dark #ob-root textarea{background:#1e1e28;color:#fff}
+body.dark #ob-root .ob-chip{background:#1e1e28;color:#c5c5d0;border-color:#2a2a36}
+body.dark #ob-root .ob-item{background:#1a1a22}
+@media (max-width:420px){ #ob-root{padding:26px 20px 22px;border-radius:24px} #ob-root .ob-title{font-size:22px} }
 .ob-step{width:100%;max-width:460px;background:#fff;border-radius:28px;padding:28px 22px;box-shadow:0 30px 70px rgba(30,25,60,.25);color:#1c1c22;margin:auto}
 .ob-prog{display:flex;gap:6px;justify-content:center;margin-bottom:20px}
 .ob-prog span{height:4px;flex:1;max-width:44px;background:#e8e5f0;border-radius:2px}
@@ -97,6 +129,9 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--ink);tran
 .ob-avatar-wrap{display:flex;flex-direction:column;align-items:center;margin:8px 0 18px;cursor:pointer}
 .ob-avatar{width:96px;height:96px;border-radius:50%;background:linear-gradient(135deg,#7b8cff,#b58cff);display:flex;align-items:center;justify-content:center;color:#fff;font-size:34px;font-weight:700;background-size:cover;background-position:center;border:4px solid #f0edf5}
 .ob-avatar-hint{display:inline-flex;align-items:center;gap:5px;margin-top:10px;font-size:12.5px;color:#6a62b8;font-weight:700}
+.ob-sel{height:52px;padding:0 12px;border:1.5px solid #e5e3ee;border-radius:14px;background:#fff;font-size:15px;font-family:inherit;color:#1c1c22;outline:none;appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238e8e96' stroke-width='2.4' stroke-linecap='round'><polyline points='6 9 12 15 18 9'/></svg>");background-repeat:no-repeat;background-position:right 10px center;padding-right:28px}
+.ob-sel:focus{border-color:#7b8cff}
+body.dark .ob-sel{background:#1a1a22;border-color:#2a2a36;color:#fff}
 .ob-field{margin-bottom:14px}
 .ob-field label{display:block;font-size:11.5px;font-weight:700;color:#8e8e96;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px}
 .ob-field input,.ob-field textarea{width:100%;border:1.5px solid #e8e5f0;background:#faf9fd;border-radius:14px;padding:14px 16px;font-size:15px;color:#1c1c22;outline:none;font-family:inherit;box-sizing:border-box}
@@ -782,6 +817,20 @@ body:has(#screen-terms.active) .bottom-nav{display:none!important}
 .legal-footer-note b{color:var(--ink)}
 .legal-badge{display:inline-block;background:rgba(37,211,102,.15);color:#1a9d4e;font-size:11px;font-weight:700;letter-spacing:.4px;padding:4px 10px;border-radius:20px;margin-left:6px;vertical-align:middle}
 
+
+
+/* GISTAPP_OB_SEL_LIGHT — clean select styling that matches the theme */
+.ob-sel{background:#fff;color:#1c1c22;border:1.5px solid #e5e3ee;border-radius:14px;height:52px;padding:0 30px 0 14px;font-size:15px;font-family:inherit;appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238e8e96' stroke-width='2.4' stroke-linecap='round'><polyline points='6 9 12 15 18 9'/></svg>");background-repeat:no-repeat;background-position:right 12px center;outline:none}
+.ob-sel:focus{border-color:#7b8cff}
+body.dark .ob-sel{background:#1a1a22;color:#fff;border-color:#2a2a36}
+
+/* GISTAPP_DISCOVER_V2 */
+.ob-tabs{display:flex;gap:8px;margin:0 0 16px;background:#e9e7f1;padding:4px;border-radius:14px}
+.ob-tab{flex:1;background:transparent;border:none;color:#5a5a68;font-size:13.5px;font-weight:700;padding:10px 8px;border-radius:11px;cursor:pointer;font-family:inherit;transition:all .15s}
+.ob-tab.on{background:#fff;color:#1c1c22;box-shadow:0 2px 6px rgba(0,0,0,.06)}
+body.dark .ob-tabs{background:#14141a}
+body.dark .ob-tab{color:#9a9aa5}
+body.dark .ob-tab.on{background:#2a2a36;color:#fff}
 </style>
 </head>
 <body>
@@ -846,19 +895,26 @@ body:has(#screen-terms.active) .bottom-nav{display:none!important}
         <div class="err" id="auth-err"></div>
 
         <div id="auth-signup-fields">
+            <!-- GISTAPP_SIGNUP_HARDENING: honeypot (hidden from users, filled by bots) -->
+            <input type="text" name="website" id="auth-website" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0;pointer-events:none">
           <div style="display:flex;gap:12px;margin-bottom:12px">
             <input id="auth-first" type="text" placeholder="First Name" autocomplete="given-name" style="margin-bottom:0">
             <input id="auth-last" type="text" placeholder="Last Name" autocomplete="family-name" style="margin-bottom:0">
           </div>
           <input id="auth-email-su" type="email" data-i18n-placeholder="Email" placeholder="Email" autocomplete="email" spellcheck="false">
           <div class="pw-wrap">
-            <input id="auth-pass-su" type="password" data-i18n-placeholder="Password" placeholder="Password" autocomplete="new-password">
+            <input id="auth-pass-su" type="password" data-i18n-placeholder="Password (8+ chars, letters + numbers)" placeholder="Password" autocomplete="new-password">
             <button type="button" class="eye" onclick="togglePw('auth-pass-su',this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg></button>
           </div>
           <div id="g-recaptcha-signup"
            class="g-recaptcha"
            data-sitekey="6LcIOestAAAAAPVC-ZLbbKVr6Fh7WyUbrsYWOnvg"
            data-callback="onRecaptchaSolved"></div>
+                    <label class="auth-terms" id="auth-terms-wrap">
+            <input type="checkbox" id="auth-terms-check">
+            <span>I agree to the <a onclick="openTerms();return false" href="#">Terms of Service</a> and <a onclick="openPrivacy();return false" href="#">Privacy Policy</a></span>
+          </label>
+          <div class="err" id="auth-terms-err" style="color:#e5484d;font-size:12.5px;text-align:center;margin:-4px 0 10px;min-height:14px"></div>
           <button class="auth-main-btn" id="auth-btn-su" data-i18n="Create account">Create account</button>
           <p class="auth-terms">Signing up means you agree to the <a onclick="openPrivacy()">Privacy Policy</a> and <a onclick="openTerms()">Terms of Service</a>.</p>
           <p class="auth-switch">Have an account? <a onclick="switchAuthMode('login')">Log in here</a></p>
@@ -1643,10 +1699,34 @@ const RTC_CONFIG = { iceServers:[
 ] };
 
 /* ---------- HELPERS ---------- */
+// GISTAPP_API_TIMEOUT_V1 — friendly errors + cold-start handling
 async function api(path, opts={}){
   const headers = { 'Content-Type':'application/json', ...(opts.headers||{}) };
   if (token) headers.Authorization = 'Bearer ' + token;
-  const res = await fetch(path, { ...opts, headers });
+
+  // Timeout: 30s first request (Render cold start), 15s after warm
+  const isCold = !window.__serverWarm;
+  const timeoutMs = opts.timeout || (isCold ? 30000 : 15000);
+
+  const controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+  const timer = controller ? setTimeout(function(){ controller.abort(); }, timeoutMs) : null;
+
+  let res;
+  try {
+    res = await fetch(path, { ...opts, headers, signal: controller ? controller.signal : undefined });
+    window.__serverWarm = true;
+  } catch (e) {
+    clearTimeout(timer);
+    if (e && (e.name === 'AbortError' || /aborted/i.test(e.message||''))) {
+      throw new Error('Server is waking up — try again in a few seconds');
+    }
+    if (e && /Failed to fetch|NetworkError|Load failed/i.test(e.message||'')) {
+      throw new Error('Cannot reach server — check your internet and try again');
+    }
+    throw e;
+  }
+  clearTimeout(timer);
+
   const data = await res.json().catch(()=>({}));
   if (!res.ok) throw new Error(data.error || 'Request failed');
   return data;
@@ -1745,12 +1825,31 @@ async function submitSignup(){
   const password = document.getElementById('auth-pass-su').value||'';
   const display_name = (first + ' ' + last).trim() || email.split('@')[0];
   if (!email || !password){ errEl.textContent = 'Email and password required.'; return; }
-  if (password.length < 6){ errEl.textContent = 'Password must be at least 6 characters.'; return; }
+  if (password.length < 8 || !/[a-zA-Z]/.test(password) || !/[0-9]/.test(password)){
+    errEl.textContent = 'Password needs 8+ characters with both letters and numbers.';
+    return;
+  }
+  // GISTAPP_OB_POLISH_V1: require terms agreement
+  var termsEl = document.getElementById('auth-terms-check');
+  var termsErr = document.getElementById('auth-terms-err');
+  if (termsErr) termsErr.textContent = '';
+  if (!termsEl || !termsEl.checked){
+    if (termsErr) termsErr.textContent = 'Please agree to the Terms and Privacy Policy.';
+    else errEl.textContent = 'Please agree to the Terms and Privacy Policy.';
+    return;
+  }
   try {
     // GISTAPP_RECAPTCHA_V1: fetch captcha token before signup
     let captchaToken = '';
     try { captchaToken = (await requestCaptcha()) || ''; } catch(_){}
-    const data = await api('/api/signup', { method:'POST', body: JSON.stringify({ email, password, display_name, captcha: captchaToken }) });
+    const honeypotEl = document.getElementById('auth-website');
+    const termsEl = document.getElementById('auth-terms-check');
+    const data = await api('/api/signup', { method:'POST', body: JSON.stringify({
+      email, password, display_name,
+      captcha: captchaToken,
+      terms_accepted: !!(termsEl && termsEl.checked),
+      website: (honeypotEl && honeypotEl.value) || ''
+    }) });
     // GISTAPP_SIGNUP_SAVE_TOKEN: save token BEFORE the verification return
     if (data.token){ token = data.token; localStorage.setItem('token', token); me = data.user; }
     if (data.needsVerification){ showVerify(email, data.emailSent, data.emailError); return; }
@@ -1778,6 +1877,18 @@ async function submitLogin(){
 
 async function handleGoogleCredential(response){
   if (!response || !response.credential) return;
+  // GISTAPP_OB_POLISH_V1: require terms agreement (skip if user is already logged in)
+  if (!token){
+    var termsEl = document.getElementById('auth-terms-check');
+    var termsErr = document.getElementById('auth-terms-err');
+    if (termsErr) termsErr.textContent = '';
+    if (!termsEl || !termsEl.checked){
+      if (termsErr) termsErr.textContent = 'Please agree to the Terms and Privacy Policy before continuing.';
+      var errEl0 = document.getElementById('auth-err');
+      if (errEl0) errEl0.textContent = 'Please agree to the Terms and Privacy Policy.';
+      return;
+    }
+  }
   try {
     const data = await api('/api/auth/google', { method:'POST', body: JSON.stringify({ credential: response.credential }) });
     token = data.token; localStorage.setItem('token', token); me = data.user;
@@ -4134,6 +4245,34 @@ function applyLanguage(){
   });
 }
 
+/* GISTAPP_WARMUP_V1: ping server on load to wake Render free tier */
+(function(){
+  if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') return;
+  var pinged = false;
+  function ping(){
+    if (pinged) return; pinged = true;
+    var t = Date.now();
+    fetch('/api/me', { method: 'GET', cache: 'no-store', credentials: 'omit' })
+      .then(function(r){
+        console.log('🔥 warm-up: server awake in ' + (Date.now() - t) + 'ms');
+      })
+      .catch(function(e){
+        console.warn('warm-up ping failed (will retry):', e.message);
+        pinged = false;
+        setTimeout(ping, 3000);
+      });
+  }
+  ping();
+  // Also ping on first user interaction if page sat idle a while
+  ['click','touchstart','focusin'].forEach(function(ev){
+    document.addEventListener(ev, function once(){
+      if (Date.now() - _pageLoad > 10000) ping();
+      document.removeEventListener(ev, once, true);
+    }, { once: true, capture: true });
+  });
+  var _pageLoad = Date.now();
+})();
+
 /* GISTAPP_CAPTCHA_HIDE_LOCAL: reCAPTCHA can't run on localhost */
 (function(){
   var isLocal = location.hostname === 'localhost'
@@ -4333,6 +4472,40 @@ const OB_STATE = {
 // is declared as OB_STATE. Point both names at the same object.
 const OB = OB_STATE;
 
+/* GISTAPP_DISCOVER_V2 — real users + communities for onboarding */
+async function loadDiscoverData(){
+  if (OB._discoverLoaded) return;
+  OB._discoverLoaded = true;
+  OB.loading = true;
+  try { obRender(); } catch(_){}
+  try {
+    var usersPromise = (typeof api === 'function')
+      ? api('/api/users/suggested').catch(function(e){ console.warn('users/suggested:', e.message); return []; })
+      : Promise.resolve([]);
+    var commPromise = (typeof api === 'function')
+      ? api('/api/communities').catch(function(e){ console.warn('communities:', e.message); return []; })
+      : Promise.resolve([]);
+    var results = await Promise.all([usersPromise, commPromise]);
+    OB.people = Array.isArray(results[0]) ? results[0] : (results[0] && results[0].users) || [];
+    OB.allCommunities = Array.isArray(results[1]) ? results[1] : (results[1] && results[1].communities) || [];
+    console.log('discover loaded:', OB.people.length, 'users,', OB.allCommunities.length, 'communities');
+  } catch(e){ console.warn('loadDiscoverData error:', e.message); }
+  OB.loading = false;
+  try { obRender(); } catch(_){}
+}
+
+function obToggleCommunity(id){
+  var i = (OB.communities || []).indexOf(id);
+  if (i === -1) OB.communities.push(id);
+  else OB.communities.splice(i, 1);
+  obRender();
+}
+
+function obSetPickTab(tab){
+  OB.pickTab = tab;
+  obRender();
+}
+
 function showOnboarding(){
   if (!me){ return; }
   // Pre-fill name from login or email
@@ -4353,7 +4526,9 @@ function showOnboarding(){
   obRender();
 }
 
+const OB_INTERESTS = OB_INTERESTS_LIST; // GISTAPP_INTERESTS_ALIAS
 function obRender(){
+
   const root = document.getElementById('ob-root');
   if (!root) return;
   const needPassword = !(me && me.has_password);
@@ -4434,12 +4609,47 @@ function obRender(){
       '<div class="ob-prog">' + progress + '</div>' +
       '<h1 class="ob-title">When is your birthday?</h1>' +
       '<p class="ob-sub">You must be 18 or older. We never share your birthday.</p>' +
-      '<div class="ob-field">' +
-        '<label>Date of birth</label>' +
-        '<input id="ob-birthday" type="date" value="' + esc(OB.birthday) + '" max="' + maxDate + '">' +
-      '</div>' +
-      '<button class="ob-btn" onclick="obNext2()">Continue →</button>' +
-      '<div class="ob-skip" onclick="obSkipStep(2)">Skip for now</div>';
+      // GISTAPP_BIRTHDAY_FIX_V1 — 3 dropdowns (Android <input type=date> is buggy)
+      (function(){
+        var parts = (OB.birthday || '').split('-');
+        OB._by = parts[0] ? Number(parts[0]) : '';
+        OB._bm = parts[1] ? Number(parts[1]) : '';
+        OB._bd = parts[2] ? Number(parts[2]) : '';
+      })();
+      var _years = '';
+      var _curYear = new Date().getFullYear();
+      for (var y = _curYear - 18; y >= _curYear - 100; y--){
+        _years += '<option value="' + y + '"' + (OB._by === y ? ' selected' : '') + '>' + y + '</option>';
+      }
+      var _months = '';
+      var _mNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      for (var m = 1; m <= 12; m++){
+        _months += '<option value="' + m + '"' + (OB._bm === m ? ' selected' : '') + '>' + _mNames[m-1] + '</option>';
+      }
+      var _days = '';
+      for (var d = 1; d <= 31; d++){
+        _days += '<option value="' + d + '"' + (OB._bd === d ? ' selected' : '') + '>' + d + '</option>';
+      }
+      body =
+        '<div class="ob-prog">' + progress + '</div>' +
+        '<h1 class="ob-title">When is your birthday?</h1>' +
+        '<p class="ob-sub">You must be 18 or older. We never share your birthday.</p>' +
+        '<div class="ob-field">' +
+          '<label>Date of birth</label>' +
+          '<div style="display:flex;gap:8px">' +
+            '<select id="ob-bm" class="ob-sel" style="flex:1.4">' +
+              '<option value="">Month</option>' + _months +
+            '</select>' +
+            '<select id="ob-bd" class="ob-sel" style="flex:0.8">' +
+              '<option value="">Day</option>' + _days +
+            '</select>' +
+            '<select id="ob-by" class="ob-sel" style="flex:1">' +
+              '<option value="">Year</option>' + _years +
+            '</select>' +
+          '</div>' +
+        '</div>' +
+        '<button class="ob-btn" onclick="obNext2()">Continue →</button>' +
+        '<div class="ob-skip" onclick="obSkipStep(2)">Skip for now</div>';
   }
 
   // STEP 3 — Interests
@@ -4450,55 +4660,81 @@ function obRender(){
       '<p class="ob-sub">Pick at least 3. Shapes your feed.</p>' +
       '<div class="ob-grid">' +
         OB_INTERESTS.map(i =>
-          '<button type="button" class="ob-chip ' + (OB.interests.indexOf(i.id) !== -1 ? 'on' : '') + '" onclick="obToggleInterest(\'' + i.id + '\')"><span class="ic">' + i.ic + '</span>' + i.label + '</button>'
+          '<button type="button" class="ob-chip ' + (OB.interests.indexOf(i.id) !== -1 ? 'on' : '') + '" onclick="obToggleInterest(\'' + i.id + '\')"><span class="ic">' + (i.emoji || '') + '</span>' + (i.label || '') + '</button>'
         ).join('') +
       '</div>' +
       '<button class="ob-btn" id="ob-int-btn" onclick="obNext3()" ' + (OB.interests.length < 3 ? 'disabled' : '') + '>Continue →</button>' +
       '<div class="ob-skip" onclick="obSkipStep(3)">Skip for now</div>';
   }
 
-  // STEP 4 — Discover people (real users)
+  // STEP 4 — Discover: People / Communities tabs
   else if (OB.step === 4){
-    const list = OB.people || [];
-    const picked = list.filter(function(u){ return OB.following.indexOf(u.id) !== -1; }).length;
+    // Auto-load on first render of this step
+    if (!OB._discoverLoaded && !OB.loading) { setTimeout(loadDiscoverData, 0); }
+
+    const users = OB.people || [];
+    const comms = OB.allCommunities || [];
+    const tab = OB.pickTab || 'people';
+    const followsCount = (OB.follows || []).length;
+    const joinedCount = (OB.communities || []).length;
+
+    var head =
+      '<div class="ob-prog">' + progress + '</div>' +
+      '<h1 class="ob-title">Discover</h1>' +
+      '<p class="ob-sub">Follow people and join communities. Change any time.</p>' +
+      '<div class="ob-tabs">' +
+        '<button type="button" class="ob-tab ' + (tab==='people'?'on':'') + '" onclick="obSetPickTab(\'people\')">People' + (followsCount ? ' · ' + followsCount : '') + '</button>' +
+        '<button type="button" class="ob-tab ' + (tab==='communities'?'on':'') + '" onclick="obSetPickTab(\'communities\')">Communities' + (joinedCount ? ' · ' + joinedCount : '') + '</button>' +
+      '</div>';
+
+    var listBody = '';
 
     if (OB.loading){
-      body =
-        '<div class="ob-prog">' + progress + '</div>' +
-        '<h1 class="ob-title">Discover</h1>' +
-        '<p class="ob-sub">Loading people…</p>' +
-        '<div style="text-align:center;padding:40px 20px;color:var(--sub)">Just a moment…</div>';
-    } else if (!list.length){
-      // No users to show — should not happen since we auto-skip, but fallback
-      body =
-        '<div class="ob-prog">' + progress + '</div>' +
-        '<h1 class="ob-title">Discover</h1>' +
-        '<p class="ob-sub">No other users yet.</p>' +
-        '<button class="ob-btn" onclick="obNext4()">Continue →</button>' +
-        '<div class="ob-skip" onclick="obNext4()">Skip</div>';
-    } else {
-      body =
-        '<div class="ob-prog">' + progress + '</div>' +
-        '<h1 class="ob-title">Find people</h1>' +
-        '<p class="ob-sub">Follow people to see their posts. You can always change this later.</p>' +
-        '<div class="ob-list">' +
-          list.slice(0, 30).map(function(u){
-            const on = OB.following.indexOf(u.id) !== -1;
-            const color = u.avatar_color || colorFor(u.display_name || '?');
+      listBody = '<div style="text-align:center;padding:40px 20px;color:var(--sub)">Loading…</div>';
+    } else if (tab === 'people'){
+      if (!users.length){
+        listBody = '<div style="text-align:center;padding:40px 20px;color:var(--sub)">No other users yet.<br><small style="opacity:.7">Invite friends to see them here.</small></div>';
+      } else {
+        listBody = '<div class="ob-list">' +
+          users.slice(0, 30).map(function(u){
+            const on = (OB.follows || []).indexOf(u.id) !== -1;
+            const nm = u.display_name || u.username || 'User';
+            const color = u.avatar_color || colorFor(nm);
             const av = u.avatar_url
               ? '<div class="av" style="background-image:url(' + u.avatar_url + ');background-size:cover;background-position:center"></div>'
-              : '<div class="av" style="background:' + color + '">' + esc(initials(u.display_name)) + '</div>';
+              : '<div class="av" style="background:' + color + '">' + esc(initials(nm)) + '</div>';
             return '<div class="ob-item ' + (on?'on':'') + '" onclick="obToggleFollow(' + u.id + ')">' +
               av +
-              '<div class="info"><b>' + esc(u.display_name) + '</b>' +
+              '<div class="info"><b>' + esc(nm) + '</b>' +
               '<small>' + (u.username ? '@' + esc(u.username) : (u.bio ? esc(u.bio).slice(0,40) : 'On GistApp')) + '</small></div>' +
               '<button type="button" class="join">' + (on ? '✓ Following' : 'Follow') + '</button>' +
             '</div>';
           }).join('') +
-        '</div>' +
-        '<button class="ob-btn" onclick="obNext4()">Continue →</button>' +
-        '<div class="ob-skip" onclick="obSkipStep(4)">Skip for now</div>';
+        '</div>';
+      }
+    } else {
+      if (!comms.length){
+        listBody = '<div style="text-align:center;padding:40px 20px;color:var(--sub)">No communities yet.<br><small style="opacity:.7">Create one after onboarding.</small></div>';
+      } else {
+        listBody = '<div class="ob-list">' +
+          comms.slice(0, 30).map(function(c){
+            const on = (OB.communities || []).indexOf(c.id) !== -1;
+            const nm = c.name || 'Community';
+            const color = c.color || colorFor(nm);
+            return '<div class="ob-item ' + (on?'on':'') + '" onclick="obToggleCommunity(' + c.id + ')">' +
+              '<div class="av" style="background:' + color + '">' + esc(initials(nm)) + '</div>' +
+              '<div class="info"><b>' + esc(nm) + '</b>' +
+              '<small>' + (c.member_count ? c.member_count + ' members' : (c.description ? esc(c.description).slice(0,40) : 'Community')) + '</small></div>' +
+              '<button type="button" class="join">' + (on ? '✓ Joined' : 'Join') + '</button>' +
+            '</div>';
+          }).join('') +
+        '</div>';
+      }
     }
+
+    body = head + listBody +
+      '<button class="ob-btn" onclick="obNext4()">Continue →</button>' +
+      '<div class="ob-skip" onclick="obSkipStep(4)">Skip for now</div>';
   }
 
   // STEP 5 — Permissions
@@ -4624,13 +4860,53 @@ async function obCheckUsername(){
 function obNext1(){ OB.step = 2; obRender(); }
 
 async function obNext2(){
-  const v = (document.getElementById('ob-birthday').value || '').trim();
-  if (!v){ alert('Pick your birthday'); return; }
-  const age = Math.floor((Date.now() - new Date(v).getTime()) / (365.25*24*3600*1000));
-  if (age < 18){ alert('You must be 18 or older'); return; }
-  OB.birthday = v;
-  await obSaveProfile();
-  OB.step = 3; obRender();
+  try {
+    // GISTAPP_ONBOARDING_V2 — read from 3 dropdowns, fallback to legacy input
+    var y, m, d;
+    var byEl = document.getElementById('ob-by');
+    var bmEl = document.getElementById('ob-bm');
+    var bdEl = document.getElementById('ob-bd');
+    var legacyEl = document.getElementById('ob-birthday');
+
+    if (byEl && bmEl && bdEl){
+      y = Number(byEl.value); m = Number(bmEl.value); d = Number(bdEl.value);
+      if (!y || !m || !d){ alert('Please pick Month, Day, and Year'); return; }
+    } else if (legacyEl){
+      var v = (legacyEl.value || '').trim();
+      if (!v){ alert('Pick your birthday'); return; }
+      var p = v.split('-');
+      y = Number(p[0]); m = Number(p[1]); d = Number(p[2]);
+    } else {
+      alert('Birthday input missing — try Skip for now');
+      return;
+    }
+
+    // Validate real date
+    var dob = new Date(y, m - 1, d);
+    if (dob.getFullYear() !== y || dob.getMonth() !== m - 1 || dob.getDate() !== d){
+      alert('That date doesn\'t look right — please check');
+      return;
+    }
+
+    // Age check
+    var now = new Date();
+    var age = now.getFullYear() - y;
+    var mo = now.getMonth() - (m - 1);
+    if (mo < 0 || (mo === 0 && now.getDate() < d)) age--;
+    if (age < 18){ alert('You must be 18 or older'); return; }
+
+    var pad = function(n){ return String(n).padStart(2, '0'); };
+    OB.birthday = y + '-' + pad(m) + '-' + pad(d);
+
+    // Save (fails silently if offline — user can retry)
+    try { await obSaveProfile(); } catch(err){ console.warn('save profile:', err); }
+
+    OB.step = 3;
+    obRender();
+  } catch(err){
+    console.error('obNext2 error:', err);
+    alert('Something went wrong: ' + (err.message || 'unknown error'));
+  }
 }
 
 function obToggleInterest(id){
@@ -4653,14 +4929,25 @@ async function obNext3(){
 }
 
 function obToggleFollow(userId){
-  const i = OB.following.indexOf(userId);
-  if (i === -1) OB.following.push(userId);
-  else OB.following.splice(i, 1);
+  // GISTAPP_DISCOVER_V2: unified — use OB.follows only
+  if (!OB.follows) OB.follows = [];
+  const i = OB.follows.indexOf(userId);
+  if (i === -1) OB.follows.push(userId);
+  else OB.follows.splice(i, 1);
   obRender();
 }
 
 async function obNext4(){
-  try { await api('/api/onboard/picks', { method:'POST', body: JSON.stringify({ follows: OB.follows, joined_communities: OB.joined_communities }) }); } catch(_){}
+  // GISTAPP_DISCOVER_V2: send follows + joined_communities (unified names)
+  try {
+    await api('/api/onboard/picks', {
+      method:'POST',
+      body: JSON.stringify({
+        follows: OB.follows || [],
+        joined_communities: OB.communities || []
+      })
+    });
+  } catch(e){ console.warn('onboard/picks:', e.message); }
   OB.step = 5; obRender();
 }
 
