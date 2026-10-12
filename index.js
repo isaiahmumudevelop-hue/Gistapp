@@ -32,23 +32,38 @@ const {
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 const qrcode       = require('qrcode');
 
-/* ---------- mailer (Gmail SMTP) ---------- */
-const mailer = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 587,
-  secure: false,
-  requireTLS: true,
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS
-  },
-  tls: { rejectUnauthorized: false }
-});
+/* ---------- mailer (Gmail OAuth2) — GISTAPP_GMAIL_OAUTH_V1 ---------- */
+const USE_GMAIL_OAUTH = !!(process.env.GMAIL_CLIENT_ID && process.env.GMAIL_CLIENT_SECRET && process.env.GMAIL_REFRESH_TOKEN);
+const GMAIL_SENDER = process.env.GMAIL_SENDER || process.env.SMTP_USER || 'onboarding@gistapp.onrender.com';
+
+const mailer = USE_GMAIL_OAUTH
+  ? nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        type: 'OAuth2',
+        user: GMAIL_SENDER,
+        clientId:     process.env.GMAIL_CLIENT_ID,
+        clientSecret: process.env.GMAIL_CLIENT_SECRET,
+        refreshToken: process.env.GMAIL_REFRESH_TOKEN
+      }
+    })
+  : nodemailer.createTransport({
+      // Legacy SMTP fallback (only used if OAuth env vars missing)
+      host: 'smtp.gmail.com',
+      port: 587,
+      secure: false,
+      requireTLS: true,
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS
+      },
+      tls: { rejectUnauthorized: false }
+    });
 
 // verify connection once at startup
 mailer.verify((err) => {
-  if (err) console.error('❌ SMTP verify failed:', err.message);
-  else console.log('✅ SMTP ready');
+  if (err) console.error('❌ Mail verify failed:', err.message);
+  else console.log('✅ Mail ready via ' + (USE_GMAIL_OAUTH ? 'Gmail OAuth2' : 'SMTP'));
 });
 
 /* ---------- reCAPTCHA verify (GISTAPP_RECAPTCHA_V1) ---------- */
@@ -92,7 +107,7 @@ async function sendVerificationEmail(toEmail, token, displayName){
   const baseUrl = process.env.APP_URL || 'http://localhost:3000';
   const link = baseUrl + '/verify?token=' + token;
   const info = await mailer.sendMail({
-    from: '"GistApp" <' + process.env.SMTP_USER + '>',
+    from: '"GistApp" <' + GMAIL_SENDER + '>',
     to: toEmail,
     replyTo: process.env.SMTP_USER,
     subject: 'Verify your GistApp account',
@@ -1448,10 +1463,23 @@ app.post('/api/lock/reset-pin', auth, async (req, res) => {
   } catch(e){ console.error(e); res.status(500).json({ error: 'Server error' }); }
 });
 
+// GISTAPP_LOCK_STATUS_GUARD
 app.get('/api/lock/status', auth, async (req, res) => {
   try {
     const me = await pool.query('SELECT pin_hash, app_lock_enabled, app_lock_timeout_min, chat_lock_enabled, locked_chats, totp_enabled FROM users WHERE id=$1', [req.user.id]);
     const u = me.rows[0];
+    // If user doesn't exist (deleted account / stale token), return safe defaults
+    if (!u){
+      return res.json({
+        pin_set: false,
+        app_lock_enabled: false,
+        app_lock_timeout_min: 0,
+        chat_lock_enabled: false,
+        locked_chats: [],
+        totp_enabled: false,
+        user_missing: true
+      });
+    }
     res.json({
       pin_set: !!u.pin_hash,
       app_lock_enabled: !!u.app_lock_enabled,
@@ -1460,7 +1488,7 @@ app.get('/api/lock/status', auth, async (req, res) => {
       locked_chats: Array.isArray(u.locked_chats) ? u.locked_chats : [],
       totp_enabled: !!u.totp_enabled
     });
-  } catch(e){ console.error(e); res.status(500).json({ error: 'Server error' }); }
+  } catch(e){ console.error('lock/status error:', e && e.message); res.status(500).json({ error: 'Server error' }); }
 });
 
 app.patch('/api/lock/settings', auth, async (req, res) => {

@@ -1725,6 +1725,7 @@ function onRecaptchaSolved(token){
 function requestCaptcha(){
   return new Promise(function(resolve){
     try {
+      if (window._recaptchaLocalBypass){ resolve(''); return; }
       if (typeof grecaptcha === 'undefined'){ resolve(''); return; }
       grecaptcha.ready(function(){
         const token = grecaptcha.getResponse();
@@ -4125,6 +4126,24 @@ function applyLanguage(){
     el.title = t(el.dataset.i18nTitle);
   });
 }
+
+/* GISTAPP_CAPTCHA_HIDE_LOCAL: reCAPTCHA can't run on localhost */
+(function(){
+  var isLocal = location.hostname === 'localhost'
+             || location.hostname === '127.0.0.1'
+             || location.hostname === '0.0.0.0'
+             || location.hostname.startsWith('192.168.')
+             || location.hostname.startsWith('10.');
+  if (!isLocal) return;
+  // Hide the widget container and replace with a neutral note
+  var el = document.getElementById('g-recaptcha-signup');
+  if (el){
+    el.style.display = 'none';
+    el.setAttribute('data-local-hidden', '1');
+  }
+  // Also tell requestCaptcha to always return empty on local
+  window._recaptchaLocalBypass = true;
+})();
 
 /* ================= 2FA ================= */
 async function open2FA(){

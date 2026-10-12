@@ -71,3 +71,9 @@ dump.sh
 *.bakviewers.*
 *.bakviewerscss.*
 show_schema.js
+
+# latest batch backups
+*.bakgmailoauth.*
+*.baklockguard.*
+*.bakhidelocal.*
+*.bakcaptchawire.*
