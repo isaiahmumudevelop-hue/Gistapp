@@ -1751,8 +1751,9 @@ async function submitSignup(){
     let captchaToken = '';
     try { captchaToken = (await requestCaptcha()) || ''; } catch(_){}
     const data = await api('/api/signup', { method:'POST', body: JSON.stringify({ email, password, display_name, captcha: captchaToken }) });
+    // GISTAPP_SIGNUP_SAVE_TOKEN: save token BEFORE the verification return
+    if (data.token){ token = data.token; localStorage.setItem('token', token); me = data.user; }
     if (data.needsVerification){ showVerify(email, data.emailSent, data.emailError); return; }
-    token = data.token; localStorage.setItem('token', token); me = data.user;
     if (me && me.onboarded === false){ showOnboarding(); return; }
     await enterApp();
   } catch(e){ errEl.textContent = e.message; }
@@ -3596,6 +3597,12 @@ async function boot(){
   if (!token){ show('screen-welcome'); return; }
   try {
     me = await api('/api/me');
+    // GISTAPP_BOOT_ONBOARDING_FIX: if onboarding not finished, route there instead
+    if (me && me.onboarded === false){
+      document.body.classList.add('hide-nav');
+      showOnboarding();
+      return;
+    }
     await enterApp();
   } catch(e){ try { localStorage.clear(); } catch(_){} token = null; show('screen-auth'); }
 }

@@ -77,3 +77,8 @@ show_schema.js
 *.baklockguard.*
 *.bakhidelocal.*
 *.bakcaptchawire.*
+
+# latest
+*.bakbootob.*
+*.baksignuptoken.*
+*.baksignuptoken2.*
