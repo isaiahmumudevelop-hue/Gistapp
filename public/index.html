@@ -901,6 +901,43 @@ body.dark .up-close:hover{background:#1e1e28}
 .accent-preview .pl{color:var(--accent);font-weight:600;font-size:14px}
 .accent-preview .ps{color:var(--sub);font-size:12px;margin-left:auto}
 .accent-close{width:100%;height:50px;background:var(--bg-2);color:var(--ink);border:none;border-radius:14px;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer}
+
+/* GISTAPP_FILE_PREVIEWS_V1 — custom audio player + file cards */
+.voice-player{display:flex;align-items:center;gap:10px;padding:8px 6px 8px 4px;min-width:220px;max-width:280px;user-select:none}
+.voice-play{width:40px;height:40px;border-radius:50%;background:var(--accent,#7b8cff);border:none;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:transform .12s}
+.voice-play:active{transform:scale(.92)}
+.voice-play svg{width:18px;height:18px}
+.voice-wave{flex:1;height:32px;display:flex;align-items:center;gap:2px;cursor:pointer}
+.voice-wave span{flex:1;background:var(--accent,#7b8cff);opacity:.35;border-radius:1px;transition:opacity .1s}
+.voice-wave span.played{opacity:1}
+.voice-time{font-size:11px;color:#8e8e96;font-variant-numeric:tabular-nums;flex-shrink:0;min-width:30px;text-align:right}
+.voice-speed{background:transparent;border:1px solid rgba(123,140,255,.4);color:var(--accent,#7b8cff);font-size:10.5px;font-weight:700;padding:3px 6px;border-radius:8px;cursor:pointer;font-family:inherit;flex-shrink:0}
+.bubble.out .voice-wave span{background:#fff;opacity:.5}
+.bubble.out .voice-wave span.played{opacity:.95}
+.bubble.out .voice-time,.bubble.out .voice-speed{color:#fff;border-color:rgba(255,255,255,.4)}
+.bubble.out .voice-play{background:#fff;color:var(--accent,#7b8cff)}
+
+/* File cards (PDF, zip, docx, etc.) */
+.file-card{display:flex;align-items:center;gap:12px;padding:10px 14px 10px 12px;background:rgba(123,140,255,.08);border:1px solid rgba(123,140,255,.18);border-radius:12px;min-width:200px;max-width:280px;cursor:pointer;transition:background .15s}
+.file-card:hover{background:rgba(123,140,255,.14)}
+.file-card .f-ic{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px;background:var(--accent-soft,rgba(123,140,255,.15));flex-shrink:0}
+.file-card .f-meta{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.file-card .f-name{font-size:13.5px;font-weight:700;color:var(--ink,#1c1c22);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.file-card .f-sub{font-size:11px;color:var(--sub,#8e8e96);text-transform:uppercase;letter-spacing:.4px}
+.file-card .f-dl{width:32px;height:32px;border-radius:50%;background:transparent;border:none;color:var(--accent,#7b8cff);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0}
+.bubble.out .file-card{background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.25)}
+.bubble.out .file-card .f-name{color:#fff}
+.bubble.out .file-card .f-sub{color:rgba(255,255,255,.7)}
+.bubble.out .file-card .f-ic{background:rgba(255,255,255,.2)}
+.bubble.out .file-card .f-dl{color:#fff}
+
+/* PDF preview modal */
+#pdf-modal{position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:99999;display:none;flex-direction:column}
+#pdf-modal.show{display:flex}
+.pdf-head{display:flex;align-items:center;justify-content:space-between;padding:14px 18px calc(14px + env(safe-area-inset-top,0px));color:#fff;background:rgba(0,0,0,.6);font-size:14px;font-weight:600}
+.pdf-head button{background:transparent;border:none;color:#fff;font-size:18px;cursor:pointer;padding:6px 10px}
+.pdf-body{flex:1;background:#fff}
+.pdf-body iframe{width:100%;height:100%;border:none}
 </style>
 
   
@@ -2398,6 +2435,158 @@ function updateHeaderStatus(){
   const isOnline = currentChat.other_id && onlineIds.has(Number(currentChat.other_id));
   el.innerHTML = '<span style="width:7px;height:7px;border-radius:50%;background:' + (isOnline?'#4ade80':'#c9c5dd') + ';display:inline-block"></span> ' + (isOnline?'Online':'Offline');
 }
+/* GISTAPP_FILE_PREVIEWS_V1 */
+function renderVoicePlayer(url, id){
+  // Generate a fake waveform (deterministic from URL)
+  var seed = 0;
+  for (var i=0;i<url.length;i++) seed = (seed * 31 + url.charCodeAt(i)) >>> 0;
+  var bars = [];
+  for (var j=0;j<32;j++){
+    seed = (seed * 1103515245 + 12345) >>> 0;
+    var h = 4 + (seed % 22);
+    bars.push('<span style="height:' + h + 'px"></span>');
+  }
+  return '<div class="voice-player" data-vid="' + id + '" data-url="' + esc(url) + '">' +
+    '<button class="voice-play" aria-label="Play">' +
+      '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>' +
+    '</button>' +
+    '<div class="voice-wave">' + bars.join('') + '</div>' +
+    '<span class="voice-time">0:00</span>' +
+    '<button class="voice-speed">1x</button>' +
+  '</div>';
+}
+
+function renderFileCard(url, caption){
+  var name = caption || url.split('/').pop().split('?')[0] || 'file';
+  if (!/\.[a-z0-9]{2,5}$/i.test(name)) name = name + '.bin';
+  var ext = (name.split('.').pop() || '').toLowerCase();
+  var meta = FILE_META[ext] || { icon:'📎', type:'FILE', color:null };
+  return '<div class="file-card" onclick="previewFile(\'' + esc(url) + '\',\'' + esc(name) + '\')">' +
+    '<div class="f-ic">' + meta.icon + '</div>' +
+    '<div class="f-meta">' +
+      '<span class="f-name">' + esc(name) + '</span>' +
+      '<span class="f-sub">' + meta.type + '</span>' +
+    '</div>' +
+    '<a class="f-dl" href="' + esc(url) + '" download target="_blank" onclick="event.stopPropagation()" title="Download">' +
+      '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12"/><path d="M6 12l6 6 6-6"/><path d="M4 20h16"/></svg>' +
+    '</a>' +
+  '</div>';
+}
+
+const FILE_META = {
+  pdf:  { icon:'📄', type:'PDF' },
+  doc:  { icon:'📝', type:'WORD' },
+  docx: { icon:'📝', type:'WORD' },
+  xls:  { icon:'📊', type:'EXCEL' },
+  xlsx: { icon:'📊', type:'EXCEL' },
+  ppt:  { icon:'📽️', type:'SLIDES' },
+  pptx: { icon:'📽️', type:'SLIDES' },
+  zip:  { icon:'🗜️', type:'ZIP' },
+  rar:  { icon:'🗜️', type:'RAR' },
+  '7z': { icon:'🗜️', type:'ARCHIVE' },
+  txt:  { icon:'📃', type:'TEXT' },
+  csv:  { icon:'📊', type:'CSV' },
+  json: { icon:'{}', type:'JSON' },
+  md:   { icon:'📃', type:'MARKDOWN' },
+  apk:  { icon:'🤖', type:'ANDROID' },
+  epub: { icon:'📚', type:'EBOOK' },
+  mp3:  { icon:'🎵', type:'AUDIO' },
+  wav:  { icon:'🎵', type:'AUDIO' }
+};
+
+function previewFile(url, name){
+  var ext = (name.split('.').pop() || '').toLowerCase();
+  if (ext === 'pdf'){
+    openPdfModal(url, name);
+    return;
+  }
+  // Default: download
+  window.open(url, '_blank');
+}
+
+function openPdfModal(url, name){
+  var m = document.getElementById('pdf-modal');
+  if (!m){
+    m = document.createElement('div');
+    m.id = 'pdf-modal';
+    m.innerHTML = '<div class="pdf-head"><span id="pdf-title"></span><button onclick="closePdfModal()">✕</button></div><div class="pdf-body"><iframe id="pdf-frame" allowfullscreen></iframe></div>';
+    document.body.appendChild(m);
+  }
+  document.getElementById('pdf-title').textContent = name;
+  document.getElementById('pdf-frame').src = url;
+  m.classList.add('show');
+}
+
+function closePdfModal(){
+  var m = document.getElementById('pdf-modal');
+  if (!m) return;
+  var f = document.getElementById('pdf-frame');
+  if (f) f.src = '';
+  m.classList.remove('show');
+}
+
+// Voice player interactions (delegated)
+document.addEventListener('click', function(e){
+  var play = e.target.closest && e.target.closest('.voice-play');
+  if (!play) return;
+  var player = play.closest('.voice-player');
+  if (!player) return;
+  playVoicePlayer(player);
+});
+
+async function playVoicePlayer(player){
+  var url = player.dataset.url;
+  if (!url) return;
+  var audio = player._audio;
+  if (!audio){
+    audio = new Audio(url);
+    player._audio = audio;
+    audio.addEventListener('timeupdate', function(){
+      var pct = audio.duration ? (audio.currentTime / audio.duration) : 0;
+      var bars = player.querySelectorAll('.voice-wave span');
+      var upto = Math.floor(bars.length * pct);
+      bars.forEach(function(b,i){ b.classList.toggle('played', i < upto); });
+      var t = player.querySelector('.voice-time');
+      if (t) t.textContent = fmtTime(audio.currentTime);
+    });
+    audio.addEventListener('ended', function(){
+      player.querySelector('.voice-play').innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+      player.querySelectorAll('.voice-wave span').forEach(function(b){ b.classList.remove('played'); });
+    });
+    // Speed toggle
+    var speed = player.querySelector('.voice-speed');
+    if (speed){
+      speed.addEventListener('click', function(ev){
+        ev.stopPropagation();
+        audio.playbackRate = audio.playbackRate === 1 ? 1.5 : (audio.playbackRate === 1.5 ? 2 : 1);
+        speed.textContent = audio.playbackRate + 'x';
+      });
+    }
+    // Seek by tapping waveform
+    var wave = player.querySelector('.voice-wave');
+    if (wave){
+      wave.addEventListener('click', function(ev){
+        if (!audio.duration) return;
+        var rect = wave.getBoundingClientRect();
+        var pct = (ev.clientX - rect.left) / rect.width;
+        audio.currentTime = Math.max(0, Math.min(audio.duration, pct * audio.duration));
+      });
+    }
+  }
+  if (audio.paused){
+    audio.play().catch(function(){});
+    player.querySelector('.voice-play').innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>';
+  } else {
+    audio.pause();
+    player.querySelector('.voice-play').innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+  }
+}
+
+function fmtTime(s){
+  s = Math.floor(s || 0);
+  return Math.floor(s/60) + ':' + String(s % 60).padStart(2, '0');
+}
+
 function appendBubble(m, incoming){
   const msgs = document.getElementById('dm-messages');
   if (!msgs) return;
@@ -2422,13 +2611,13 @@ function appendBubble(m, incoming){
     }
     else if (m.media_type === 'video'){
       if (auto){
-        inner = '<video src="' + m.media_url + '" controls preload="metadata" playsinline></video>';
+        inner = '<div style="position:relative;cursor:pointer" onclick="openLightbox(\'video\',\'' + m.media_url + '\')"><video src="' + m.media_url + '" preload="metadata" playsinline muted></video><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.25)"><svg width="44" height="44" viewBox="0 0 24 24" fill="white"><circle cx="12" cy="12" r="11" opacity=".6"/><path d="M10 8v8l6-4z" fill="#fff"/></svg></div></div>';
       } else {
         inner = '<div style="padding:20px;text-align:center;color:#8e8e93"><button class="btn" style="padding:10px 16px;background:rgba(123,140,255,.2);color:#7b8cff;border-radius:12px;border:none;cursor:pointer;font-family:inherit;font-weight:700" onclick="this.parentNode.innerHTML=\'<video src=&quot;' + m.media_url + '&quot; controls style=&quot;max-width:100%;border-radius:12px&quot;></video>\'">🎬 Tap to load video</button></div>';
       }
     }
-    else if (m.media_type === 'audio') inner = '<audio src="' + m.media_url + '" controls></audio>';
-    else inner = '<a href="' + m.media_url + '" target="_blank" style="color:#7b8cff">📎 Download</a>';
+    else if (m.media_type === 'audio') inner = renderVoicePlayer(m.media_url, m.id || ('v' + Math.random().toString(36).slice(2,7)));
+    else inner = renderFileCard(m.media_url, m.body || '');
     d.innerHTML = reply + inner + (m.body ? '<div class="caption">' + linkify(m.body) + '</div>' : '') + '<span class="t">' + timeShort(m.created_at) + receipt + '</span>';
   } else {
     d.innerHTML = reply + linkify(m.body) + '<span class="t">' + timeShort(m.created_at) + receipt + '</span>';
@@ -2719,9 +2908,17 @@ async function onRecordingStop(){
   toast('Sending voice…');
   try {
     const fd = new FormData(); fd.append('file', blob, 'voice.webm');
+    console.log('🎤 Uploading voice note:', blob.size, 'bytes, type:', blob.type);
     const res = await fetch('/api/upload', { method:'POST', headers:{ Authorization:'Bearer '+token }, body:fd });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Upload failed');
+    const text = await res.text();
+    let data = {};
+    try { data = JSON.parse(text); } catch(_){ console.warn('Non-JSON upload response:', text.slice(0, 200)); }
+    if (!res.ok){
+      const errMsg = data.error || ('HTTP ' + res.status + ': ' + (text.slice(0, 100) || 'Upload failed'));
+      console.error('❌ Upload failed:', res.status, errMsg);
+      throw new Error(errMsg);
+    }
+    console.log('✅ Voice upload OK:', data.url);
     const m = await api('/api/chats/'+currentChat.id+'/messages', { method:'POST', body: JSON.stringify({ body:'', media_url:data.url, media_type:'audio' }) });
     const msgs = document.getElementById('dm-messages');
     if (!msgs.querySelector('.bubble[data-id="'+m.id+'"]')) appendBubble(m, false);
