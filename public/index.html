@@ -1306,6 +1306,9 @@ if ('serviceWorker' in navigator){
       </button>
       <div class="dm-pill">
         <input type="text" id="dm-text" placeholder="Type a message" autocomplete="off">
+        <button type="button" class="dm-mic" id="dm-video-btn" onclick="openVideoRecorder()" title="Record video" style="margin-right:2px">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="6" width="14" height="12" rx="2.5"/><path d="M16.5 10.5l5-3v9l-5-3z"/></svg>
+        </button>
         <button type="button" class="dm-mic" id="dm-mic-btn" onclick="toggleVoice()">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15a3 3 0 003-3V6a3 3 0 00-6 0v6a3 3 0 003 3z"/><path d="M19 11a7 7 0 01-14 0M12 18v3"/></svg>
         </button>
@@ -2756,6 +2759,290 @@ function fmtTime(s){
   return Math.floor(s/60) + ':' + String(s % 60).padStart(2, '0');
 }
 
+/* GISTAPP_VIDEO_MSG_V1 — video messages */
+let _vrStream = null;
+let _vrRecorder = null;
+let _vrChunks = [];
+let _vrBlob = null;
+let _vrStart = 0;
+let _vrTimer = null;
+let _vrFacing = 'environment';
+let _vrMaxTimer = null;
+
+async function openVideoRecorder(){
+  if (!currentChat){ toast('Open a chat first'); return; }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    toast('Camera not available on this device');
+    return;
+  }
+  const modal = document.getElementById('video-recorder');
+  const preview = document.getElementById('vr-preview');
+  const playback = document.getElementById('vr-playback');
+  const reviewBar = document.getElementById('vr-review-bar');
+  const recordBtn = document.getElementById('vr-record-btn');
+  const flipBtn = document.getElementById('vr-flip-btn');
+  const timerEl = document.getElementById('vr-timer');
+
+  _vrBlob = null;
+  _vrChunks = [];
+  playback.style.display = 'none';
+  preview.style.display = 'block';
+  reviewBar.classList.remove('show');
+  recordBtn.style.display = 'flex';
+  flipBtn.classList.remove('hidden');
+  timerEl.classList.remove('show', 'rec');
+  timerEl.textContent = '0:00';
+  recordBtn.classList.remove('rec');
+
+  modal.classList.add('show');
+
+  try {
+    _vrStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: _vrFacing, width: { ideal: 720 }, height: { ideal: 1280 } },
+      audio: true
+    });
+    preview.srcObject = _vrStream;
+  } catch(e){
+    console.error('video preview error:', e);
+    toast('Camera/mic permission denied');
+    closeVideoRecorder();
+  }
+}
+
+function closeVideoRecorder(){
+  try { if (_vrStream) _vrStream.getTracks().forEach(function(t){ t.stop(); }); } catch(_){}
+  _vrStream = null;
+  if (_vrRecorder && _vrRecorder.state !== 'inactive'){
+    try { _vrRecorder.stop(); } catch(_){}
+  }
+  _vrRecorder = null;
+  clearInterval(_vrTimer);
+  clearTimeout(_vrMaxTimer);
+  _vrChunks = [];
+  _vrBlob = null;
+  const modal = document.getElementById('video-recorder');
+  if (modal) modal.classList.remove('show');
+}
+
+async function switchCamera(){
+  // GISTAPP_FLIP_CAMERA_V2 — uses exact constraint + device enumeration fallback
+  if (_vrRecorder && _vrRecorder.state === 'recording'){
+    toast('Stop recording first');
+    return;
+  }
+
+  // Flip target
+  _vrFacing = _vrFacing === 'environment' ? 'user' : 'environment';
+  const targetLabel = _vrFacing === 'user' ? 'Front camera' : 'Back camera';
+
+  // Stop current tracks
+  try { if (_vrStream) _vrStream.getTracks().forEach(function(t){ t.stop(); }); } catch(_){}
+  _vrStream = null;
+
+  const preview = document.getElementById('vr-preview');
+  if (preview) preview.srcObject = null;
+
+  // Try 1: exact facingMode
+  try {
+    _vrStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { exact: _vrFacing }, width: { ideal: 720 }, height: { ideal: 1280 } },
+      audio: true
+    });
+    if (preview) preview.srcObject = _vrStream;
+    toast(targetLabel);
+    return;
+  } catch(err){
+    console.warn('exact facingMode failed:', err.message);
+  }
+
+  // Try 2: enumerate devices and pick by label
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const cams = devices.filter(function(d){ return d.kind === 'videoinput'; });
+    console.log('Available cameras:', cams.map(function(c){ return c.label || '(unnamed)'; }));
+    if (cams.length >= 2){
+      // Front cameras usually have "front" or "user" in label
+      const front = cams.find(function(c){ return /front|user|face/i.test(c.label); });
+      const back  = cams.find(function(c){ return /back|rear|environment/i.test(c.label); });
+      const target = _vrFacing === 'user' ? (front || cams[cams.length - 1]) : (back || cams[0]);
+      if (target && target.deviceId){
+        _vrStream = await navigator.mediaDevices.getUserMedia({
+          video: { deviceId: { exact: target.deviceId }, width: { ideal: 720 }, height: { ideal: 1280 } },
+          audio: true
+        });
+        if (preview) preview.srcObject = _vrStream;
+        toast(targetLabel);
+        return;
+      }
+    }
+  } catch(err){
+    console.warn('enumerateDevices fallback failed:', err.message);
+  }
+
+  // Try 3: just ideal facingMode (last resort)
+  try {
+    _vrStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: _vrFacing, width: { ideal: 720 }, height: { ideal: 1280 } },
+      audio: true
+    });
+    if (preview) preview.srcObject = _vrStream;
+    toast(targetLabel);
+  } catch(err){
+    console.error('all camera flips failed:', err);
+    toast('Could not switch camera');
+    // Try to restore back camera
+    _vrFacing = 'environment';
+    try {
+      _vrStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment' },
+        audio: true
+      });
+      if (preview) preview.srcObject = _vrStream;
+    } catch(_){}
+  }
+}
+
+function toggleVideoRecording(){
+  const btn = document.getElementById('vr-record-btn');
+  if (_vrRecorder && _vrRecorder.state === 'recording'){
+    // STOP
+    try { _vrRecorder.stop(); } catch(_){}
+    return;
+  }
+
+  if (!_vrStream){ toast('Camera not ready'); return; }
+
+  let mime = '';
+  const candidates = ['video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm','video/mp4'];
+  for (var i=0;i<candidates.length;i++){
+    if (MediaRecorder.isTypeSupported(candidates[i])){ mime = candidates[i]; break; }
+  }
+
+  _vrChunks = [];
+  try {
+    _vrRecorder = mime ? new MediaRecorder(_vrStream, { mimeType: mime }) : new MediaRecorder(_vrStream);
+  } catch(e){
+    toast('Recording not supported');
+    return;
+  }
+
+  _vrRecorder.ondataavailable = function(ev){
+    if (ev.data && ev.data.size > 0) _vrChunks.push(ev.data);
+  };
+  _vrRecorder.onstop = onVideoRecordingStop;
+  _vrRecorder.start();
+
+  _vrStart = Date.now();
+  btn.classList.add('rec');
+  const timerEl = document.getElementById('vr-timer');
+  timerEl.classList.add('show', 'rec');
+  clearInterval(_vrTimer);
+  _vrTimer = setInterval(function(){
+    const s = Math.floor((Date.now()-_vrStart)/1000);
+    timerEl.textContent = String(Math.floor(s/60)).padStart(2,'0') + ':' + String(s%60).padStart(2,'0');
+  }, 250);
+
+  // Auto-stop at 60s
+  clearTimeout(_vrMaxTimer);
+  _vrMaxTimer = setTimeout(function(){
+    if (_vrRecorder && _vrRecorder.state === 'recording'){
+      try { _vrRecorder.stop(); } catch(_){}
+    }
+  }, 60000);
+}
+
+function onVideoRecordingStop(){
+  clearInterval(_vrTimer);
+  clearTimeout(_vrMaxTimer);
+  const dur = Date.now() - _vrStart;
+  document.getElementById('vr-record-btn').classList.remove('rec');
+  document.getElementById('vr-timer').classList.remove('rec');
+
+  // Stop camera stream (freeze frame)
+  try { if (_vrStream) _vrStream.getTracks().forEach(function(t){ t.stop(); }); } catch(_){}
+  _vrStream = null;
+
+  if (dur < 1000 || !_vrChunks.length){
+    toast('Video too short');
+    // Reset UI
+    document.getElementById('vr-timer').classList.remove('show');
+    return;
+  }
+
+  _vrBlob = new Blob(_vrChunks, { type: _vrChunks[0].type || 'video/webm' });
+  const playback = document.getElementById('vr-playback');
+  playback.src = URL.createObjectURL(_vrBlob);
+  playback.style.display = 'block';
+  document.getElementById('vr-preview').style.display = 'none';
+  document.getElementById('vr-record-btn').style.display = 'none';
+  document.getElementById('vr-flip-btn').classList.add('hidden');
+  document.getElementById('vr-timer').classList.remove('show');
+  document.getElementById('vr-review-bar').classList.add('show');
+}
+
+async function retakeVideo(){
+  _vrBlob = null;
+  _vrChunks = [];
+  const playback = document.getElementById('vr-playback');
+  if (playback.src) { try { URL.revokeObjectURL(playback.src); } catch(_){} }
+  playback.src = '';
+  playback.style.display = 'none';
+  document.getElementById('vr-preview').style.display = 'block';
+  document.getElementById('vr-record-btn').style.display = 'flex';
+  document.getElementById('vr-flip-btn').classList.remove('hidden');
+  document.getElementById('vr-review-bar').classList.remove('show');
+  document.getElementById('vr-timer').classList.remove('show', 'rec');
+  document.getElementById('vr-timer').textContent = '0:00';
+
+  try {
+    _vrStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: _vrFacing, width: { ideal: 720 }, height: { ideal: 1280 } },
+      audio: true
+    });
+    document.getElementById('vr-preview').srcObject = _vrStream;
+  } catch(e){
+    toast('Camera error');
+    closeVideoRecorder();
+  }
+}
+
+async function sendVideo(){
+  if (!_vrBlob || !currentChat) return;
+  const sendBtn = document.querySelector('.vr-review-btn.send');
+  if (sendBtn){ sendBtn.disabled = true; sendBtn.textContent = 'Sending…'; }
+  try {
+    const fd = new FormData();
+    fd.append('file', _vrBlob, 'video.webm');
+    console.log('🎥 Uploading video:', _vrBlob.size, 'bytes');
+    const res = await fetch('/api/upload', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + token },
+      body: fd
+    });
+    const text = await res.text();
+    let data = {};
+    try { data = JSON.parse(text); } catch(_){ console.warn('Non-JSON upload response:', text.slice(0, 200)); }
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    console.log('✅ Video upload OK:', data.url);
+
+    const m = await api('/api/chats/' + currentChat.id + '/messages', {
+      method: 'POST',
+      body: JSON.stringify({ body: '', media_url: data.url, media_type: 'video' })
+    });
+    const msgs = document.getElementById('dm-messages');
+    if (!msgs.querySelector('.bubble[data-id="'+m.id+'"]')) appendBubble(m, false);
+    messagesCache.push(m);
+    loadChatsDebounced();
+    try { playSendSound(); } catch(_){}
+    closeVideoRecorder();
+    toast('Video sent');
+  } catch(e){
+    console.error('Video send failed:', e);
+    toast(e.message || 'Video send failed');
+    if (sendBtn){ sendBtn.disabled = false; sendBtn.textContent = 'Send'; }
+  }
+}
+
 function appendBubble(m, incoming){
   const msgs = document.getElementById('dm-messages');
   if (!msgs) return;
@@ -3026,10 +3313,12 @@ function updateMicSendToggle(){
   const inp = document.getElementById('dm-text');
   const mic = document.getElementById('dm-mic-btn');
   const send = document.getElementById('dm-send-btn');
+  const vid = document.getElementById('dm-video-btn');
   if (!inp || !mic || !send) return;
-  if (_isRecording){ mic.style.display = 'flex'; send.style.display = 'none'; return; }
+  if (_isRecording){ mic.style.display = 'flex'; if (vid) vid.style.display = 'none'; send.style.display = 'none'; return; }
   const has = inp.value.trim().length > 0;
   mic.style.display = has ? 'none' : 'flex';
+  if (vid) vid.style.display = has ? 'none' : 'flex';
   send.style.display = has ? 'flex' : 'none';
 }
 async function toggleVoice(){
@@ -6029,5 +6318,49 @@ boot();
   console.log('✅ GISTAPP_INSIGHTS_STANDALONE ready');
 })();
 </script>
+
+<!-- GISTAPP_VIDEO_MSG_V1 -->
+<style>
+#video-recorder{position:fixed;inset:0;background:#000;z-index:99999;display:none;flex-direction:column;align-items:center;justify-content:center;padding:0}
+#video-recorder.show{display:flex}
+#vr-preview{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000}
+#vr-playback{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000;display:none}
+.vr-top{position:absolute;top:calc(20px + env(safe-area-inset-top,0px));left:0;right:0;display:flex;justify-content:space-between;padding:0 20px;z-index:10}
+.vr-icon-btn{width:44px;height:44px;border-radius:50%;background:rgba(0,0,0,.5);color:#fff;border:none;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(8px)}
+.vr-icon-btn svg{width:20px;height:20px}
+.vr-timer{position:absolute;top:calc(28px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);color:#fff;font-size:14px;font-weight:700;font-variant-numeric:tabular-nums;background:rgba(0,0,0,.5);padding:6px 14px;border-radius:20px;backdrop-filter:blur(8px);display:none;z-index:10}
+.vr-timer.show{display:block}
+.vr-timer.rec::before{content:'';display:inline-block;width:8px;height:8px;border-radius:50%;background:#ff3b30;margin-right:6px;animation:pulseRec 1.2s infinite}
+.vr-bottom{position:absolute;bottom:calc(40px + env(safe-area-inset-bottom,0px));left:0;right:0;display:flex;justify-content:center;align-items:center;gap:60px;z-index:10}
+.vr-record{width:76px;height:76px;border-radius:50%;background:transparent;border:5px solid #fff;cursor:pointer;position:relative;padding:0;display:flex;align-items:center;justify-content:center}
+.vr-record::after{content:'';width:58px;height:58px;border-radius:50%;background:#ff3b30;transition:all .15s}
+.vr-record.rec::after{width:26px;height:26px;border-radius:6px}
+.vr-review-bar{position:absolute;bottom:calc(40px + env(safe-area-inset-bottom,0px));left:0;right:0;display:none;justify-content:center;gap:16px;z-index:10;padding:0 20px}
+.vr-review-bar.show{display:flex}
+.vr-review-btn{flex:1;max-width:180px;height:52px;border-radius:14px;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer;border:none}
+.vr-review-btn.retake{background:rgba(255,255,255,.15);color:#fff}
+.vr-review-btn.send{background:#7b8cff;color:#fff}
+.vr-flip{position:absolute;right:20px;bottom:calc(60px + env(safe-area-inset-bottom,0px));width:52px;height:52px;border-radius:50%;background:rgba(255,255,255,.18);color:#fff;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(8px);z-index:10}
+.vr-flip svg{width:22px;height:22px}
+.vr-flip.hidden{display:none}
+</style>
+<div id="video-recorder">
+  <video id="vr-preview" autoplay muted playsinline></video>
+  <video id="vr-playback" playsinline controls></video>
+  <div class="vr-top">
+    <button class="vr-icon-btn" onclick="closeVideoRecorder()" aria-label="Close">✕</button>
+  </div>
+  <div class="vr-timer" id="vr-timer">0:00</div>
+  <button class="vr-flip" id="vr-flip-btn" onclick="switchCamera()" title="Flip camera">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 0 1-14 5.5"/><path d="M4 12a8 8 0 0 1 14-5.5"/><path d="M17.5 3v4h-4"/><path d="M6.5 21v-4h4"/></svg>
+  </button>
+  <div class="vr-bottom">
+    <button class="vr-record" id="vr-record-btn" onclick="toggleVideoRecording()" aria-label="Record"></button>
+  </div>
+  <div class="vr-review-bar" id="vr-review-bar">
+    <button class="vr-review-btn retake" onclick="retakeVideo()">Retake</button>
+    <button class="vr-review-btn send" onclick="sendVideo()">Send</button>
+  </div>
+</div>
 </body>
 </html>

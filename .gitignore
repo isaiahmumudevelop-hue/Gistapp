@@ -158,3 +158,6 @@ index.js.bakupstashsafe*
 
 check_tables.js
 migrate_insights.js
+
+*.bakvideomsg.*
+*.bakflipcam.*
