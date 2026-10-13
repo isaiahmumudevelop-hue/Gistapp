@@ -836,6 +836,37 @@ body.dark .ob-tab.on{background:#2a2a36;color:#fff}
 .auth-terms input[type="checkbox"]{appearance:auto !important;-webkit-appearance:checkbox !important;margin-top:3px;width:18px !important;height:18px !important;min-width:18px !important;flex-shrink:0;accent-color:#111;cursor:pointer;display:inline-block !important}
 .auth-terms span{flex:1}
 .auth-terms a{color:#111;font-weight:700;text-decoration:underline;cursor:pointer}
+
+/* GISTAPP_USER_PROFILE_MODAL */
+.up-modal{position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:2800;display:none;align-items:flex-end;justify-content:center;backdrop-filter:blur(2px)}
+.up-modal.show{display:flex}
+.up-sheet{background:#fff;width:100%;max-width:520px;max-height:88vh;border-radius:24px 24px 0 0;display:flex;flex-direction:column;overflow:hidden;animation:upSlide .28s ease}
+@keyframes upSlide{from{transform:translateY(30px);opacity:.4}to{transform:translateY(0);opacity:1}}
+.up-close-row{display:flex;justify-content:flex-end;padding:10px 12px 0}
+.up-close{background:transparent;border:none;font-size:16px;color:#8e8e96;cursor:pointer;padding:8px 10px;font-family:inherit;border-radius:50%}
+.up-close:hover{background:#f3f4f6}
+.up-body{overflow-y:auto;padding:0 20px 24px}
+.up-av{width:88px;height:88px;border-radius:50%;margin:0 auto 12px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:30px;background-size:cover;background-position:center;background-color:#7b8cff}
+.up-name{text-align:center;font-size:20px;font-weight:800;color:#1c1c22;margin:0 0 2px;letter-spacing:-.3px}
+.up-username{text-align:center;font-size:13.5px;color:#8e8e96;margin:0 0 12px}
+.up-bio{text-align:center;font-size:14px;color:#5a5a68;line-height:1.5;margin:8px 0 16px;padding:0 12px}
+.up-stats{display:flex;justify-content:center;gap:28px;padding:14px 0;border-top:1px solid #eceaf3;border-bottom:1px solid #eceaf3;margin-bottom:16px}
+.up-stat{text-align:center;cursor:default}
+.up-stat b{display:block;font-size:17px;font-weight:800;color:#1c1c22}
+.up-stat span{font-size:11.5px;color:#8e8e96;text-transform:uppercase;letter-spacing:.5px}
+.up-actions{display:flex;gap:10px;justify-content:center}
+.up-btn{flex:1;max-width:180px;height:48px;border:none;border-radius:14px;font-size:14.5px;font-weight:700;font-family:inherit;cursor:pointer;transition:transform .12s}
+.up-btn:active{transform:scale(.97)}
+.up-btn-follow{background:#111;color:#fff}
+.up-btn-follow.on{background:rgba(123,140,255,.15);color:#5a6cff}
+.up-btn-msg{background:#f3f4f6;color:#1c1c22}
+.up-btn-msg:hover{background:#e9e7f1}
+body.dark .up-sheet{background:#14141a;color:#fff}
+body.dark .up-name{color:#fff}
+body.dark .up-stat b{color:#fff}
+body.dark .up-stats{border-color:#26262f}
+body.dark .up-btn-msg{background:#1e1e28;color:#c5c5d0}
+body.dark .up-close:hover{background:#1e1e28}
 </style>
 
   
@@ -3198,6 +3229,80 @@ async function loadFeed(){
     box.innerHTML = _feedPosts.map(renderPostCard).join('');
   } catch(e){ box.innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; }
 }
+/* GISTAPP_USER_PROFILE_MODAL */
+async function openUserProfile(userId){
+  if (!userId) return;
+  if (Number(userId) === Number(me && me.id)){
+    // Own profile → use existing profile screen
+    openProfile();
+    return;
+  }
+  const modal = document.getElementById('up-modal');
+  const body  = document.getElementById('up-body');
+  if (!modal || !body) return;
+  body.innerHTML = '<div style="text-align:center;padding:40px 20px;color:#8e8e96">Loading…</div>';
+  modal.classList.add('show');
+  try {
+    const u = await api('/api/users/' + userId + '/profile-card');
+    const name = u.display_name || u.username || 'User';
+    const avStyle = u.avatar_url
+      ? 'background-image:url(' + u.avatar_url + ')'
+      : 'background:' + (u.avatar_color || colorFor(name));
+    const avInner = u.avatar_url ? '' : esc(initials(name));
+    body.innerHTML =
+      '<div class="up-av" style="' + avStyle + '">' + avInner + '</div>' +
+      '<h2 class="up-name">' + esc(name) + '</h2>' +
+      (u.username ? '<p class="up-username">@' + esc(u.username) + '</p>' : '<p class="up-username"></p>') +
+      (u.bio ? '<p class="up-bio">' + esc(u.bio) + '</p>' : '') +
+      '<div class="up-stats">' +
+        '<div class="up-stat"><b>' + (u.posts||0) + '</b><span>Posts</span></div>' +
+        '<div class="up-stat"><b>' + (u.followers||0) + '</b><span>Followers</span></div>' +
+        '<div class="up-stat"><b>' + (u.following||0) + '</b><span>Following</span></div>' +
+      '</div>' +
+      '<div class="up-actions">' +
+        '<button class="up-btn up-btn-follow' + (u.is_following?' on':'') + '" id="up-follow-btn" data-uid="' + userId + '">' + (u.is_following?'✓ Following':'Follow') + '</button>' +
+        '<button class="up-btn up-btn-msg" id="up-msg-btn" data-uid="' + userId + '">💬 Message</button>' +
+      '</div>';
+
+    document.getElementById('up-follow-btn').addEventListener('click', function(){ upToggleFollow(userId, this); });
+    document.getElementById('up-msg-btn').addEventListener('click', function(){ upMessage(userId); });
+  } catch(e){
+    body.innerHTML = '<div style="text-align:center;padding:40px 20px;color:#e5484d">' + esc(e.message || 'Could not load profile') + '</div>';
+  }
+}
+
+function closeUserProfile(){
+  const m = document.getElementById('up-modal');
+  if (m) m.classList.remove('show');
+}
+
+async function upToggleFollow(userId, btn){
+  const on = btn.classList.contains('on');
+  // Optimistic
+  btn.classList.toggle('on', !on);
+  btn.textContent = !on ? '✓ Following' : 'Follow';
+  try {
+    await api('/api/users/' + userId + '/follow', { method: 'POST' });
+    // Update feed state
+    _feedPosts.forEach(function(p){ /* nothing to update directly */ });
+  } catch(e){
+    // Rollback
+    btn.classList.toggle('on', on);
+    btn.textContent = on ? '✓ Following' : 'Follow';
+    toast(e.message || 'Could not follow');
+  }
+}
+
+async function upMessage(userId){
+  try {
+    const r = await api('/api/chats/dm', { method: 'POST', body: JSON.stringify({ user_id: userId }) });
+    closeUserProfile();
+    setTimeout(function(){ openChat(r.chat_id); }, 220);
+  } catch(e){
+    toast(e.message || 'Could not open chat');
+  }
+}
+
 function renderPostCard(p){
   const color = p.avatar_color || colorFor(p.display_name);
   const av = p.avatar_url ? '<div class="post-av" style="background-image:url('+p.avatar_url+')"></div>' : '<div class="post-av" style="background:'+color+'">'+esc(initials(p.display_name))+'</div>';
@@ -3209,7 +3314,8 @@ function renderPostCard(p){
   }
   const votes = (p.upvotes||0) - (p.downvotes||0);
   return '<article class="post" data-post-id="'+p.id+'"><div class="post-inner">' +
-    '<div class="post-head">' + av + '<div class="post-meta"><b>'+esc(p.display_name)+'</b><small>'+timeAgo(p.created_at)+'</small></div>' +
+    '<div class="post-head">' +
+      '<div style="cursor:pointer;display:flex;align-items:center;gap:10px;flex:1;min-width:0" onclick="event.stopPropagation();openUserProfile(' + p.user_id + ')">' + av + '<div class="post-meta"><b>'+esc(p.display_name)+'</b><small>'+timeAgo(p.created_at)+'</small></div></div>' +
     (Number(p.user_id)===Number(me.id) ? '<button class="post-menu" onclick="openPostMenu(event,'+p.id+')">⋯</button>' : '<button class="post-menu" onclick="openPostMenu(event,'+p.id+')">⋯</button>') + '</div>' +
     body + media +
     '<div class="post-stats"><span>'+(p.like_count||0)+' likes</span><span>'+(p.comment_count||0)+' comments</span></div>' +
@@ -5206,5 +5312,17 @@ boot();
 
 
 
+
+<!-- GISTAPP_USER_PROFILE_MODAL -->
+<div id="up-modal" class="up-modal" onclick="if(event.target===this)closeUserProfile()">
+  <div class="up-sheet" onclick="event.stopPropagation()">
+    <div class="up-close-row">
+      <button class="up-close" onclick="closeUserProfile()" aria-label="Close">✕</button>
+    </div>
+    <div class="up-body" id="up-body">
+      <div style="text-align:center;padding:40px 20px;color:#8e8e96">Loading…</div>
+    </div>
+  </div>
+</div>
 </body>
 </html>
