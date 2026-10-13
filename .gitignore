@@ -155,3 +155,6 @@ index.js.bakupstashsafe*
 *.baknotlogged.*
 *.bakswbust.*
 *.bakstandalone.*
+
+check_tables.js
+migrate_insights.js
