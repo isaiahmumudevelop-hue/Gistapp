@@ -35,38 +35,108 @@ const {
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 const qrcode       = require('qrcode');
 
-/* ---------- mailer (Gmail OAuth2) — GISTAPP_GMAIL_OAUTH_V1 ---------- */
-const USE_GMAIL_OAUTH = !!(process.env.GMAIL_CLIENT_ID && process.env.GMAIL_CLIENT_SECRET && process.env.GMAIL_REFRESH_TOKEN);
-const GMAIL_SENDER = process.env.GMAIL_SENDER || process.env.SMTP_USER || 'onboarding@gistapp.onrender.com';
+/* ---------- mailer via Gmail HTTP API (works on Render) ---------- GISTAPP_GMAIL_API_V1 */
+const USE_GMAIL_API = !!(process.env.GMAIL_CLIENT_ID && process.env.GMAIL_CLIENT_SECRET && process.env.GMAIL_REFRESH_TOKEN);
+const GMAIL_SENDER = process.env.GMAIL_SENDER || process.env.SMTP_USER || 'onboarding@gistapp.app';
 
-const mailer = USE_GMAIL_OAUTH
-  ? nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        type: 'OAuth2',
-        user: GMAIL_SENDER,
-        clientId:     process.env.GMAIL_CLIENT_ID,
-        clientSecret: process.env.GMAIL_CLIENT_SECRET,
-        refreshToken: process.env.GMAIL_REFRESH_TOKEN
-      }
-    })
-  : nodemailer.createTransport({
-      // Legacy SMTP fallback (only used if OAuth env vars missing)
-      host: 'smtp.gmail.com',
-      port: 587,
-      secure: false,
-      requireTLS: true,
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS
-      },
-      tls: { rejectUnauthorized: false }
+let _gmailTokenCache = { token: null, exp: 0 };
+async function getGmailAccessToken(){
+  if (_gmailTokenCache.token && Date.now() < _gmailTokenCache.exp - 30000){
+    return _gmailTokenCache.token;
+  }
+  const r = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: process.env.GMAIL_CLIENT_ID,
+      client_secret: process.env.GMAIL_CLIENT_SECRET,
+      refresh_token: process.env.GMAIL_REFRESH_TOKEN,
+      grant_type: 'refresh_token'
+    }).toString()
+  });
+  const data = await r.json();
+  if (!data.access_token){
+    throw new Error('Gmail token refresh failed: ' + JSON.stringify(data));
+  }
+  _gmailTokenCache.token = data.access_token;
+  _gmailTokenCache.exp = Date.now() + (data.expires_in || 3600) * 1000;
+  return data.access_token;
+}
+
+async function sendViaGmailAPI({ to, subject, html, text, from }){
+  const accessToken = await getGmailAccessToken();
+  const senderName = 'GistApp';
+  const fromHeader = '"' + senderName + '" <' + (from || GMAIL_SENDER) + '>';
+  const boundary = 'gist_' + Date.now() + '_' + Math.random().toString(36).slice(2,8);
+  const mime = [
+    'From: ' + fromHeader,
+    'To: ' + to,
+    'Subject: ' + subject,
+    'MIME-Version: 1.0',
+    'Content-Type: multipart/alternative; boundary="' + boundary + '"',
+    '',
+    '--' + boundary,
+    'Content-Type: text/plain; charset="UTF-8"',
+    '',
+    text || 'Please view this email in an HTML-compatible viewer.',
+    '',
+    '--' + boundary,
+    'Content-Type: text/html; charset="UTF-8"',
+    '',
+    html || text || '',
+    '',
+    '--' + boundary + '--',
+    ''
+  ].join('\r\n');
+
+  const raw = Buffer.from(mime).toString('base64')
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+  const r = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer ' + accessToken,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ raw })
+  });
+  if (!r.ok){
+    const err = await r.text();
+    throw new Error('Gmail API ' + r.status + ': ' + err.slice(0, 200));
+  }
+  return r.json();
+}
+
+// Shim so existing mailer.sendMail({...}) calls keep working
+const mailer = {
+  sendMail: async function(opts){
+    return sendViaGmailAPI({
+      to: opts.to,
+      subject: opts.subject,
+      html: opts.html,
+      text: opts.text,
+      from: GMAIL_SENDER
     });
+  },
+  verify: async function(cb){
+    try {
+      if (!USE_GMAIL_API){
+        console.warn('⚠️  Gmail env vars missing — emails will fail');
+        return cb && cb(new Error('Gmail not configured'));
+      }
+      await getGmailAccessToken();
+      console.log('✅ Mail ready via Gmail HTTP API');
+      cb && cb(null);
+    } catch(e){
+      console.error('❌ Mail verify failed:', e.message);
+      cb && cb(e);
+    }
+  }
+};
 
-// verify connection once at startup
+// verify at boot
 mailer.verify((err) => {
-  if (err) console.error('❌ Mail verify failed:', err.message);
-  else console.log('✅ Mail ready via ' + (USE_GMAIL_OAUTH ? 'Gmail OAuth2' : 'SMTP'));
+  if (err) console.error('❌ Mail not ready:', err.message);
 });
 
 /* ---------- reCAPTCHA verify (GISTAPP_RECAPTCHA_V1) ---------- */
@@ -205,14 +275,31 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage, limits: { fileSize: 20 * 1024 * 1024 } });
 
-/* ---------- upstash blob (permanent media storage) ---------- GISTAPP_UPSTASH_V1 */
+/* ---------- upstash blob (permanent media storage) ---------- GISTAPP_UPSTASH_SAFE */
 const UPSTASH_TOKEN = process.env.UPSTASH_BLOB_TOKEN || '';
 const UPSTASH_OK = !!UPSTASH_TOKEN;
 let blobBucket = null;
+let _upstashInitError = null;
+
+// Lazy + safe: never crash the server if the token is bad
+function getBlobBucket(){
+  if (blobBucket) return blobBucket;
+  if (!UPSTASH_OK){ _upstashInitError = 'UPSTASH_BLOB_TOKEN missing'; return null; }
+  try {
+    const { Bucket } = require('@upstash/blob');
+    blobBucket = new Bucket({ token: UPSTASH_TOKEN });
+    return blobBucket;
+  } catch(e){
+    _upstashInitError = e.message || String(e);
+    console.warn('⚠️  Upstash Blob init failed:', _upstashInitError);
+    console.warn('⚠️  Uploads will return 503 until UPSTASH_BLOB_TOKEN is valid.');
+    return null;
+  }
+}
+
+// Do NOT call getBlobBucket() at boot — only on first upload
 if (UPSTASH_OK){
-  const { Bucket } = require('@upstash/blob');
-  blobBucket = new Bucket({ token: UPSTASH_TOKEN });
-  console.log('✅ Upstash Blob ready');
+  console.log('📦 Upstash Blob token present (lazy init on first upload)');
 } else {
   console.warn('⚠️  UPSTASH_BLOB_TOKEN missing — uploads will fail');
 }
@@ -981,7 +1068,12 @@ app.post('/api/upload', uploadLimiter, auth, upload.single('file'), async (req,r
     const ext = orig.includes('.') ? orig.split('.').pop() : 'bin';
     const key = 'gistapp/' + Date.now() + '-' + Math.random().toString(36).slice(2, 8) + '.' + ext;
     const buf = fs.readFileSync(req.file.path);
-    const result = await blobBucket.put(key, buf, { contentType: mime });
+    const bucket = getBlobBucket();
+    if (!bucket){
+      try { fs.unlinkSync(req.file.path); } catch(_){}
+      return res.status(503).json({ error: 'Media storage not available: ' + (_upstashInitError || 'unknown') });
+    }
+    const result = await bucket.put(key, buf, { contentType: mime });
     try { fs.unlinkSync(req.file.path); } catch(_){}
     res.json({
       url: result.url,

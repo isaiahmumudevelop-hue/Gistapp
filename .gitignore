@@ -121,3 +121,8 @@ diagnose_auth.js
 *.baksurgical.*
 *.bakturnstilefix.*
 *.bakturnstilev2.*
+
+*.bakgmailapi.*
+*.baksimple.*
+*.baksantok.*
+*.baksantokv2.*
