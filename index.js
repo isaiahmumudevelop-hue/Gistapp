@@ -1,4 +1,23 @@
 require('dotenv').config();
+
+/* ---------- Sentry (error tracking) ---------- GISTAPP_SENTRY_V1 */
+const Sentry = require('@sentry/node');
+if (process.env.SENTRY_DSN){
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    environment: process.env.NODE_ENV || 'production',
+    tracesSampleRate: 0.1,       // 10% of transactions for perf monitoring
+    ignoreErrors: [
+      'Invalid credentials',
+      'Captcha required',
+      'No token',
+      'Invalid token'
+    ]
+  });
+  console.log('✅ Sentry ready');
+} else {
+  console.log('ℹ️  Sentry DSN missing — error tracking disabled');
+}
 const express    = require('express');
 const rateLimit  = require('express-rate-limit');  // GISTAPP_RATE_LIMIT_V1
 const { ipKeyGenerator } = require('express-rate-limit');  // GISTAPP_IPV6_FIX — normalize IPv6 to /56 subnet
@@ -18,9 +37,11 @@ const pool       = require('./db');
 process.on('uncaughtException', (err) => {
   console.error('💥 UNCAUGHT:', err.message);
   if (err.stack) console.error(err.stack.split('\n')[1]);
+  try { if (typeof Sentry !== 'undefined' && Sentry.captureException) Sentry.captureException(err); } catch(_){}
 });
 process.on('unhandledRejection', (reason) => {
   console.error('💥 UNHANDLED:', reason && reason.message || reason);
+  try { if (typeof Sentry !== 'undefined' && Sentry.captureException) Sentry.captureException(reason); } catch(_){}
 });
 
 const nodemailer   = require('nodemailer');
@@ -275,34 +296,38 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage, limits: { fileSize: 20 * 1024 * 1024 } });
 
-/* ---------- upstash blob (permanent media storage) ---------- GISTAPP_UPSTASH_SAFE */
-const UPSTASH_TOKEN = process.env.UPSTASH_BLOB_TOKEN || '';
-const UPSTASH_OK = !!UPSTASH_TOKEN;
-let blobBucket = null;
-let _upstashInitError = null;
 
-// Lazy + safe: never crash the server if the token is bad
+/* ---------- upstash blob (permanent media storage) ---------- GISTAPP_UPSTASH_FINAL */
+function _cleanUpstashToken(raw){
+  if (!raw) return '';
+  return String(raw)
+    .replace(/^\s+|\s+$/g, '')          // trim
+    .replace(/^["']|["']$/g, '')           // strip wrapping quotes
+    .replace(/\s+/g, '')                  // strip all whitespace
+    .replace(/[^A-Za-z0-9_\-]/g, '');    // keep only base64url chars
+}
+
+const UPSTASH_TOKEN_RAW = process.env.UPSTASH_BLOB_TOKEN || '';
+const UPSTASH_TOKEN = _cleanUpstashToken(UPSTASH_TOKEN_RAW);
+const UPSTASH_OK = UPSTASH_TOKEN.length >= 50 && UPSTASH_TOKEN.length <= 500;
+
+console.log('📦 Upstash token: raw=' + UPSTASH_TOKEN_RAW.length +
+            ' clean=' + UPSTASH_TOKEN.length +
+            ' first8=' + UPSTASH_TOKEN.slice(0, 8) +
+            ' last8=' + UPSTASH_TOKEN.slice(-8));
+
+// Lazy accessor — always uses the cleaned token
+let _blobBucket = null;
 function getBlobBucket(){
-  if (blobBucket) return blobBucket;
-  if (!UPSTASH_OK){ _upstashInitError = 'UPSTASH_BLOB_TOKEN missing'; return null; }
-  try {
-    const { Bucket } = require('@upstash/blob');
-    blobBucket = new Bucket({ token: UPSTASH_TOKEN });
-    return blobBucket;
-  } catch(e){
-    _upstashInitError = e.message || String(e);
-    console.warn('⚠️  Upstash Blob init failed:', _upstashInitError);
-    console.warn('⚠️  Uploads will return 503 until UPSTASH_BLOB_TOKEN is valid.');
-    return null;
+  if (_blobBucket) return _blobBucket;
+  if (!UPSTASH_OK){
+    throw new Error('UPSTASH_BLOB_TOKEN missing or invalid (clean len: ' + UPSTASH_TOKEN.length + ')');
   }
+  const { Bucket } = require('@upstash/blob');
+  _blobBucket = new Bucket({ token: UPSTASH_TOKEN });
+  return _blobBucket;
 }
 
-// Do NOT call getBlobBucket() at boot — only on first upload
-if (UPSTASH_OK){
-  console.log('📦 Upstash Blob token present (lazy init on first upload)');
-} else {
-  console.warn('⚠️  UPSTASH_BLOB_TOKEN missing — uploads will fail');
-}
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
@@ -1052,27 +1077,20 @@ app.post('/api/chats/:id/read', auth, async (req,res)=>{
 // GISTAPP_FILESTACK_V1
 // GISTAPP_UPSTASH_V1
 // GISTAPP_UPSTASH_V1
+// GISTAPP_UPSTASH_FINAL
 app.post('/api/upload', uploadLimiter, auth, upload.single('file'), async (req,res)=>{
   if (!req.file) return res.status(400).json({error:'No file'});
-  if (!UPSTASH_OK){
-    try { fs.unlinkSync(req.file.path); } catch(_){}
-    return res.status(503).json({ error: 'Media storage not configured' });
-  }
   const mime = req.file.mimetype || '';
   const type = mime.startsWith('image/') ? 'image'
              : mime.startsWith('video/') ? 'video'
              : mime.startsWith('audio/') ? 'audio'
              : 'file';
   try {
+    const bucket = getBlobBucket();
     const orig = req.file.originalname || '';
-    const ext = orig.includes('.') ? orig.split('.').pop() : 'bin';
+    const ext = orig.includes('.') ? orig.split('.').pop().replace(/[^a-zA-Z0-9]/g, '') : 'bin';
     const key = 'gistapp/' + Date.now() + '-' + Math.random().toString(36).slice(2, 8) + '.' + ext;
     const buf = fs.readFileSync(req.file.path);
-    const bucket = getBlobBucket();
-    if (!bucket){
-      try { fs.unlinkSync(req.file.path); } catch(_){}
-      return res.status(503).json({ error: 'Media storage not available: ' + (_upstashInitError || 'unknown') });
-    }
     const result = await bucket.put(key, buf, { contentType: mime });
     try { fs.unlinkSync(req.file.path); } catch(_){}
     res.json({
@@ -2571,4 +2589,7 @@ setInterval(async () => {
 }, 5 * 60 * 1000); // every 5 min
 
 const PORT = process.env.PORT || 3000;
+// GISTAPP_SENTRY_V1 — Express error handler (must be after all routes)
+try { app.use(Sentry.expressErrorHandler()); } catch(_){}
+
 server.listen(PORT, ()=>console.log(`Server running → http://localhost:${PORT}`));
