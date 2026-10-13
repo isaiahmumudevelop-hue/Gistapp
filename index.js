@@ -2487,6 +2487,115 @@ app.get('/api/users/:id/profile-card', auth, async (req, res) => {
   } catch(e){ console.error(e); res.status(500).json({ error: 'Server error' }); }
 });
 
+/* ---------- profile insights ---------- GISTAPP_INSIGHTS_V1 */
+app.post('/api/users/:id/view-profile', auth, async (req, res) => {
+  try {
+    const target = Number(req.params.id);
+    if (!target || target === Number(req.user.id)) return res.json({ ok: true, skipped: true });
+    // Avoid duplicate views within 1 hour from same viewer
+    const existing = await pool.query(
+      `SELECT 1 FROM profile_views WHERE viewer_id=$1 AND viewed_id=$2 AND viewed_at > NOW() - INTERVAL '1 hour'`,
+      [req.user.id, target]
+    );
+    if (!existing.rowCount){
+      await pool.query('INSERT INTO profile_views (viewer_id, viewed_id) VALUES ($1,$2)', [req.user.id, target]);
+    }
+    res.json({ ok: true });
+  } catch(e){ console.error('view-profile:', e.message); res.json({ ok: false }); }
+});
+
+// GISTAPP_INSIGHTS_ME — same as :id/insights but uses JWT for id
+app.get('/api/me/insights', auth, async (req, res) => {
+  req.params.id = req.user.id;
+  try {
+    const uid = Number(req.user.id);
+    const viewsTotal = await pool.query('SELECT COUNT(*)::int AS n FROM profile_views WHERE viewed_id=$1', [uid]);
+    const views7d    = await pool.query("SELECT COUNT(*)::int AS n FROM profile_views WHERE viewed_id=$1 AND viewed_at > NOW() - INTERVAL '7 days'", [uid]);
+    const likesTotal = await pool.query('SELECT COUNT(*)::int AS n FROM post_likes pl JOIN posts p ON p.id=pl.post_id WHERE p.user_id=$1 AND p.deleted_at IS NULL', [uid]);
+    const followersTotal = await pool.query('SELECT COUNT(*)::int AS n FROM user_follows WHERE following_id=$1', [uid]);
+    const topPosts = await pool.query(`
+      SELECT p.id, p.body, p.media_url, p.media_type, p.created_at,
+        (SELECT COUNT(*) FROM post_likes WHERE post_id=p.id)::int AS like_count,
+        (SELECT COUNT(*) FROM post_comments WHERE post_id=p.id)::int AS comment_count
+      FROM posts p
+      WHERE p.user_id=$1 AND p.deleted_at IS NULL
+      ORDER BY like_count DESC, p.created_at DESC
+      LIMIT 3
+    `, [uid]);
+    const recentViewers = await pool.query(`
+      SELECT DISTINCT ON (pv.viewer_id)
+        u.id, u.display_name, u.username, u.avatar_color, u.avatar_url, pv.viewed_at
+      FROM profile_views pv
+      JOIN users u ON u.id = pv.viewer_id
+      WHERE pv.viewed_id=$1
+      ORDER BY pv.viewer_id, pv.viewed_at DESC
+      LIMIT 10
+    `, [uid]);
+    recentViewers.rows.sort((a,b) => new Date(b.viewed_at) - new Date(a.viewed_at));
+    res.json({
+      views_total: viewsTotal.rows[0].n,
+      views_7d: views7d.rows[0].n,
+      likes_total: likesTotal.rows[0].n,
+      followers_total: followersTotal.rows[0].n,
+      top_posts: topPosts.rows,
+      recent_viewers: recentViewers.rows
+    });
+  } catch(e){ console.error('me/insights:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+app.get('/api/users/:id/insights', auth, async (req, res) => {
+  try {
+    const uid = Number(req.params.id);
+    if (!uid) return res.status(400).json({ error: 'Invalid id' });
+    // Only self can view insights
+    if (uid !== Number(req.user.id)) return res.status(403).json({ error: 'Not your profile' });
+
+    // Total views + last 7 days
+    const viewsTotal = await pool.query('SELECT COUNT(*)::int AS n FROM profile_views WHERE viewed_id=$1', [uid]);
+    const views7d    = await pool.query("SELECT COUNT(*)::int AS n FROM profile_views WHERE viewed_id=$1 AND viewed_at > NOW() - INTERVAL '7 days'", [uid]);
+
+    // Likes on my posts
+    const likesTotal = await pool.query('SELECT COUNT(*)::int AS n FROM post_likes pl JOIN posts p ON p.id=pl.post_id WHERE p.user_id=$1 AND p.deleted_at IS NULL', [uid]);
+
+    // Followers
+    const followersTotal = await pool.query('SELECT COUNT(*)::int AS n FROM user_follows WHERE following_id=$1', [uid]);
+
+    // Top 3 posts by likes
+    const topPosts = await pool.query(`
+      SELECT p.id, p.body, p.media_url, p.media_type, p.created_at,
+        (SELECT COUNT(*) FROM post_likes WHERE post_id=p.id)::int AS like_count,
+        (SELECT COUNT(*) FROM post_comments WHERE post_id=p.id)::int AS comment_count
+      FROM posts p
+      WHERE p.user_id=$1 AND p.deleted_at IS NULL
+      ORDER BY like_count DESC, p.created_at DESC
+      LIMIT 3
+    `, [uid]);
+
+    // Recent viewers (last 10 unique, most recent first)
+    const recentViewers = await pool.query(`
+      SELECT DISTINCT ON (pv.viewer_id)
+        u.id, u.display_name, u.username, u.avatar_color, u.avatar_url, pv.viewed_at
+      FROM profile_views pv
+      JOIN users u ON u.id = pv.viewer_id
+      WHERE pv.viewed_id=$1
+      ORDER BY pv.viewer_id, pv.viewed_at DESC
+      LIMIT 10
+    `, [uid]);
+    // Re-sort by viewed_at desc
+    recentViewers.rows.sort((a,b) => new Date(b.viewed_at) - new Date(a.viewed_at));
+
+    res.json({
+      views_total: viewsTotal.rows[0].n,
+      views_7d: views7d.rows[0].n,
+      likes_total: likesTotal.rows[0].n,
+      followers_total: followersTotal.rows[0].n,
+      top_posts: topPosts.rows,
+      recent_viewers: recentViewers.rows
+    });
+  } catch(e){ console.error('insights:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+
 /* ---------- STATUS view count for own statuses ---------- */
 app.get('/api/statuses/mine/views', auth, async (req, res) => {
   try {

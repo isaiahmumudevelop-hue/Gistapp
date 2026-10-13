@@ -837,6 +837,156 @@ body.dark .ob-tab.on{background:#2a2a36;color:#fff}
 .auth-terms span{flex:1}
 .auth-terms a{color:#111;font-weight:700;text-decoration:underline;cursor:pointer}
 
+/* GISTAPP_INSIGHTS_V1 */
+function debugInsights(){
+  var msg = 'DEBUG:\n';
+  try { msg += 'openInsights type: ' + typeof openInsights + '\n'; } catch(e){ msg += 'openInsights err: ' + e.message + '\n'; }
+  try { msg += 'me: ' + (me ? ('id=' + me.id) : 'null') + '\n'; } catch(e){ msg += 'me err: ' + e.message + '\n'; }
+  try { msg += 'modal: ' + (document.getElementById('insights-modal') ? 'FOUND' : 'MISSING') + '\n'; } catch(e){ msg += 'modal err: ' + e.message + '\n'; }
+  try { msg += 'body: ' + (document.getElementById('insights-body') ? 'FOUND' : 'MISSING') + '\n'; } catch(e){ msg += 'body err: ' + e.message + '\n'; }
+  try { msg += 'api type: ' + typeof api + '\n'; } catch(e){ msg += 'api err: ' + e.message + '\n'; }
+  try { msg += 'toast type: ' + typeof toast + '\n'; } catch(e){ msg += 'toast err: ' + e.message + '\n'; }
+  alert(msg);
+  try { openInsights(); } catch(e){ alert('openInsights threw: ' + e.message); }
+}
+
+async function openInsights(){
+  // INSIGHTS_DEBUG_FINAL — show exactly what's happening
+  try {
+    var m = document.getElementById('insights-modal');
+    var b = document.getElementById('insights-body');
+    if (!m){ alert('DEBUG: insights-modal element missing from DOM'); return; }
+    if (!b){ alert('DEBUG: insights-body element missing from DOM'); return; }
+    b.innerHTML = '<div style="padding:40px 20px;text-align:center;color:var(--sub)">Loading…</div>';
+    m.style.display = 'flex';
+    try {
+      var r = await api('/api/me/insights');
+      console.log('Insights data:', r);
+      renderInsights(r);
+    } catch(e){
+      alert('API error: ' + (e.message || 'unknown') + '\n\nMake sure you are logged in and verified.');
+      b.innerHTML = '<div style="padding:40px 20px;text-align:center;color:#e5484d">' + esc(e.message || 'Could not load insights') + '</div>';
+    }
+  } catch(outer){
+    alert('openInsights crashed: ' + outer.message);
+  }
+}
+
+async function _unused_openInsights(){
+  // GISTAPP_INSIGHTS_FIX — no dependency on `me`, JWT identifies the user
+  const m = document.getElementById('insights-modal');
+  const b = document.getElementById('insights-body');
+  if (!m || !b){ alert('Insights modal missing'); return; }
+  b.innerHTML = '<div style="padding:40px 20px;text-align:center;color:var(--sub)">Loading…</div>';
+  m.style.display = 'flex';
+  try {
+    const r = await api('/api/me/insights');
+    renderInsights(r);
+  } catch(e){
+    b.innerHTML = '<div style="padding:40px 20px;text-align:center;color:#e5484d">' + esc(e.message || 'Could not load insights') + '</div>';
+  }
+}
+window.openInsights = openInsights;
+window.closeInsights = closeInsights;
+
+async function _openInsightsInner(){
+  if (!me){ alert('INSIGHTS: me is null — you are not logged in'); return; }
+  if (!me.id){ alert('INSIGHTS: me.id is missing — data: ' + JSON.stringify(me).slice(0,200)); return; }
+  const m = document.getElementById('insights-modal');
+  const b = document.getElementById('insights-body');
+  if (!m || !b) return;
+  b.innerHTML = '<div style="padding:40px 20px;text-align:center;color:var(--sub)">Loading…</div>';
+  m.style.display = 'flex';
+  try {
+    console.log('Calling insights API for user', me.id);
+    const r = await api('/api/users/' + me.id + '/insights');
+    console.log('Insights response:', r);
+    if (!r || typeof r !== 'object'){
+      alert('INSIGHTS: bad response: ' + JSON.stringify(r).slice(0, 200));
+      return;
+    }
+    renderInsights(r);
+  } catch(e){
+    b.innerHTML = '<div style="padding:40px 20px;text-align:center;color:#e5484d">' + esc(e.message || 'Could not load insights') + '</div>';
+  }
+}
+
+function closeInsights(){
+  const m = document.getElementById('insights-modal');
+  if (m) m.style.display = 'none';
+}
+
+function renderInsights(data){
+  const b = document.getElementById('insights-body');
+  if (!b) return;
+  const cards = [
+    { label:'Profile views',  val:data.views_total,     sub:'all time', icon:'👁️' },
+    { label:'Last 7 days',    val:data.views_7d,        sub:'recent views', icon:'📈' },
+    { label:'Likes received', val:data.likes_total,     sub:'on your posts', icon:'❤️' },
+    { label:'Followers',      val:data.followers_total, sub:'total', icon:'👥' }
+  ];
+
+  const statHtml = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:22px">' +
+    cards.map(function(c){
+      return '<div style="background:var(--bg-2);border-radius:14px;padding:14px 16px">' +
+        '<div style="font-size:11px;color:var(--sub);text-transform:uppercase;letter-spacing:.5px;display:flex;align-items:center;gap:6px">' + c.icon + ' ' + esc(c.label) + '</div>' +
+        '<div style="font-size:26px;font-weight:800;color:var(--ink);margin:6px 0 2px">' + (c.val || 0) + '</div>' +
+        '<div style="font-size:11.5px;color:var(--sub)">' + esc(c.sub) + '</div>' +
+      '</div>';
+    }).join('') + '</div>';
+
+  const top = data.top_posts || [];
+  const topHtml = top.length
+    ? '<div style="font-size:13px;font-weight:800;color:var(--ink);text-transform:uppercase;letter-spacing:.5px;margin:0 0 10px">Top posts</div>' +
+      '<div style="display:flex;flex-direction:column;gap:10px;margin-bottom:22px">' +
+        top.map(function(p){
+          var thumb = p.media_url
+            ? '<div style="width:56px;height:56px;border-radius:10px;background-image:url(' + esc(p.media_url) + ');background-size:cover;background-position:center;flex-shrink:0;background-color:var(--bg-2)"></div>'
+            : '<div style="width:56px;height:56px;border-radius:10px;background:var(--bg-2);display:flex;align-items:center;justify-content:center;color:var(--sub);font-size:20px;flex-shrink:0">📝</div>';
+          var body = p.body ? esc(p.body).slice(0, 80) : '(no text)';
+          return '<div style="display:flex;gap:12px;padding:10px;background:var(--bg-2);border-radius:12px;align-items:center;cursor:pointer" onclick="closeInsights();document.querySelector('#screen-profile').classList.remove('active')">' +
+            thumb +
+            '<div style="flex:1;min-width:0">' +
+              '<div style="font-size:13.5px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + body + '</div>' +
+              '<div style="font-size:11.5px;color:var(--sub);margin-top:3px">❤️ ' + (p.like_count||0) + ' · 💬 ' + (p.comment_count||0) + ' · ' + timeAgo(p.created_at) + '</div>' +
+            '</div>' +
+          '</div>';
+        }).join('') + '</div>'
+    : '';
+
+  const viewers = data.recent_viewers || [];
+  const viewersHtml = viewers.length
+    ? '<div style="font-size:13px;font-weight:800;color:var(--ink);text-transform:uppercase;letter-spacing:.5px;margin:0 0 10px">Recent viewers</div>' +
+      '<div style="display:flex;flex-direction:column;gap:8px">' +
+        viewers.map(function(v){
+          var name = v.display_name || 'User';
+          var color = v.avatar_color || '#7b8cff';
+          var av = v.avatar_url
+            ? '<div style="width:40px;height:40px;border-radius:50%;background-image:url(' + esc(v.avatar_url) + ');background-size:cover;background-position:center;flex-shrink:0"></div>'
+            : '<div style="width:40px;height:40px;border-radius:50%;background:' + color + ';display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:14px;flex-shrink:0">' + esc(initials(name)) + '</div>';
+          return '<div style="display:flex;align-items:center;gap:12px;padding:6px 0">' +
+            av +
+            '<div style="flex:1;min-width:0">' +
+              '<div style="font-size:14px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(name) + '</div>' +
+              '<div style="font-size:11.5px;color:var(--sub)">' + timeAgo(v.viewed_at) + '</div>' +
+            '</div>' +
+            '<button onclick="closeInsights();openUserProfile(' + v.id + ')" style="background:rgba(123,140,255,.15);color:var(--accent,#7b8cff);border:none;padding:7px 14px;border-radius:10px;font-size:12.5px;font-weight:700;font-family:inherit;cursor:pointer">View</button>' +
+          '</div>';
+        }).join('') + '</div>'
+    : '<div style="padding:20px;text-align:center;color:var(--sub);font-size:13px">No views yet</div>';
+
+  b.innerHTML = statHtml + topHtml + viewersHtml;
+}
+
+// Track profile views when opening other users' profiles
+const _origOpenUserProfile = openUserProfile;
+openUserProfile = async function(userId){
+  await _origOpenUserProfile(userId);
+  if (userId && Number(userId) !== Number(me && me.id)){
+    try { await api('/api/users/' + userId + '/view-profile', { method: 'POST' }); } catch(_){}
+  }
+};
+
 /* GISTAPP_USER_PROFILE_MODAL */
 .up-modal{position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:2800;display:none;align-items:flex-end;justify-content:center;backdrop-filter:blur(2px)}
 .up-modal.show{display:flex}
@@ -945,7 +1095,19 @@ body.dark .up-close:hover{background:#1e1e28}
   
   <!-- GISTAPP_UMAMI_V1 — analytics -->
   <script defer src="https://cloud.umami.is/script.js" data-website-id="dea415f0-3d63-401d-97bc-c076bdb86f6c"></script>
-</head>
+
+<script>
+// GISTAPP_SW_BUST: reload when SW updates
+if ('serviceWorker' in navigator){
+  var refreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', function(){
+    if (refreshing) return;
+    refreshing = true;
+    console.log('🔄 Service worker updated — reloading');
+    location.reload();
+  });
+}
+</script></head>
 <body>
 
 <div class="app">
@@ -1181,7 +1343,7 @@ body.dark .up-close:hover{background:#1e1e28}
           <span class="cp-badge online" id="cp-badge-online" style="display:none">online</span>
         </div>
         <div class="cp-about" id="cp-about">Chat by email — no phone number needed.</div>
-        <div class="cp-meta-row">
+                  <div class="cp-meta-row">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M3 7.5l9 6 9-6"/></svg>
           <span id="cp-email">…</span>
         </div>
@@ -1264,6 +1426,13 @@ body.dark .up-close:hover{background:#1e1e28}
         </div>
         <div class="cp-name" id="pf-name">…</div>
         <div class="cp-about" id="pf-bio" onclick="editBio()" style="cursor:pointer">Hey there! I am using GistApp.</div>
+
+          <!-- GISTAPP_INSIGHTS_V1 -->
+          <div style="padding:14px 0 6px">
+            <button id="pf-insights-btn" data-action="insights" style="background:linear-gradient(135deg,var(--accent,#7b8cff),rgba(168,107,255,.9));color:#fff;border:none;padding:12px 22px;border-radius:14px;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;display:inline-flex;align-items:center;gap:8px;box-shadow:0 4px 12px rgba(123,140,255,.3)">
+              <span style="font-size:16px">📊</span> View insights
+            </button>
+          </div>
         <div class="cp-meta-row">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M3 7.5l9 6 9-6"/></svg>
           <span id="pf-email">…</span>
@@ -4171,7 +4340,7 @@ document.getElementById('auth-pass-su').addEventListener('keydown', function(e){
 document.getElementById('new-email').addEventListener('keydown', function(e){ if (e.key==='Enter') startChat(); });
 
 /* PWA */
-if ('serviceWorker' in navigator){ window.addEventListener('load', function(){ navigator.serviceWorker.register('/sw.js').catch(function(){}); }); }
+if ('serviceWorker' in navigator){ window.addEventListener('load', function(){ navigator.serviceWorker.register('/sw.js?v=1791917601').catch(function(){}); }); }
 window.addEventListener('beforeinstallprompt', function(e){ e.preventDefault(); _deferredPrompt = e; });
 // GISTAPP_PWA_INSTALL_V1
 (function(){
@@ -5670,5 +5839,195 @@ boot();
     <button class="accent-close" onclick="closeAccentPicker()">Done</button>
   </div>
 </div>
+
+<!-- GISTAPP_INSIGHTS_V1 modal -->
+<div id="insights-modal" style="position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:2900;display:none;align-items:flex-end;justify-content:center">
+  <div style="background:var(--bg);width:100%;max-width:520px;max-height:92vh;border-radius:24px 24px 0 0;display:flex;flex-direction:column;overflow:hidden" onclick="event.stopPropagation()">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 20px 8px">
+      <div style="font-size:18px;font-weight:800;color:var(--ink)">Profile insights</div>
+      <button onclick="closeInsights()" style="background:transparent;border:none;font-size:18px;color:var(--sub);cursor:pointer;padding:6px 10px">✕</button>
+    </div>
+    <div id="insights-body" style="overflow-y:auto;padding:0 20px calc(24px + env(safe-area-inset-bottom,0px))">
+      <div style="padding:40px 20px;text-align:center;color:var(--sub)">Loading…</div>
+    </div>
+  </div>
+</div>
+
+<script>
+// GISTAPP_INSIGHTS_WIRE — click delegate
+(function(){
+  function bind(){
+    document.querySelectorAll('[data-action="insights"]').forEach(function(el){
+      if (el._insightsWired) return;
+      el._insightsWired = true;
+      el.addEventListener('click', function(ev){
+        ev.preventDefault();
+        ev.stopPropagation();
+        try {
+          if (typeof window.openInsights === 'function'){
+            window.openInsights();
+          } else if (typeof openInsights === 'function'){
+            openInsights();
+          } else {
+            alert('openInsights not defined — check console');
+          }
+        } catch(err){
+          alert('Error: ' + (err && err.message || err));
+        }
+      });
+    });
+  }
+  if (document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', function(){ setTimeout(bind, 500); });
+  } else {
+    setTimeout(bind, 500);
+  }
+  // Retry a few times in case the button appears later
+  var tries = 0;
+  var iv = setInterval(function(){
+    tries++;
+    bind();
+    if (tries > 10) clearInterval(iv);
+  }, 800);
+})();
+</script>
+
+
+<!-- GISTAPP_INSIGHTS_STANDALONE — bulletproof, no deps -->
+<script>
+(function(){
+  'use strict';
+
+  function getToken(){
+    try { return localStorage.getItem('token'); } catch(_){ return null; }
+  }
+
+  function esc(s){
+    return String(s==null?'':s).replace(/[&<>"']/g, function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+  }
+
+  function initials(n){
+    return (n||'?').split(/\s+/).map(function(w){ return w[0]; }).join('').slice(0,2).toUpperCase();
+  }
+
+  function timeAgo(t){
+    if (!t) return '';
+    var d = new Date(t), diff = (Date.now()-d)/1000;
+    if (diff < 60) return 'now';
+    if (diff < 3600) return Math.floor(diff/60)+'m';
+    if (diff < 86400) return Math.floor(diff/3600)+'h';
+    if (diff < 604800) return Math.floor(diff/86400)+'d';
+    return d.toLocaleDateString();
+  }
+
+  function render(data, body){
+    var cards = [
+      { label:'Profile views',  val:data.views_total,     sub:'all time',      icon:'👁️' },
+      { label:'Last 7 days',    val:data.views_7d,        sub:'recent views',  icon:'📈' },
+      { label:'Likes received', val:data.likes_total,     sub:'on your posts', icon:'❤️' },
+      { label:'Followers',      val:data.followers_total, sub:'total',         icon:'👥' }
+    ];
+    var html = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:22px">' +
+      cards.map(function(c){
+        return '<div style="background:var(--bg-2,#f4f2fb);border-radius:14px;padding:14px 16px">' +
+          '<div style="font-size:11px;color:var(--sub,#8e8e96);text-transform:uppercase;letter-spacing:.5px">' + c.icon + ' ' + esc(c.label) + '</div>' +
+          '<div style="font-size:26px;font-weight:800;color:var(--ink,#1c1c22);margin:6px 0 2px">' + (c.val||0) + '</div>' +
+          '<div style="font-size:11.5px;color:var(--sub,#8e8e96)">' + esc(c.sub) + '</div>' +
+        '</div>';
+      }).join('') + '</div>';
+
+    var top = data.top_posts || [];
+    if (top.length){
+      html += '<div style="font-size:13px;font-weight:800;color:var(--ink,#1c1c22);text-transform:uppercase;letter-spacing:.5px;margin:0 0 10px">Top posts</div>' +
+        '<div style="display:flex;flex-direction:column;gap:10px;margin-bottom:22px">' +
+          top.map(function(p){
+            var thumb = p.media_url
+              ? '<div style="width:56px;height:56px;border-radius:10px;background-image:url(' + esc(p.media_url) + ');background-size:cover;background-position:center;flex-shrink:0;background-color:var(--bg-2,#f4f2fb)"></div>'
+              : '<div style="width:56px;height:56px;border-radius:10px;background:var(--bg-2,#f4f2fb);display:flex;align-items:center;justify-content:center;color:var(--sub,#8e8e96);font-size:20px;flex-shrink:0">📝</div>';
+            var txt = p.body ? esc(p.body).slice(0,80) : '(no text)';
+            return '<div style="display:flex;gap:12px;padding:10px;background:var(--bg-2,#f4f2fb);border-radius:12px;align-items:center">' +
+              thumb +
+              '<div style="flex:1;min-width:0">' +
+                '<div style="font-size:13.5px;font-weight:600;color:var(--ink,#1c1c22);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + txt + '</div>' +
+                '<div style="font-size:11.5px;color:var(--sub,#8e8e96);margin-top:3px">❤️ ' + (p.like_count||0) + ' · 💬 ' + (p.comment_count||0) + ' · ' + timeAgo(p.created_at) + '</div>' +
+              '</div>' +
+            '</div>';
+          }).join('') + '</div>';
+    }
+
+    var viewers = data.recent_viewers || [];
+    if (viewers.length){
+      html += '<div style="font-size:13px;font-weight:800;color:var(--ink,#1c1c22);text-transform:uppercase;letter-spacing:.5px;margin:0 0 10px">Recent viewers</div>' +
+        '<div style="display:flex;flex-direction:column;gap:8px">' +
+          viewers.map(function(v){
+            var name = v.display_name || 'User';
+            var color = v.avatar_color || '#7b8cff';
+            var av = v.avatar_url
+              ? '<div style="width:40px;height:40px;border-radius:50%;background-image:url(' + esc(v.avatar_url) + ');background-size:cover;background-position:center;flex-shrink:0"></div>'
+              : '<div style="width:40px;height:40px;border-radius:50%;background:' + color + ';display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:14px;flex-shrink:0">' + esc(initials(name)) + '</div>';
+            return '<div style="display:flex;align-items:center;gap:12px;padding:6px 0">' +
+              av +
+              '<div style="flex:1;min-width:0">' +
+                '<div style="font-size:14px;font-weight:600;color:var(--ink,#1c1c22);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(name) + '</div>' +
+                '<div style="font-size:11.5px;color:var(--sub,#8e8e96)">' + timeAgo(v.viewed_at) + '</div>' +
+              '</div>' +
+            '</div>';
+          }).join('') + '</div>';
+    } else {
+      html += '<div style="padding:20px;text-align:center;color:var(--sub,#8e8e96);font-size:13px">No views yet</div>';
+    }
+
+    body.innerHTML = html;
+  }
+
+  window.openInsights = async function(){
+    console.log('📊 openInsights called (standalone)');
+    var modal = document.getElementById('insights-modal');
+    var body  = document.getElementById('insights-body');
+    if (!modal){ alert('Insights modal missing from page'); return; }
+    if (!body){ alert('Insights body missing from page'); return; }
+
+    body.innerHTML = '<div style="padding:40px 20px;text-align:center;color:var(--sub,#8e8e96)">Loading…</div>';
+    modal.style.display = 'flex';
+
+    var tok = getToken();
+    if (!tok){
+      body.innerHTML = '<div style="padding:40px 20px;text-align:center;color:#e5484d">Not logged in — please sign in</div>';
+      return;
+    }
+
+    try {
+      var res = await fetch('/api/me/insights', {
+        headers: { 'Authorization': 'Bearer ' + tok }
+      });
+      var data = await res.json();
+      if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+      console.log('📊 insights data:', data);
+      render(data, body);
+    } catch(e){
+      console.error('📊 insights error:', e);
+      body.innerHTML = '<div style="padding:40px 20px;text-align:center;color:#e5484d">' + esc(e.message || 'Could not load insights') + '</div>';
+    }
+  };
+
+  window.closeInsights = function(){
+    var modal = document.getElementById('insights-modal');
+    if (modal) modal.style.display = 'none';
+  };
+
+  // Click delegate for data-action="insights"
+  document.addEventListener('click', function(ev){
+    var el = ev.target.closest && ev.target.closest('[data-action="insights"]');
+    if (!el) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    window.openInsights();
+  });
+
+  console.log('✅ GISTAPP_INSIGHTS_STANDALONE ready');
+})();
+</script>
 </body>
 </html>
