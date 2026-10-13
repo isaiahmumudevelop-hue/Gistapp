@@ -130,3 +130,5 @@ diagnose_auth.js
 index.js.bakupstashsafe*
 
 *.bakprofilemodal.*
+
+*.baksetfix.*

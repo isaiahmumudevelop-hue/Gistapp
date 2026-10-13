@@ -2903,29 +2903,48 @@ function updateSettingsHeader(){
   document.getElementById('set-name').textContent = me.display_name || 'User';
   document.getElementById('set-email').textContent = me.email || '';
 }
+/* GISTAPP_SETTINGS_FIX — clean rewrite, no escaped quotes */
 function renderSettingsSections(){
-  const rightOf = function(r){
-    if (r.toggle !== undefined){
-      const on = userPrefs[r.key] !== undefined ? userPrefs[r.key] : r.toggle;
-      return '<button class="sw' + (on?' on':'') + '" data-sw="'+r.key+'" onclick="event.stopPropagation();togglePref(\''+r.key+'\')"></button>';
-    }
-    if (r.options){ return '<span class="val">' + esc(userPrefs[r.key] || r.options[0]) + '</span><span class="chev">' + setSvg('chev',2) + '</span>'; }
-    return '<span class="chev">' + setSvg('chev',2) + '</span>';
-  };
-  document.getElementById('set-sections').innerHTML = SETTINGS_SECTIONS.map(function(sec){
-    return '<div class="sgroup\"><div class="sgroup-label\">' + esc(t(sec.title)) + '</div>' +
-      sec.rows.map(function(r){
+  var el = document.getElementById('set-sections');
+  if (!el){ console.warn('renderSettingsSections: #set-sections missing'); return; }
+  try {
+    var rightOf = function(r){
+      if (r.toggle !== undefined){
+        var on = userPrefs[r.key] !== undefined ? userPrefs[r.key] : r.toggle;
+        return '<button class="sw' + (on?' on':'') + '" data-sw="' + r.key + '" onclick="event.stopPropagation();togglePref(\'' + r.key + '\')"></button>';
+      }
+      if (r.options){
+        return '<span class="val">' + esc(userPrefs[r.key] || r.options[0]) + '</span><span class="chev">' + setSvg('chev',2) + '</span>';
+      }
+      return '<span class="chev">' + setSvg('chev',2) + '</span>';
+    };
+
+    var html = SETTINGS_SECTIONS.map(function(sec){
+      var rows = sec.rows.map(function(r){
+        var label = r.label || '';
+        var sub = r.sub ? '<span class="sub">' + esc(t(r.sub)) + '</span>' : '';
         return '<button class="srow' + (r.danger?' danger':'') + '" data-key="' + (r.key||'') + '">' +
           '<span class="icw">' + setSvg(r.icon) + '</span>' +
-          '<span class=\"rt\"><span class="lbl\" data-i18n=\"' + esc(r.label) + '\">' + esc(t(r.label)) + '</span>' + (r.sub ? '<span class="sub\">' + esc(t(r.sub)) + '</span>' : '') + '</span>' +
-          rightOf(r) + '</button>';
-      }).join('') + '</div>';
-  }).join('');
-  document.querySelectorAll('#set-sections .srow').forEach(function(btn){
-    btn.addEventListener('click', function(){ handleSettingClick(btn.dataset.key); });
-  });
-    // GISTAPP_I18N_TAGS_V3
+          '<span class="rt">' +
+            '<span class="lbl" data-i18n="' + esc(label) + '">' + esc(t(label)) + '</span>' +
+            sub +
+          '</span>' +
+          rightOf(r) +
+        '</button>';
+      }).join('');
+      return '<div class="sgroup"><div class="sgroup-label">' + esc(t(sec.title)) + '</div>' + rows + '</div>';
+    }).join('');
+
+    el.innerHTML = html;
+
+    document.querySelectorAll('#set-sections .srow').forEach(function(btn){
+      btn.addEventListener('click', function(){ handleSettingClick(btn.dataset.key); });
+    });
     try { applyLanguage(); } catch(_){}
+  } catch(err){
+    console.error('renderSettingsSections failed:', err);
+    el.innerHTML = '<div style="padding:24px;text-align:center;color:#e5484d;font-size:14px">Could not load settings: ' + esc(err.message || 'unknown') + '</div>';
+  }
 }
 function findRow(key){ for (const sec of SETTINGS_SECTIONS) for (const r of sec.rows) if (r.key === key) return r; return null; }
 function togglePref(key){
