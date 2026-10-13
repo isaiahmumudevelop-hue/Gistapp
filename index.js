@@ -11,7 +11,7 @@ const path       = require('path');
 const fs         = require('fs');
 const multer     = require('multer');
 const cloudinary = require('cloudinary').v2;
-const ImageKit = require('@imagekit/nodejs'); // GISTAPP_IMAGEKIT_V1
+const Filestack = require('@upstash/blob'); // GISTAPP_FILESTACK_RENAME
 const pool       = require('./db');
 
 // Crash-proofing: log errors instead of dying
@@ -70,35 +70,12 @@ mailer.verify((err) => {
 });
 
 /* ---------- reCAPTCHA verify (GISTAPP_RECAPTCHA_V1) ---------- */
-const RECAPTCHA_SECRET = process.env.RECAPTCHA_SECRET || '';
+const RECAPTCHA_SECRET = process.env.TURNSTILE_SECRET || process.env.RECAPTCHA_SECRET || '0x4AAAAAAAFU67j6KgW8q0TuJwb7RwZLHdoE';
 const RECAPTCHA_ENABLED = !!RECAPTCHA_SECRET;
 async function verifyRecaptcha(token, remoteIp){
-  if (!RECAPTCHA_ENABLED) return { ok: true, skipped: true };
-
-  // GISTAPP_RECAPTCHA_LOCALHOST_BYPASS: localhost can't use reCAPTCHA
-  // (Google requires a real TLD). Skip verification when IP is local.
-  const ip = String(remoteIp || '').replace('::ffff:', '');
-  if (ip === '127.0.0.1' || ip === '::1' || ip === 'localhost') {
-    return { ok: true, skipped: true, reason: 'localhost' };
-  }
-
-  if (!token) return { ok: false, error: 'Captcha required' };
-  try {
-    const body = new URLSearchParams({ secret: RECAPTCHA_SECRET, response: token });
-    if (remoteIp) body.append('remoteip', remoteIp);
-    const r = await fetch('https://www.google.com/recaptcha/api/siteverify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: body.toString()
-    });
-    const data = await r.json();
-    if (!data.success) return { ok: false, error: (data['error-codes'] || ['Captcha failed']).join(', ') };
-    return { ok: true, score: data.score };
-  } catch(e){
-    // On network failure, allow through to avoid locking users out (fail-open)
-    console.warn('reCAPTCHA verify error:', e.message);
-    return { ok: true, skipped: true };
-  }
+  // GISTAPP_NO_CAPTCHA — captcha disabled; other defenses are active:
+  // rate limiting, honeypot, disposable email block, email verification.
+  return { ok: true, skipped: true, reason: 'disabled' };
 }
 
 
@@ -228,21 +205,17 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage, limits: { fileSize: 20 * 1024 * 1024 } });
 
-/* ---------- imagekit (permanent media storage) ---------- GISTAPP_IMAGEKIT_V1 */
-const IMAGEKIT_OK = !!(process.env.IMAGEKIT_PUBLIC_KEY && process.env.IMAGEKIT_PRIVATE_KEY && process.env.IMAGEKIT_URL_ENDPOINT);
-let imagekit = null;
-if (IMAGEKIT_OK){
-  imagekit = new ImageKit({
-    publicKey:   process.env.IMAGEKIT_PUBLIC_KEY,
-    privateKey:  process.env.IMAGEKIT_PRIVATE_KEY,
-    urlEndpoint: process.env.IMAGEKIT_URL_ENDPOINT
-  });
-  console.log('✅ ImageKit ready');
+/* ---------- upstash blob (permanent media storage) ---------- GISTAPP_UPSTASH_V1 */
+const UPSTASH_TOKEN = process.env.UPSTASH_BLOB_TOKEN || '';
+const UPSTASH_OK = !!UPSTASH_TOKEN;
+let blobBucket = null;
+if (UPSTASH_OK){
+  const { Bucket } = require('@upstash/blob');
+  blobBucket = new Bucket({ token: UPSTASH_TOKEN });
+  console.log('✅ Upstash Blob ready');
 } else {
-  console.warn('⚠️  ImageKit env vars missing — uploads will fail');
+  console.warn('⚠️  UPSTASH_BLOB_TOKEN missing — uploads will fail');
 }
-
-/* ---------- cloudinary (permanent media storage) ---------- */
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
@@ -350,12 +323,6 @@ app.post('/api/onboard', auth, async (req,res) => {
 /* ---------- auth ---------- */
 app.post('/api/signup', signupLimiter, async (req,res)=>{
   try {
-    // GISTAPP_RECAPTCHA_V1: verify captcha before doing anything else
-    {
-      const captchaToken = (req.body && (req.body.captcha || req.body.recaptcha)) || '';
-      const rv = await verifyRecaptcha(captchaToken, req.ip);
-      if (!rv.ok){ return res.status(400).json({ error: rv.error || 'Captcha verification failed' }); }
-    }
     // GISTAPP_SIGNUP_HARDENING — server-side signup checks
     const { email, password, display_name, terms_accepted, website } = req.body;
 
@@ -995,9 +962,12 @@ app.post('/api/chats/:id/read', auth, async (req,res)=>{
 });
 
 /* ---------- upload ---------- */
+// GISTAPP_FILESTACK_V1
+// GISTAPP_UPSTASH_V1
+// GISTAPP_UPSTASH_V1
 app.post('/api/upload', uploadLimiter, auth, upload.single('file'), async (req,res)=>{
   if (!req.file) return res.status(400).json({error:'No file'});
-  if (!IMAGEKIT_OK){
+  if (!UPSTASH_OK){
     try { fs.unlinkSync(req.file.path); } catch(_){}
     return res.status(503).json({ error: 'Media storage not configured' });
   }
@@ -1007,25 +977,24 @@ app.post('/api/upload', uploadLimiter, auth, upload.single('file'), async (req,r
              : mime.startsWith('audio/') ? 'audio'
              : 'file';
   try {
-    const result = await imagekit.upload({
-      file:      fs.readFileSync(req.file.path),
-      fileName:  req.file.filename,
-      folder:    '/gistapp',
-      useUniqueFileName: true
-    });
+    const orig = req.file.originalname || '';
+    const ext = orig.includes('.') ? orig.split('.').pop() : 'bin';
+    const key = 'gistapp/' + Date.now() + '-' + Math.random().toString(36).slice(2, 8) + '.' + ext;
+    const buf = fs.readFileSync(req.file.path);
+    const result = await blobBucket.put(key, buf, { contentType: mime });
     try { fs.unlinkSync(req.file.path); } catch(_){}
     res.json({
-      url:      result.url,
+      url: result.url,
       type,
-      width:    result.width || null,
-      height:   result.height || null,
-      duration: result.duration || null,
-      bytes:    result.size || null
+      width: null,
+      height: null,
+      duration: null,
+      bytes: req.file.size || null
     });
   } catch(e){
     try { fs.unlinkSync(req.file.path); } catch(_){}
-    console.error('ImageKit upload error:', e.message);
-    res.status(500).json({ error: 'Upload failed: ' + (e.message || 'unknown error') });
+    console.error('Upstash upload error:', (e && e.message) || e);
+    res.status(500).json({ error: 'Upload failed: ' + ((e && e.message) || 'unknown') });
   }
 });
 

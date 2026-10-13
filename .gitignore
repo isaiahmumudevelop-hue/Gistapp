@@ -103,3 +103,21 @@ show_schema.js
 *.bakpolish.*
 *.bakwarmup.*
 diagnose_auth.js
+
+*.bakupstash.*
+*.bakdedupeup.*
+*.bakorphan.*
+
+# session backups — ignore all
+*.bakclassic.*
+*.bakcleanup.*
+*.bakff.*
+*.bakfilestack.*
+*.bakimagekitv5.*
+*.baklocalupload.*
+*.baknocaptcha.*
+*.bakrename.*
+*.bakturnstile.*
+*.baksurgical.*
+*.bakturnstilefix.*
+*.bakturnstilev2.*

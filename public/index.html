@@ -1,8 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <script src="https://www.google.com/recaptcha/api.js" async defer></script>
-  <!-- GISTAPP_RECAPTCHA_V1 -->
+
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#7b8cff">
@@ -831,8 +830,17 @@ body.dark .ob-sel{background:#1a1a22;color:#fff;border-color:#2a2a36}
 body.dark .ob-tabs{background:#14141a}
 body.dark .ob-tab{color:#9a9aa5}
 body.dark .ob-tab.on{background:#2a2a36;color:#fff}
+
+/* GISTAPP_TURNSTILE_FIXES — make sure checkbox is visible */
+.auth-terms{display:flex;align-items:flex-start;gap:10px;padding:6px 4px 12px;font-size:13px;color:#5a5a68;line-height:1.5;cursor:pointer;user-select:none}
+.auth-terms input[type="checkbox"]{appearance:auto !important;-webkit-appearance:checkbox !important;margin-top:3px;width:18px !important;height:18px !important;min-width:18px !important;flex-shrink:0;accent-color:#111;cursor:pointer;display:inline-block !important}
+.auth-terms span{flex:1}
+.auth-terms a{color:#111;font-weight:700;text-decoration:underline;cursor:pointer}
 </style>
-</head>
+
+  
+  
+  </head>
 <body>
 
 <div class="app">
@@ -906,17 +914,13 @@ body.dark .ob-tab.on{background:#2a2a36;color:#fff}
             <input id="auth-pass-su" type="password" data-i18n-placeholder="Password (8+ chars, letters + numbers)" placeholder="Password" autocomplete="new-password">
             <button type="button" class="eye" onclick="togglePw('auth-pass-su',this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg></button>
           </div>
-          <div id="g-recaptcha-signup"
-           class="g-recaptcha"
-           data-sitekey="6LcIOestAAAAAPVC-ZLbbKVr6Fh7WyUbrsYWOnvg"
-           data-callback="onRecaptchaSolved"></div>
-                    <label class="auth-terms" id="auth-terms-wrap">
+          <label class="auth-terms" id="auth-terms-wrap">
             <input type="checkbox" id="auth-terms-check">
             <span>I agree to the <a onclick="openTerms();return false" href="#">Terms of Service</a> and <a onclick="openPrivacy();return false" href="#">Privacy Policy</a></span>
           </label>
           <div class="err" id="auth-terms-err" style="color:#e5484d;font-size:12.5px;text-align:center;margin:-4px 0 10px;min-height:14px"></div>
           <button class="auth-main-btn" id="auth-btn-su" data-i18n="Create account">Create account</button>
-          <p class="auth-terms">Signing up means you agree to the <a onclick="openPrivacy()">Privacy Policy</a> and <a onclick="openTerms()">Terms of Service</a>.</p>
+          
           <p class="auth-switch">Have an account? <a onclick="switchAuthMode('login')">Log in here</a></p>
         </div>
 
@@ -1798,24 +1802,12 @@ function togglePw(id, btn){
 }
 
 /* GISTAPP_RECAPTCHA_V1 */
-let _recaptchaCallback = null;
-function onRecaptchaSolved(token){
-  if (_recaptchaCallback){ const cb = _recaptchaCallback; _recaptchaCallback = null; cb(token); }
-}
+
 function requestCaptcha(){
-  return new Promise(function(resolve){
-    try {
-      if (window._recaptchaLocalBypass){ resolve(''); return; }
-      if (typeof grecaptcha === 'undefined'){ resolve(''); return; }
-      grecaptcha.ready(function(){
-        const token = grecaptcha.getResponse();
-        if (token){ resolve(token); return; }
-        // Checkbox not ticked yet — resolve empty, backend will reject
-        resolve('');
-      });
-    } catch(e){ resolve(''); }
-  });
+  // Captcha removed — other defenses (rate limit, honeypot, verify) are active
+  return Promise.resolve('');
 }
+function onRecaptchaSolved(){ /* no-op */ }
 async function submitSignup(){
   const errEl = document.getElementById('auth-err');
   errEl.textContent = '';
@@ -4288,7 +4280,6 @@ function applyLanguage(){
     el.setAttribute('data-local-hidden', '1');
   }
   // Also tell requestCaptcha to always return empty on local
-  window._recaptchaLocalBypass = true;
 })();
 
 /* ================= 2FA ================= */
@@ -5211,5 +5202,9 @@ function scrollLegal(id){
 
 boot();
 </script>
+
+
+
+
 </body>
 </html>
