@@ -3734,7 +3734,8 @@ const SETTINGS_SECTIONS = [
   ]},
   { title:'Other', rows:[
     { icon:'translate', label:'App language', key:'language', options:['English','Español','Français','हिन्दी','Yorùbá'] },
-    { icon:'help', label:'Help & contact us', sub:'Help center and support', key:'help' }
+    { icon:'help', label:'Help & contact us', sub:'Help center and support', key:'help' },
+    { icon:'folder', label:'Backups', sub:'Database snapshots (admin)', key:'backups', adminOnly:true }
   ]}
 ];
 const SET_ICONS = {
@@ -3782,7 +3783,7 @@ function renderSettingsSections(){
     };
 
     var html = SETTINGS_SECTIONS.map(function(sec){
-      var rows = sec.rows.map(function(r){
+      var rows = sec.rows.filter(function(r){ return !r.adminOnly || (me && me.is_admin); }).map(function(r){
         var label = r.label || '';
         var sub = r.sub ? '<span class="sub">' + esc(t(r.sub)) + '</span>' : '';
         return '<button class="srow' + (r.danger?' danger':'') + '" data-key="' + (r.key||'') + '">' +
@@ -3826,6 +3827,7 @@ function handleSettingClick(key){
   if (row.options){ showPicker(row.label, row.options, key); return; }
   if (key === 'accent_color'){ openAccentPicker(); return; }
   if (key === 'push_enabled'){ togglePush(); return; }
+  if (key === 'backups'){ openBackups(); return; }
   switch (key){
     case 'wallpaper': openWallpaperPicker(); break;
     case 'blocked_list': openBlockedList(); break;
@@ -4094,6 +4096,58 @@ function stopRingtone(){
   if (ringLoop){ clearInterval(ringLoop); ringLoop = null; }
   if (ringOsc){ try { ringOsc.stop(); } catch(_){} ringOsc = null; }
   if (ringCtx){ try { ringCtx.close(); } catch(_){} ringCtx = null; }
+}
+
+/* GISTAPP_BACKUPS_V1 */
+async function openBackups(){
+  if (!me || !me.is_admin){ toast('Admin only'); return; }
+  const m = document.getElementById('backups-modal');
+  const b = document.getElementById('backups-body');
+  if (!m || !b) return;
+  b.innerHTML = '<div style="padding:30px;text-align:center;color:var(--sub)">Loading…</div>';
+  m.style.display = 'flex';
+  try {
+    const r = await api('/api/admin/backups');
+    const backups = (r && r.backups) || [];
+    b.innerHTML =
+      '<button onclick="triggerBackup()" style="width:100%;height:52px;background:var(--accent,#7b8cff);color:#fff;border:none;border-radius:14px;font-family:inherit;font-size:15px;font-weight:700;cursor:pointer;margin-bottom:16px">💾 Create backup now</button>' +
+      (backups.length
+        ? '<div style="font-size:12px;color:var(--sub);text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-bottom:8px">Recent backups</div>' +
+          backups.map(function(bk){
+            return '<div style="display:flex;align-items:center;gap:12px;padding:10px 12px;background:var(--bg-2);border-radius:12px;margin-bottom:8px">' +
+              '<div style="font-size:20px">📁</div>' +
+              '<div style="flex:1;min-width:0">' +
+                '<div style="font-size:13px;font-weight:700;color:var(--ink)">' + (bk.date || 'backup') + '</div>' +
+                '<div style="font-size:11.5px;color:var(--sub)">' + ((bk.bytes/1024).toFixed(1)) + ' KB · ' + (bk.tables||0) + ' tables</div>' +
+              '</div>' +
+              (bk.url ? '<a href="' + esc(bk.url) + '" download target="_blank" style="background:var(--bg-3);color:var(--accent,#7b8cff);border:none;padding:7px 12px;border-radius:10px;font-size:12px;font-weight:700;text-decoration:none">↓</a>' : '') +
+            '</div>';
+          }).join('')
+        : '<div style="padding:30px;text-align:center;color:var(--sub);font-size:13px">No backups yet. Create one to get started.</div>'
+      );
+  } catch(e){
+    b.innerHTML = '<div style="padding:30px;text-align:center;color:#e5484d">' + esc(e.message || 'Error') + '</div>';
+  }
+}
+
+function closeBackups(){
+  const m = document.getElementById('backups-modal');
+  if (m) m.style.display = 'none';
+}
+
+async function triggerBackup(){
+  const b = document.getElementById('backups-body');
+  if (!b) return;
+  b.innerHTML = '<div style="padding:40px;text-align:center;color:var(--sub)">Creating backup…<br><small style="opacity:.7">This may take 10-30 seconds</small></div>';
+  try {
+    const r = await api('/api/admin/backup', { method: 'POST' });
+    if (!r.ok) throw new Error(r.error || 'Failed');
+    toast('Backup created (' + (r.bytes/1024).toFixed(1) + ' KB)');
+    openBackups();
+  } catch(e){
+    toast('Backup failed: ' + (e.message || 'unknown'));
+    openBackups();
+  }
 }
 
 /* GISTAPP_GROUP_CALLS_V1 */
@@ -7023,6 +7077,19 @@ boot();
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="13" height="12" rx="2.5"/><path d="M16 10.5l5-2.5v8l-5-2.5"/></svg>
       </button>
       <div class="gci-label">Join</div>
+    </div>
+  </div>
+</div>
+
+<!-- GISTAPP_BACKUPS_V1 modal -->
+<div id="backups-modal" style="position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:2900;display:none;align-items:flex-end;justify-content:center">
+  <div style="background:var(--bg);width:100%;max-width:520px;max-height:88vh;border-radius:24px 24px 0 0;display:flex;flex-direction:column;overflow:hidden" onclick="event.stopPropagation()">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 20px 8px">
+      <div style="font-size:18px;font-weight:800;color:var(--ink)">Database backups</div>
+      <button onclick="closeBackups()" style="background:transparent;border:none;font-size:18px;color:var(--sub);cursor:pointer;padding:6px 10px">✕</button>
+    </div>
+    <div id="backups-body" style="overflow-y:auto;padding:8px 20px calc(24px + env(safe-area-inset-bottom,0px))">
+      <div style="padding:30px;text-align:center;color:var(--sub)">Loading…</div>
     </div>
   </div>
 </div>

@@ -2885,6 +2885,170 @@ socket.on('disconnect', async ()=>{
 });
 
 
+/* ---------- admin + backups ---------- GISTAPP_BACKUPS_V1 */
+const ADMIN_EMAILS = new Set(['isaiahmumudevelop@gmail.com']);
+
+// Auto-promote admin on boot
+(async () => {
+  try {
+    for (const email of ADMIN_EMAILS){
+      await pool.query('UPDATE users SET is_admin=true WHERE LOWER(email)=$1 AND (is_admin IS NULL OR is_admin=false)', [email.toLowerCase()]);
+    }
+  } catch(e){ console.warn('admin promote:', e.message); }
+})();
+
+async function adminOnly(req, res, next){
+  try {
+    const r = await pool.query('SELECT is_admin FROM users WHERE id=$1', [req.user.id]);
+    if (!r.rowCount || !r.rows[0].is_admin) return res.status(403).json({ error: 'Admin only' });
+    next();
+  } catch(e){ res.status(500).json({ error: 'Server error' }); }
+}
+
+const BACKUP_TABLES = [
+  'users', 'chats', 'chat_members', 'messages', 'posts',
+  'post_likes', 'post_comments', 'post_votes', 'post_saves', 'post_shares',
+  'user_follows', 'user_likes', 'statuses', 'status_views',
+  'communities', 'community_members', 'calls', 'reports',
+  'push_subscriptions', 'profile_views'
+];
+
+async function createBackup(){
+  const startedAt = Date.now();
+  const dump = { _meta: { created_at: new Date().toISOString(), app: 'gistapp' } };
+  for (const t of BACKUP_TABLES){
+    try {
+      const r = await pool.query('SELECT * FROM ' + t);
+      dump[t] = r.rows;
+    } catch(e){
+      dump[t] = { error: e.message };
+    }
+  }
+  const json = JSON.stringify(dump);
+  const buf = Buffer.from(json, 'utf8');
+  const today = new Date().toISOString().slice(0, 10);
+  const key = 'backups/gistapp-' + today + '-' + Date.now() + '.json';
+
+  // Upload to Upstash
+  if (typeof getBlobBucket === 'function'){
+    try {
+      const bucket = getBlobBucket();
+      const result = await Promise.race([
+        bucket.put(key, buf, { contentType: 'application/json' }),
+        new Promise(function(_, rej){ setTimeout(function(){ rej(new Error('timeout')); }, 15000); })
+      ]);
+      const url = (result && (result.url || result.downloadUrl)) || null;
+      console.log('💾 backup saved:', key, '(' + (buf.length/1024).toFixed(1) + ' KB)');
+      return { ok: true, url: url, key: key, bytes: buf.length, tables: BACKUP_TABLES.length, ms: Date.now() - startedAt };
+    } catch(e){
+      console.warn('backup upload failed:', e.message);
+      return { ok: false, error: e.message };
+    }
+  }
+  return { ok: false, error: 'Upstash not configured' };
+}
+
+// POST /api/admin/backup — manual trigger
+app.post('/api/admin/backup', auth, adminOnly, async (req, res) => {
+  try {
+    const r = await createBackup();
+    if (!r.ok) return res.status(500).json({ error: r.error });
+    res.json(r);
+  } catch(e){ console.error('backup:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+// GET /api/admin/backups — list (from Upstash by listing prefix)
+app.get('/api/admin/backups', auth, adminOnly, async (req, res) => {
+  try {
+    // Upstash blob doesn't have a public list API easily here, so we
+    // return a lightweight local index. For now: return recent backups
+    // stored in a small JSON index inside a separate key.
+    if (typeof getBlobBucket !== 'function') return res.json({ backups: [] });
+    try {
+      const bucket = getBlobBucket();
+      const indexRes = await bucket.get('backups/_index.json').catch(()=>null);
+      if (indexRes && indexRes.body){
+        const text = typeof indexRes.body === 'string' ? indexRes.body : indexRes.body.toString('utf8');
+        return res.json({ backups: JSON.parse(text) });
+      }
+    } catch(_){}
+    res.json({ backups: [] });
+  } catch(e){ console.error('list backups:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+// POST /api/admin/restore — restore from a URL
+app.post('/api/admin/restore', auth, adminOnly, async (req, res) => {
+  try {
+    const { url } = req.body || {};
+    if (!url) return res.status(400).json({ error: 'Missing url' });
+    console.log('💾 restoring from', url);
+    const r = await fetch(url);
+    if (!r.ok) return res.status(400).json({ error: 'Could not fetch backup' });
+    const dump = await r.json();
+    if (!dump._meta || !dump._meta.created_at) return res.status(400).json({ error: 'Invalid backup file' });
+
+    // Restore in a transaction, table by table. Delete-all then re-insert.
+    const restored = {};
+    for (const t of BACKUP_TABLES){
+      if (!Array.isArray(dump[t])) continue;
+      const rows = dump[t];
+      if (!rows.length) continue;
+      try {
+        // Delete all rows (safe for empty tables)
+        await pool.query('DELETE FROM ' + t);
+        // Insert rows using dynamic columns
+        const cols = Object.keys(rows[0]);
+        const placeholders = cols.map((_, i) => '$' + (i+1)).join(',');
+        const values = rows.map(r => cols.map(c => r[c]));
+        // Insert in chunks of 100
+        const chunkSize = 100;
+        for (let i = 0; i < values.length; i += chunkSize){
+          const chunk = values.slice(i, i + chunkSize);
+          const flat = [];
+          const groups = chunk.map(row => '(' + row.map(v => '$' + (flat.push(v)) + ')').join(',') + ')');
+          await pool.query('INSERT INTO ' + t + ' (' + cols.join(',') + ') VALUES ' + groups.join(','), flat);
+        }
+        restored[t] = rows.length;
+      } catch(e){
+        console.warn('restore ' + t + ':', e.message);
+        restored[t] = { error: e.message };
+      }
+    }
+    console.log('💾 restored:', restored);
+    res.json({ ok: true, restored: restored });
+  } catch(e){ console.error('restore:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+// Auto-scheduler: 1 backup per day, checked every 6h
+async function autoBackupCheck(){
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const marker = await pool.query('SELECT 1 FROM pg_stat_user_tables LIMIT 0').catch(()=>null);
+    // Use a simple heuristic: try to read backups/_last.txt from Upstash
+    let last = null;
+    if (typeof getBlobBucket === 'function'){
+      try {
+        const r = await getBlobBucket().get('backups/_last.txt');
+        if (r && r.body){
+          last = typeof r.body === 'string' ? r.body : r.body.toString('utf8');
+        }
+      } catch(_){}
+    }
+    if (last === today) return;
+    console.log('💾 auto-backup starting for', today);
+    const r = await createBackup();
+    if (r.ok && typeof getBlobBucket === 'function'){
+      try {
+        await getBlobBucket().put('backups/_last.txt', Buffer.from(today), { contentType: 'text/plain' });
+      } catch(_){}
+    }
+  } catch(e){ console.warn('auto-backup:', e.message); }
+}
+
+// Run once 30s after boot, then every 6 hours
+setTimeout(autoBackupCheck, 30 * 1000);
+setInterval(autoBackupCheck, 6 * 60 * 60 * 1000);
+
 async function purgeExpired(){
   try {
     const r = await pool.query('DELETE FROM messages WHERE expires_at IS NOT NULL AND expires_at < NOW() RETURNING id, chat_id');

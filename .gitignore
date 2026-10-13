@@ -187,3 +187,6 @@ public/uploads/*
 *.bakgcincoming.*
 *.bakswv2.*
 *.bakdeadreq.*
+
+*.bakbackups.*
+migrate_admin.js
