@@ -126,3 +126,5 @@ diagnose_auth.js
 *.baksimple.*
 *.baksantok.*
 *.baksantokv2.*
+
+index.js.bakupstashsafe*
