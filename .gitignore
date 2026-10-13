@@ -168,3 +168,15 @@ test_push_backup.js
 migrate_push.js
 check_tables.js
 migrate_insights.js
+
+# all backups, ever
+*.bak*
+*.py
+check_*.js
+test_*.js
+migrate_*.js
+dump.sh
+
+# user uploads (runtime files, not source)
+public/uploads/*
+!public/uploads/.gitkeep
