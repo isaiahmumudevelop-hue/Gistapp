@@ -1,5 +1,20 @@
 require('dotenv').config();
 const express    = require('express');
+/* ---------- web-push ---------- GISTAPP_WEBPUSH_V1 */
+const webpush = require('web-push');
+const VAPID_PUBLIC  = process.env.VAPID_PUBLIC_KEY || '';
+const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY || '';
+const VAPID_SUBJECT = process.env.VAPID_SUBJECT || 'mailto:isaiahmumudevelop@gmail.com';
+const WEBPUSH_OK = !!(VAPID_PUBLIC && VAPID_PRIVATE);
+if (WEBPUSH_OK){
+  try {
+    webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC, VAPID_PRIVATE);
+    console.log('✅ Web push ready');
+  } catch(e){ console.error('❌ web-push init failed:', e.message); }
+} else {
+  console.log('ℹ️  Web push disabled (missing VAPID keys)');
+}
+
 const rateLimit  = require('express-rate-limit');  // GISTAPP_RATE_LIMIT_V1
 const { ipKeyGenerator } = require('express-rate-limit');  // GISTAPP_IPV6_FIX — normalize IPv6 to /56 subnet
 const http       = require('http');
@@ -961,6 +976,15 @@ app.post('/api/chats/:id/messages', auth, async (req,res)=>{
     if (rp.rowCount){ full.reply_body = rp.rows[0].body; full.reply_sender = rp.rows[0].sender; full.reply_sender_id = rp.rows[0].sender_id; }
   }
   io.to('chat:'+chatId).emit('message', full);
+  // GISTAPP_WEBPUSH_V1 — notify other chat members
+  try {
+    const members = await pool.query('SELECT user_id FROM chat_members WHERE chat_id=$1 AND user_id<>$2', [chatId, req.user.id]);
+    const senderName = (full.display_name || 'Someone');
+    const preview = text ? text.slice(0, 100) : (media_type === 'image' ? '📷 Photo' : media_type === 'video' ? '🎥 Video' : media_type === 'audio' ? '🎙️ Voice message' : 'Sent a message');
+    for (const m of members.rows){
+      sendPush(m.user_id, senderName, preview, { url: '/?chat=' + chatId, tag: 'chat-' + chatId }).catch(()=>{});
+    }
+  } catch(_){}
   res.json(full);
 });
 
@@ -1052,6 +1076,57 @@ app.post('/api/chats/:id/read', auth, async (req,res)=>{
 // GISTAPP_FILESTACK_V1
 // GISTAPP_UPSTASH_V1
 // GISTAPP_UPSTASH_V1
+/* ---------- push subscription routes ---------- GISTAPP_WEBPUSH_V1 */
+app.get('/api/push/vapid-public', (req, res) => {
+  res.json({ publicKey: VAPID_PUBLIC || null, enabled: WEBPUSH_OK });
+});
+
+app.post('/api/push/subscribe', auth, async (req, res) => {
+  try {
+    const { endpoint, keys } = req.body || {};
+    if (!endpoint || !keys || !keys.p256dh || !keys.auth){
+      return res.status(400).json({ error: 'Invalid subscription' });
+    }
+    await pool.query(`
+      INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth)
+      VALUES ($1, $2, $3, $4)
+      ON CONFLICT (endpoint) DO UPDATE SET user_id=EXCLUDED.user_id, p256dh=EXCLUDED.p256dh, auth=EXCLUDED.auth
+    `, [req.user.id, endpoint, keys.p256dh, keys.auth]);
+    res.json({ ok: true });
+  } catch(e){ console.error('push/subscribe:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+app.delete('/api/push/subscribe', auth, async (req, res) => {
+  try {
+    const { endpoint } = req.body || {};
+    if (!endpoint) return res.status(400).json({ error: 'Missing endpoint' });
+    await pool.query('DELETE FROM push_subscriptions WHERE endpoint=$1 AND user_id=$2', [endpoint, req.user.id]);
+    res.json({ ok: true });
+  } catch(e){ console.error('push/unsubscribe:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+async function sendPush(userId, title, body, data){
+  if (!WEBPUSH_OK) return;
+  try {
+    const r = await pool.query('SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE user_id=$1', [userId]);
+    if (!r.rowCount) return;
+    const payload = JSON.stringify({ title, body, url: (data && data.url) || '/', tag: (data && data.tag) || 'gistapp' });
+    await Promise.all(r.rows.map(async function(row){
+      const sub = { endpoint: row.endpoint, keys: { p256dh: row.p256dh, auth: row.auth } };
+      try {
+        await webpush.sendNotification(sub, payload);
+      } catch(err){
+        if (err.statusCode === 404 || err.statusCode === 410){
+          // Gone — cleanup
+          try { await pool.query('DELETE FROM push_subscriptions WHERE endpoint=$1', [row.endpoint]); } catch(_){}
+        } else {
+          console.warn('push send error:', err.statusCode, err.message);
+        }
+      }
+    }));
+  } catch(e){ console.warn('sendPush error:', e.message); }
+}
+
 app.post('/api/upload', uploadLimiter, auth, upload.single('file'), async (req,res)=>{
   if (!req.file) return res.status(400).json({error:'No file'});
   const mime = req.file.mimetype || '';
@@ -1548,6 +1623,15 @@ app.post('/api/posts/:id/like', auth, async (req, res) => {
     const c = await pool.query('SELECT COUNT(*) FROM post_likes WHERE post_id=$1', [id]);
     io.emit('feed-post-update', { id, like_count: Number(c.rows[0].count) });
     res.json({ liked: !has.rowCount, like_count: Number(c.rows[0].count) });
+    // GISTAPP_WEBPUSH_V1 — notify post author
+    try {
+      const p = await pool.query('SELECT user_id FROM posts WHERE id=$1', [id]);
+      if (p.rowCount && p.rows[0].user_id !== req.user.id){
+        const u = await pool.query('SELECT display_name FROM users WHERE id=$1', [req.user.id]);
+        sendPush(p.rows[0].user_id, '❤️ New like', (u.rows[0] && u.rows[0].display_name) + ' liked your post', { url: '/?post=' + id }).catch(()=>{});
+      }
+    } catch(_){}
+
   } catch(e){ console.error(e); res.status(500).json({ error: 'Server error' }); }
 });
 
@@ -2154,6 +2238,12 @@ app.post('/api/users/:id/follow', auth, async (req, res) => {
     if (has.rowCount){
       await pool.query('DELETE FROM user_follows WHERE follower_id=$1 AND following_id=$2', [req.user.id, id]);
       res.json({ following: false });
+    // GISTAPP_WEBPUSH_V1 — notify target of new follow
+    try {
+      const u = await pool.query('SELECT display_name FROM users WHERE id=$1', [req.user.id]);
+      sendPush(id, '👤 New follower', (u.rows[0] && u.rows[0].display_name) + ' started following you', { url: '/?user=' + req.user.id }).catch(()=>{});
+    } catch(_){}
+
     } else {
       await pool.query('INSERT INTO user_follows (follower_id, following_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [req.user.id, id]);
       res.json({ following: true });

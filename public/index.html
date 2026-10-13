@@ -2233,6 +2233,20 @@ function goList(){ if (socket && currentChat) socket.emit('leave', currentChat.i
 
 /* ---------- ENTER APP ---------- */
 async function enterApp(){
+  // GISTAPP_WEBPUSH_V1 — auto-resubscribe if user had it enabled
+  try {
+    if (userPrefs && userPrefs.push_enabled && 'serviceWorker' in navigator && Notification.permission === 'granted'){
+      navigator.serviceWorker.ready.then(function(reg){
+        reg.pushManager.getSubscription().then(function(sub){
+          if (!sub){
+            // Pref says enabled but no sub — try to recreate
+            subscribeToPush().catch(function(){});
+          }
+        });
+      }).catch(function(){});
+    }
+  } catch(_){}
+
   // GISTAPP_ACCENT_V1: apply saved accent
   try { if (typeof initAccent === 'function') initAccent(); } catch(_){}
 
@@ -3043,6 +3057,101 @@ async function sendVideo(){
   }
 }
 
+/* GISTAPP_WEBPUSH_V1 — push notification subscribe */
+function urlBase64ToUint8Array(base64String){
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(base64);
+  const arr = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+  return arr;
+}
+
+async function subscribeToPush(){
+  // GISTAPP_PUSH_DEBUG
+  var dbg = {
+    hasSW: 'serviceWorker' in navigator,
+    hasPush: 'PushManager' in window,
+    hasNotif: 'Notification' in window,
+    perm: (typeof Notification !== 'undefined') ? Notification.permission : 'n/a',
+    origin: location.origin,
+    isSecure: location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1'
+  };
+  console.log('🔔 push debug:', dbg);
+
+  if (!dbg.hasSW){ alert('Push not supported: no service worker'); return false; }
+  if (!dbg.hasPush){ alert('Push not supported: no PushManager'); return false; }
+  if (!dbg.hasNotif){ alert('Push not supported: no Notification'); return false; }
+  if (!dbg.isSecure){ alert('Push requires HTTPS (or localhost). Current: ' + location.origin); return false; }
+
+  try {
+    if (Notification.permission === 'denied'){
+      alert('Notifications are BLOCKED for this site.\n\nFix: Chrome menu → Settings → Site settings → Notifications → find localhost:4000 → Allow.');
+      return false;
+    }
+    let perm = Notification.permission;
+    if (perm === 'default'){
+      perm = await Notification.requestPermission();
+    }
+    console.log('🔔 permission result:', perm);
+    if (perm !== 'granted'){
+      alert('Notification permission is: ' + perm);
+      return false;
+    }
+
+    const reg = await navigator.serviceWorker.ready;
+    const vapidRes = await api('/api/push/vapid-public');
+    if (!vapidRes.publicKey){ toast('Push not configured'); return false; }
+
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub){
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(vapidRes.publicKey)
+      });
+    }
+    console.log('🔔 subscription object:', { endpoint: sub.endpoint.slice(0,80), keys: Object.keys(sub.toJSON().keys || {}) });
+    const saveRes = await api('/api/push/subscribe', {
+      method: 'POST',
+      body: JSON.stringify({ endpoint: sub.endpoint, keys: sub.toJSON().keys })
+    });
+    console.log('🔔 saved subscription:', saveRes);
+    userPrefs = userPrefs || {};
+    userPrefs.push_enabled = true;
+    await api('/api/me', { method: 'PATCH', body: JSON.stringify({ prefs: { push_enabled: true } }) }).catch(()=>{});
+    toast('Push notifications enabled');
+    return true;
+  } catch(e){
+    console.error('subscribeToPush error:', e);
+    toast('Could not enable push: ' + (e.message || 'unknown'));
+    return false;
+  }
+}
+
+async function unsubscribeFromPush(){
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if (sub){
+      try {
+        await api('/api/push/subscribe', { method: 'DELETE', body: JSON.stringify({ endpoint: sub.endpoint }) });
+      } catch(_){}
+      await sub.unsubscribe();
+    }
+    userPrefs = userPrefs || {};
+    userPrefs.push_enabled = false;
+    await api('/api/me', { method: 'PATCH', body: JSON.stringify({ prefs: { push_enabled: false } }) }).catch(()=>{});
+    toast('Push notifications disabled');
+  } catch(e){ toast('Could not disable'); }
+}
+
+async function togglePush(){
+  const on = !(userPrefs && userPrefs.push_enabled);
+  if (on) await subscribeToPush();
+  else await unsubscribeFromPush();
+  try { renderSettingsSections(); } catch(_){}
+}
+
 function appendBubble(m, incoming){
   const msgs = document.getElementById('dm-messages');
   if (!msgs) return;
@@ -3659,6 +3768,7 @@ function handleSettingClick(key){
   if (!row) return;
   if (row.options){ showPicker(row.label, row.options, key); return; }
   if (key === 'accent_color'){ openAccentPicker(); return; }
+  if (key === 'push_enabled'){ togglePush(); return; }
   switch (key){
     case 'wallpaper': openWallpaperPicker(); break;
     case 'blocked_list': openBlockedList(); break;

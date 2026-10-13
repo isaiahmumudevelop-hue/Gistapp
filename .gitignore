@@ -161,3 +161,10 @@ migrate_insights.js
 
 *.bakvideomsg.*
 *.bakflipcam.*
+
+check_push.js
+test_push.js
+test_push_backup.js
+migrate_push.js
+check_tables.js
+migrate_insights.js

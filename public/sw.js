@@ -47,3 +47,40 @@ self.addEventListener('fetch', (event) => {
       .catch(() => caches.match(req).then(r => r || caches.match('/offline.html').then(o => o || caches.match('/'))))
   );
 });
+
+
+/* ---------- web push ---------- GISTAPP_WEBPUSH_V1 */
+self.addEventListener('push', function(event){
+  let data = { title: 'GistApp', body: 'New notification', url: '/', tag: 'gistapp' };
+  try {
+    if (event.data) data = Object.assign(data, event.data.json());
+  } catch(_){}
+  event.waitUntil(
+    self.registration.showNotification(data.title || 'GistApp', {
+      body: data.body || '',
+      icon: '/icon-192.png',
+      badge: '/icon-192.png',
+      tag: data.tag || 'gistapp',
+      data: { url: data.url || '/' },
+      vibrate: [80, 40, 80],
+      renotify: true
+    })
+  );
+});
+
+self.addEventListener('notificationclick', function(event){
+  event.notification.close();
+  const url = (event.notification.data && event.notification.data.url) || '/';
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(list){
+      for (const c of list){
+        if (c.url.includes(self.location.origin)){
+          c.focus();
+          try { c.navigate(url); } catch(_){}
+          return;
+        }
+      }
+      return self.clients.openWindow(url);
+    })
+  );
+});
