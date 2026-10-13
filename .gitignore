@@ -180,3 +180,10 @@ dump.sh
 # user uploads (runtime files, not source)
 public/uploads/*
 !public/uploads/.gitkeep
+
+*.bakgcall.*
+*.bakgbtn.*
+*.bakgbtn2.*
+*.bakgcincoming.*
+*.bakswv2.*
+*.bakdeadreq.*

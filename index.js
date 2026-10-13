@@ -25,7 +25,6 @@ const cors       = require('cors');
 const path       = require('path');
 const fs         = require('fs');
 const multer     = require('multer');
-const cloudinary = require('cloudinary').v2;
 const Filestack = require('@upstash/blob'); // GISTAPP_FILESTACK_RENAME
 const pool       = require('./db');
 
@@ -38,7 +37,6 @@ process.on('unhandledRejection', (reason) => {
   console.error('💥 UNHANDLED:', reason && reason.message || reason);
 });
 
-const nodemailer   = require('nodemailer');
 const speakeasy    = require('speakeasy');
 const { OAuth2Client } = require('google-auth-library');
 const {
@@ -2748,6 +2746,107 @@ io.on('connection', socket=>{
   socket.on('leave',chatId=>socket.leave('chat:'+chatId));
   socket.on('typing',({chatId,typing})=>socket.to('chat:'+chatId).emit('typing',{userId:uid,typing}));
     /* ========== CALL SIGNALING ========== */
+  /* ========== GISTAPP_GROUP_CALLS_V1 ========== */
+  // In-memory group rooms: roomId -> { host, kind, participants: [{userId}], createdAt }
+  // (placed on the io instance so all sockets share)
+  if (!io._groupRooms) io._groupRooms = new Map();
+
+  socket.on('call:group-start', ({ invitees, kind }) => {
+    try {
+      const roomId = 'grp_' + uid + '_' + Date.now();
+      const parts = [{ userId: uid }].concat((invitees || []).map(function(x){ return { userId: Number(x) }; }));
+      io._groupRooms.set(roomId, {
+        host: uid,
+        kind: kind || 'video',
+        participants: parts,
+        createdAt: Date.now(),
+        accepted: new Set([uid])
+      });
+      // Notify invitees
+      (invitees || []).forEach(function(inv){
+        io.to('user:' + inv).emit('call:group-incoming', {
+          roomId, from: uid, kind: kind || 'video',
+          participantCount: parts.length
+        });
+      });
+      // Ack to host with the room state
+      socket.emit('call:group-ready', {
+        roomId,
+        participants: parts.map(function(p){ return p.userId; })
+      });
+      console.log('👥 group call started', roomId, 'participants:', parts.length);
+    } catch(e){ console.error('group-start:', e.message); }
+  });
+
+  socket.on('call:group-join', ({ roomId }) => {
+    try {
+      const room = io._groupRooms.get(roomId);
+      if (!room){ socket.emit('call:group-error', { roomId, error: 'Room not found' }); return; }
+      room.accepted.add(uid);
+      if (!room.participants.find(function(p){ return p.userId === uid; })){
+        room.participants.push({ userId: uid });
+      }
+      // Tell everyone currently in the room that a new participant joined
+      room.participants.forEach(function(p){
+        if (p.userId !== uid){
+          io.to('user:' + p.userId).emit('call:group-participant-joined', {
+            roomId, userId: uid
+          });
+        }
+      });
+      // Tell the joiner who else is in the room
+      const others = room.participants.filter(function(p){ return p.userId !== uid; }).map(function(p){ return p.userId; });
+      socket.emit('call:group-joined', { roomId, kind: room.kind, participants: others, hostId: room.host });
+      console.log('👥 group join', uid, '->', roomId);
+    } catch(e){ console.error('group-join:', e.message); }
+  });
+
+  socket.on('call:group-leave', ({ roomId }) => {
+    try {
+      const room = io._groupRooms.get(roomId);
+      if (!room) return;
+      room.participants = room.participants.filter(function(p){ return p.userId !== uid; });
+      room.participants.forEach(function(p){
+        io.to('user:' + p.userId).emit('call:group-participant-left', { roomId, userId: uid });
+      });
+      if (room.participants.length <= 1){
+        // Room empty — clean up
+        room.participants.forEach(function(p){
+          io.to('user:' + p.userId).emit('call:group-ended', { roomId });
+        });
+        io._groupRooms.delete(roomId);
+        console.log('👥 group call ended', roomId);
+      }
+    } catch(e){ console.error('group-leave:', e.message); }
+  });
+
+  socket.on('call:group-end', ({ roomId }) => {
+    try {
+      const room = io._groupRooms.get(roomId);
+      if (!room) return;
+      if (room.host !== uid) return; // only host ends
+      room.participants.forEach(function(p){
+        io.to('user:' + p.userId).emit('call:group-ended', { roomId });
+      });
+      io._groupRooms.delete(roomId);
+      console.log('👥 group call ended by host', roomId);
+    } catch(e){ console.error('group-end:', e.message); }
+  });
+
+  socket.on('call:group-signal', ({ roomId, to, payload }) => {
+    try {
+      io.to('user:' + to).emit('call:group-signal', { roomId, from: uid, payload });
+    } catch(e){ console.error('group-signal:', e.message); }
+  });
+
+  socket.on('call:group-reject', ({ roomId }) => {
+    const room = io._groupRooms.get(roomId);
+    if (!room) return;
+    if (room.host){
+      io.to('user:' + room.host).emit('call:group-rejected', { roomId, userId: uid });
+    }
+  });
+
   socket.on('call:initiate', ({ to, kind }) => {
     const callId = 'call_' + uid + '_' + to + '_' + Date.now();
     io.to('user:' + to).emit('call:incoming', { callId, from: uid, kind });

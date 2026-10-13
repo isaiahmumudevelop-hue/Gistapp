@@ -1514,7 +1514,13 @@ if ('serviceWorker' in navigator){
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
         </button>
       </div>
-      <h1 class="list-title" data-i18n="Calls">Calls</h1>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+        <h1 class="list-title" data-i18n="Calls" style="margin:0">Calls</h1>
+        <button onclick="openGroupInvite()" style="background:var(--accent,#7b8cff);color:#fff;border:none;padding:10px 16px;border-radius:12px;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px;flex-shrink:0">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+          Group call
+        </button>
+      </div>
     </div>
     <div class="chat-scroll" id="calls-list"></div>
   </section>
@@ -2350,6 +2356,57 @@ function connectSocket(){
     }
   });
   socket.on('call:incoming', function(p){ incomingCallScreen(p); });
+  /* GISTAPP_GROUP_CALLS_V1 socket handlers */
+  socket.on('call:group-incoming', function(p){
+    // GISTAPP_GCALL_INCOMING_V1 — custom incoming UI
+    try {
+      _pendingGroupRoom = { roomId: p.roomId, kind: p.kind || 'video', participantCount: p.participantCount || 2, from: p.from };
+      showGroupIncoming(p);
+    } catch(e){ console.warn('group-incoming:', e); }
+  });
+  socket.on('call:group-ready', async function(p){
+    _gcallRoomId = p.roomId;
+    try { await gcallSetupLocalMedia(); } catch(e){ toast('Mic/camera denied'); gcallCleanup(); return; }
+    _gcallParticipants = new Set(p.participants.map(Number));
+    renderGcallGrid();
+    const el = document.getElementById('gcall-timer');
+    if (el) el.textContent = 'Waiting for others…';
+  });
+  socket.on('call:group-joined', async function(p){
+    _gcallRoomId = p.roomId;
+    _gcallKind = p.kind || 'video';
+    try { await gcallSetupLocalMedia(); } catch(e){ toast('Mic/camera denied'); gcallCleanup(); return; }
+    _gcallParticipants = new Set([me.id].concat((p.participants||[]).map(Number)));
+    renderGcallGrid();
+    // Existing participants will send us offers
+    const el = document.getElementById('gcall-timer');
+    if (el) el.textContent = 'Connected';
+  });
+  socket.on('call:group-participant-joined', async function(p){
+    // A new person joined after us — send them an offer
+    _gcallParticipants.add(Number(p.userId));
+    renderGcallGrid();
+    if (socket && _gcallRoomId) socket.emit('call:group-signal', { roomId: _gcallRoomId, to: p.userId, payload: { type: 'ping' } });
+    try { await gcallSendOfferTo(p.userId); } catch(e){ console.warn('offer to new:', e); }
+  });
+  socket.on('call:group-participant-left', function(p){
+    _gcallParticipants.delete(Number(p.userId));
+    const pc = _gcallPeers.get(Number(p.userId));
+    if (pc){ try { pc.close(); } catch(_){} _gcallPeers.delete(Number(p.userId)); }
+    _gcallRemoteStreams.delete(Number(p.userId));
+    renderGcallGrid();
+  });
+  socket.on('call:group-signal', function(p){
+    handleGroupSignal(p.from, p.payload);
+  });
+  socket.on('call:group-ended', function(){
+    toast('Group call ended');
+    gcallCleanup();
+  });
+  socket.on('call:group-rejected', function(p){
+    _gcallParticipants.delete(Number(p.userId));
+    renderGcallGrid();
+  });
   socket.on('call:initiated', function(){ startOutgoingMedia().then(sendOffer); });
   socket.on('call:accepted', async function(){ stopRingtone(); if (pc && currentCall && currentCall.outgoing){ await sendOffer(); } });
   socket.on('call:rejected', function(){ setCallStatus('Call declined'); setTimeout(cleanupCall, 900); });
@@ -4037,6 +4094,369 @@ function stopRingtone(){
   if (ringLoop){ clearInterval(ringLoop); ringLoop = null; }
   if (ringOsc){ try { ringOsc.stop(); } catch(_){} ringOsc = null; }
   if (ringCtx){ try { ringCtx.close(); } catch(_){} ringCtx = null; }
+}
+
+/* GISTAPP_GROUP_CALLS_V1 */
+let _pendingGroupRoom = null;
+let _gciTimeout = null;
+
+function showGroupIncoming(p){
+  const el = document.getElementById('gcall-incoming');
+  if (!el) return;
+
+  // Caller info from chats cache
+  const caller = chatsCache.find(function(c){ return Number(c.other_id) === Number(p.from); });
+  const name = caller ? displayName(caller) : 'Someone';
+  const color = caller ? (caller.other_color || colorFor(name)) : '#7b8cff';
+  const url = caller ? caller.other_url : null;
+
+  const av = document.getElementById('gci-av');
+  av.textContent = url ? '' : initials(name);
+  av.style.backgroundImage = url ? 'url(' + url + ')' : '';
+  av.style.background = url ? '' : 'linear-gradient(135deg,' + color + ',rgba(168,107,255,.9))';
+
+  document.getElementById('gci-count').textContent = p.participantCount || 2;
+  document.getElementById('gci-name').textContent = name;
+  document.getElementById('gci-kind-text').textContent = (p.kind === 'audio' ? 'Voice call' : 'Video call') + ' · ' + (p.participantCount || 2) + ' people';
+
+  el.classList.add('show');
+  try { playRingtone(); } catch(_){}
+  if (navigator.vibrate) try { navigator.vibrate([400,200,400,200,400]); } catch(_){}
+
+  // Auto-dismiss after 30s
+  clearTimeout(_gciTimeout);
+  _gciTimeout = setTimeout(function(){
+    if (_pendingGroupRoom){
+      socket.emit('call:group-reject', { roomId: _pendingGroupRoom.roomId });
+      hideGroupIncoming();
+    }
+  }, 30000);
+}
+
+function hideGroupIncoming(){
+  const el = document.getElementById('gcall-incoming');
+  if (el) el.classList.remove('show');
+  try { stopRingtone(); } catch(_){}
+  clearTimeout(_gciTimeout);
+}
+
+function acceptGroupIncoming(){
+  if (!_pendingGroupRoom) return;
+  const roomId = _pendingGroupRoom.roomId;
+  hideGroupIncoming();
+  _pendingGroupRoom = null;
+  joinGroupCall(roomId);
+}
+
+function declineGroupIncoming(){
+  if (!_pendingGroupRoom) return;
+  socket.emit('call:group-reject', { roomId: _pendingGroupRoom.roomId });
+  hideGroupIncoming();
+  _pendingGroupRoom = null;
+}
+
+/* GISTAPP_GROUP_CALLS_V1 */
+let _gcallRoomId = null;
+let _gcallKind = 'video';
+let _gcallPeers = new Map();      // userId -> RTCPeerConnection
+let _gcallRemoteStreams = new Map(); // userId -> MediaStream
+let _gcallLocal = null;
+let _gcallMuted = false;
+let _gcallCamOff = false;
+let _gcallStartedAt = null;
+let _gcallTimer = null;
+let _gcallParticipants = new Set();
+let _gcallPickSet = new Set();
+let _gcallHostId = null;
+
+async function openGroupInvite(){
+  const modal = document.getElementById('gcall-invite-modal');
+  const list  = document.getElementById('gcall-invite-list');
+  if (!modal || !list) return;
+  _gcallPickSet = new Set();
+  modal.classList.add('show');
+  updateGcallStartBtn();
+  list.innerHTML = '<div style="padding:30px;text-align:center;color:var(--sub)">Loading…</div>';
+  try {
+    const r = await api('/api/users/suggested');
+    const users = Array.isArray(r) ? r : (r && r.users) || [];
+    if (!users.length){
+      list.innerHTML = '<div style="padding:30px;text-align:center;color:var(--sub)">No other users yet</div>';
+      return;
+    }
+    list.innerHTML = users.slice(0, 40).map(function(u){
+      const nm = u.display_name || u.username || 'User';
+      const color = u.avatar_color || colorFor(nm);
+      const av = u.avatar_url
+        ? '<div class="gcall-av-sm" style="background-image:url(' + esc(u.avatar_url) + ')"></div>'
+        : '<div class="gcall-av-sm" style="background:' + color + '">' + esc(initials(nm)) + '</div>';
+      return '<div class="gcall-invite-item" data-uid="' + u.id + '">' + av +
+        '<div class="info"><b>' + esc(nm) + '</b><small>' + (u.username ? '@' + esc(u.username) : (u.bio ? esc(u.bio).slice(0,40) : 'On GistApp')) + '</small></div>' +
+        '<div class="check">✓</div></div>';
+    }).join('');
+    list.querySelectorAll('.gcall-invite-item').forEach(function(el){
+      el.addEventListener('click', function(){
+        const id = Number(el.dataset.uid);
+        if (_gcallPickSet.has(id)) _gcallPickSet.delete(id);
+        else _gcallPickSet.add(id);
+        el.classList.toggle('on', _gcallPickSet.has(id));
+        updateGcallStartBtn();
+      });
+    });
+  } catch(e){
+    list.innerHTML = '<div style="padding:30px;text-align:center;color:#e5484d">' + esc(e.message) + '</div>';
+  }
+}
+
+function closeGroupInvite(){
+  const m = document.getElementById('gcall-invite-modal');
+  if (m) m.classList.remove('show');
+}
+
+function updateGcallStartBtn(){
+  const btn = document.getElementById('gcall-start-btn');
+  if (!btn) return;
+  const n = _gcallPickSet.size;
+  btn.disabled = n < 1;
+  btn.textContent = 'Start call (' + n + ')';
+}
+
+async function startGroupCallFromPicker(){
+  if (!_gcallPickSet.size) return;
+  const invitees = Array.from(_gcallPickSet);
+  closeGroupInvite();
+  startGroupCall(invitees, 'video');
+}
+
+function startGroupCall(invitees, kind){
+  _gcallKind = kind || 'video';
+  _gcallHostId = me.id;
+  _gcallParticipants = new Set([me.id].concat(invitees));
+  _gcallRoomId = null;
+  _gcallMuted = false;
+  _gcallCamOff = false;
+  _gcallStartedAt = null;
+  showGcallOverlay('Starting…');
+  renderGcallGrid();
+  if (socket){
+    socket.emit('call:group-start', { invitees: invitees, kind: _gcallKind });
+  }
+}
+
+async function joinGroupCall(roomId){
+  _gcallRoomId = roomId;
+  _gcallHostId = null;
+  _gcallMuted = false;
+  _gcallCamOff = false;
+  _gcallStartedAt = null;
+  showGcallOverlay('Joining…');
+  if (socket) socket.emit('call:group-join', { roomId: roomId });
+}
+
+function showGcallOverlay(status){
+  const ov = document.getElementById('gcall-overlay');
+  if (!ov) return;
+  document.getElementById('gcall-title').textContent = 'Group call';
+  document.getElementById('gcall-timer').textContent = status || 'Connecting…';
+  ov.classList.add('show');
+}
+
+function hideGcallOverlay(){
+  const ov = document.getElementById('gcall-overlay');
+  if (ov) ov.classList.remove('show');
+}
+
+function gcallStartTimer(){
+  if (_gcallTimer) return;
+  _gcallStartedAt = Date.now();
+  _gcallTimer = setInterval(function(){
+    const s = Math.floor((Date.now()-_gcallStartedAt)/1000);
+    const el = document.getElementById('gcall-timer');
+    if (el) el.textContent = String(Math.floor(s/60)).padStart(2,'0') + ':' + String(s%60).padStart(2,'0');
+  }, 500);
+}
+
+function gcallStopTimer(){
+  if (_gcallTimer){ clearInterval(_gcallTimer); _gcallTimer = null; }
+}
+
+async function gcallSetupLocalMedia(){
+  if (_gcallLocal) return _gcallLocal;
+  const c = _gcallKind === 'video'
+    ? { audio: true, video: { facingMode: 'user', width: { ideal: 480 }, height: { ideal: 640 } } }
+    : { audio: true, video: false };
+  _gcallLocal = await navigator.mediaDevices.getUserMedia(c);
+  return _gcallLocal;
+}
+
+async function gcallCreatePeerFor(userId){
+  // If we already have a peer connection, close old one and rebuild
+  if (_gcallPeers.has(userId)){
+    try { _gcallPeers.get(userId).close(); } catch(_){}
+    _gcallPeers.delete(userId);
+  }
+  const pc = new RTCPeerConnection(RTC_CONFIG);
+  _gcallPeers.set(userId, pc);
+
+  // Attach local tracks
+  if (_gcallLocal){
+    _gcallLocal.getTracks().forEach(function(t){ pc.addTrack(t, _gcallLocal); });
+  }
+
+  const remote = new MediaStream();
+  _gcallRemoteStreams.set(userId, remote);
+
+  pc.ontrack = function(ev){
+    ev.streams[0].getTracks().forEach(function(t){
+      if (!remote.getTracks().find(function(x){ return x.id === t.id; })) remote.addTrack(t);
+    });
+    renderGcallGrid();
+  };
+
+  pc.onicecandidate = function(ev){
+    if (ev.candidate && socket && _gcallRoomId){
+      socket.emit('call:group-signal', {
+        roomId: _gcallRoomId,
+        to: userId,
+        payload: { type: 'ice', candidate: ev.candidate }
+      });
+    }
+  };
+
+  pc.onconnectionstatechange = function(){
+    if (pc.connectionState === 'connected'){
+      gcallStartTimer();
+      const el = document.getElementById('gcall-timer');
+      if (el && el.textContent.indexOf('Connected') === -1 && !_gcallStartedAt) el.textContent = 'Connected';
+    }
+    if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected'){
+      // Peer dropped — remove tile
+      _gcallPeers.delete(userId);
+      _gcallRemoteStreams.delete(userId);
+      renderGcallGrid();
+    }
+  };
+
+  return pc;
+}
+
+async function gcallSendOfferTo(userId){
+  const pc = await gcallCreatePeerFor(userId);
+  try {
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    socket.emit('call:group-signal', {
+      roomId: _gcallRoomId, to: userId,
+      payload: { type: 'offer', sdp: offer }
+    });
+  } catch(e){ console.warn('gcall offer:', e); }
+}
+
+async function handleGroupSignal(from, payload){
+  try {
+    let pc = _gcallPeers.get(from);
+    if (!pc){
+      pc = await gcallCreatePeerFor(from);
+    }
+    if (payload.type === 'offer'){
+      await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
+      const ans = await pc.createAnswer();
+      await pc.setLocalDescription(ans);
+      socket.emit('call:group-signal', {
+        roomId: _gcallRoomId, from: me.id, to: from,
+        payload: { type: 'answer', sdp: ans }
+      });
+    } else if (payload.type === 'answer'){
+      await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
+    } else if (payload.type === 'ice' && payload.candidate){
+      await pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
+    }
+  } catch(e){ console.warn('gcall signal:', e); }
+}
+
+function renderGcallGrid(){
+  const grid = document.getElementById('gcall-grid');
+  if (!grid) return;
+  const participants = Array.from(_gcallParticipants);
+  grid.className = 'g-' + Math.min(Math.max(participants.length, 1), 6);
+
+  grid.innerHTML = participants.map(function(uid){
+    const isMe = Number(uid) === Number(me.id);
+    const user = isMe ? me : (chatsCache || []).find(function(c){ return Number(c.other_id) === Number(uid); }) || {};
+    const name = isMe ? 'You' : (user.other_name || user.name || (user.other_email || '').split('@')[0] || 'User');
+    const color = user.other_color || user.avatar_color || colorFor(name);
+    const url = user.other_url || user.avatar_url || null;
+    const initials_ = initials(name);
+    const avHtml = url
+      ? '<div class="gcall-av" style="background-image:url(' + esc(url) + ')"></div>'
+      : '<div class="gcall-av" style="background:' + color + '">' + esc(initials_) + '</div>';
+
+    return '<div class="gcall-tile" data-uid="' + uid + '">' +
+      '<video id="gcall-v-' + uid + '" autoplay playsinline muted="' + (isMe ? 'true' : 'false') + '"></video>' +
+      '<div class="gcall-av" id="gcall-av-' + uid + '" style="' + (url ? 'background-image:url(' + esc(url) + ');width:80px;height:80px;border-radius:50%;background-size:cover;background-position:center' : 'background:' + color) + '">' + (url ? '' : esc(initials_)) + '</div>' +
+      '<div class="gcall-name">' + esc(name) + '</div>' +
+    '</div>';
+  }).join('');
+
+  // Attach streams
+  participants.forEach(function(uid){
+    const vid = document.getElementById('gcall-v-' + uid);
+    const av = document.getElementById('gcall-av-' + uid);
+    if (!vid) return;
+    if (Number(uid) === Number(me.id) && _gcallLocal){
+      vid.srcObject = _gcallLocal;
+      if (av) av.style.display = 'none';
+      if (_gcallKind === 'audio'){ vid.style.display = 'none'; if (av) av.style.display = 'flex'; }
+    } else {
+      const stream = _gcallRemoteStreams.get(Number(uid)) || _gcallRemoteStreams.get(uid);
+      if (stream && stream.getTracks().length){
+        vid.srcObject = stream;
+        if (av) av.style.display = 'none';
+        if (_gcallKind === 'audio'){ vid.style.display = 'none'; if (av) av.style.display = 'flex'; }
+      } else {
+        vid.style.display = 'none';
+        if (av) av.style.display = 'flex';
+      }
+    }
+  });
+}
+
+function gcallToggleMute(){
+  if (!_gcallLocal) return;
+  _gcallMuted = !_gcallMuted;
+  _gcallLocal.getAudioTracks().forEach(function(t){ t.enabled = !_gcallMuted; });
+  const b = document.getElementById('gcall-btn-mute');
+  if (b) b.classList.toggle('on', _gcallMuted);
+}
+
+function gcallToggleCamera(){
+  if (!_gcallLocal) return;
+  _gcallCamOff = !_gcallCamOff;
+  _gcallLocal.getVideoTracks().forEach(function(t){ t.enabled = !_gcallCamOff; });
+  const b = document.getElementById('gcall-btn-cam');
+  if (b) b.classList.toggle('on', _gcallCamOff);
+}
+
+function leaveGroupCall(){
+  if (_gcallRoomId && socket) socket.emit('call:group-leave', { roomId: _gcallRoomId });
+  gcallCleanup();
+}
+
+function gcallCleanup(){
+  _gcallPeers.forEach(function(pc){ try { pc.close(); } catch(_){} });
+  _gcallPeers.clear();
+  _gcallRemoteStreams.clear();
+  _gcallParticipants.clear();
+  if (_gcallLocal){
+    _gcallLocal.getTracks().forEach(function(t){ t.stop(); });
+    _gcallLocal = null;
+  }
+  gcallStopTimer();
+  _gcallRoomId = null;
+  _gcallStartedAt = null;
+  _gcallMuted = false;
+  _gcallCamOff = false;
+  hideGcallOverlay();
 }
 
 /* ---------- FEED ---------- */
@@ -6470,6 +6890,140 @@ boot();
   <div class="vr-review-bar" id="vr-review-bar">
     <button class="vr-review-btn retake" onclick="retakeVideo()">Retake</button>
     <button class="vr-review-btn send" onclick="sendVideo()">Send</button>
+  </div>
+</div>
+
+<!-- GISTAPP_GROUP_CALLS_V1 -->
+<style>
+#gcall-overlay{position:fixed;inset:0;background:#0a0a0d;z-index:99990;display:none;flex-direction:column}
+#gcall-overlay.show{display:flex}
+#gcall-header{display:flex;justify-content:space-between;align-items:center;padding:calc(14px + env(safe-area-inset-top,0px)) 18px 14px;color:#fff;background:rgba(0,0,0,.55);z-index:5}
+#gcall-header .gcall-title{font-size:15px;font-weight:700}
+#gcall-header .gcall-timer{font-size:13px;color:#c5c5d0;font-variant-numeric:tabular-nums}
+#gcall-grid{flex:1;display:grid;gap:8px;padding:8px;grid-template-columns:1fr;grid-auto-rows:1fr;overflow:hidden}
+#gcall-grid.g-1{grid-template-columns:1fr}
+#gcall-grid.g-2{grid-template-columns:1fr 1fr}
+#gcall-grid.g-3, #gcall-grid.g-4{grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr}
+#gcall-grid.g-5, #gcall-grid.g-6{grid-template-columns:1fr 1fr 1fr;grid-template-rows:1fr 1fr}
+.gcall-tile{position:relative;background:#16161f;border-radius:14px;overflow:hidden;display:flex;align-items:center;justify-content:center;min-height:80px}
+.gcall-tile video{width:100%;height:100%;object-fit:cover}
+.gcall-tile .gcall-av{width:80px;height:80px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:28px;background:linear-gradient(135deg,#7b8cff,#b58cff)}
+.gcall-tile .gcall-name{position:absolute;left:8px;bottom:8px;font-size:11.5px;font-weight:700;color:#fff;background:rgba(0,0,0,.55);padding:3px 8px;border-radius:8px;max-width:calc(100% - 16px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gcall-tile .gcall-muted{position:absolute;right:8px;bottom:8px;font-size:14px;background:rgba(0,0,0,.55);padding:2px 6px;border-radius:8px}
+.gcall-tile.speaking{box-shadow:inset 0 0 0 3px var(--accent,#7b8cff)}
+#gcall-actions{display:flex;justify-content:center;gap:14px;padding:14px 18px calc(24px + env(safe-area-inset-bottom,0px));background:rgba(0,0,0,.55)}
+.gcall-btn{width:56px;height:56px;border-radius:50%;border:none;background:rgba(255,255,255,.15);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:transform .12s,background .15s}
+.gcall-btn:active{transform:scale(.92)}
+.gcall-btn.on{background:#ff3b30}
+.gcall-btn.off{background:rgba(255,255,255,.08);opacity:.5}
+.gcall-btn svg{width:24px;height:24px}
+#gcall-invite-modal{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99991;display:none;align-items:flex-end;justify-content:center}
+#gcall-invite-modal.show{display:flex}
+.gcall-invite-sheet{background:var(--bg);width:100%;max-width:480px;max-height:80vh;border-radius:22px 22px 0 0;display:flex;flex-direction:column;overflow:hidden}
+.gcall-invite-head{padding:18px 20px 12px;display:flex;justify-content:space-between;align-items:center}
+.gcall-invite-head h3{margin:0;font-size:17px;color:var(--ink)}
+.gcall-invite-list{flex:1;overflow-y:auto;padding:0 12px}
+.gcall-invite-item{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:12px;cursor:pointer;transition:background .15s}
+.gcall-invite-item:hover{background:var(--bg-2)}
+.gcall-invite-item.on{background:rgba(123,140,255,.12)}
+.gcall-invite-item .gcall-av-sm{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:14px;flex-shrink:0;background-size:cover;background-position:center}
+.gcall-invite-item .info{flex:1;min-width:0}
+.gcall-invite-item .info b{font-size:14px;color:var(--ink);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gcall-invite-item .info small{font-size:11.5px;color:var(--sub)}
+.gcall-invite-item .check{width:22px;height:22px;border-radius:50%;border:2px solid #d8d4e4;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px}
+.gcall-invite-item.on .check{background:var(--accent,#7b8cff);border-color:var(--accent,#7b8cff)}
+.gcall-invite-foot{padding:14px 20px calc(20px + env(safe-area-inset-bottom,0px));display:flex;gap:10px}
+.gcall-invite-foot button{flex:1;height:50px;border-radius:14px;font-family:inherit;font-size:15px;font-weight:700;border:none;cursor:pointer}
+.gcall-invite-foot .cancel{background:var(--bg-2);color:var(--ink)}
+.gcall-invite-foot .start{background:var(--accent,#7b8cff);color:#fff}
+.gcall-invite-foot .start:disabled{opacity:.4}
+</style>
+
+<div id="gcall-overlay">
+  <div id="gcall-header">
+    <div>
+      <div class="gcall-title" id="gcall-title">Group call</div>
+      <div class="gcall-timer" id="gcall-timer">Connecting…</div>
+    </div>
+    <button onclick="leaveGroupCall()" style="background:transparent;border:none;color:#fff;font-size:20px;cursor:pointer;padding:6px 10px">✕</button>
+  </div>
+  <div id="gcall-grid" class="g-1"></div>
+  <div id="gcall-actions">
+    <button class="gcall-btn" id="gcall-btn-mute" onclick="gcallToggleMute()" title="Mute">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3z"/><path d="M19 11a7 7 0 0 1-14 0M12 18v3"/></svg>
+    </button>
+    <button class="gcall-btn" id="gcall-btn-cam" onclick="gcallToggleCamera()" title="Camera">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="13" height="12" rx="2.5"/><path d="M16 10.5l5-2.5v8l-5-2.5"/></svg>
+    </button>
+    <button class="gcall-btn on" id="gcall-btn-leave" onclick="leaveGroupCall()" title="Leave">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 3.5h3l1.5 4-2 1.5a12 12 0 0 0 6 6l1.5-2 4 1.5v3a2 2 0 0 1-2.2 2A16.5 16.5 0 0 1 4.5 5.7a2 2 0 0 1 2-2.2z" transform="rotate(135 12 12)"/></svg>
+    </button>
+  </div>
+</div>
+
+<div id="gcall-invite-modal" onclick="if(event.target===this)closeGroupInvite()">
+  <div class="gcall-invite-sheet" onclick="event.stopPropagation()">
+    <div class="gcall-invite-head">
+      <h3>New group call</h3>
+      <button onclick="closeGroupInvite()" style="background:transparent;border:none;font-size:18px;color:var(--sub);cursor:pointer;padding:6px 10px">✕</button>
+    </div>
+    <div class="gcall-invite-list" id="gcall-invite-list"><div style="padding:30px;text-align:center;color:var(--sub)">Loading…</div></div>
+    <div class="gcall-invite-foot">
+      <button class="cancel" onclick="closeGroupInvite()">Cancel</button>
+      <button class="start" id="gcall-start-btn" onclick="startGroupCallFromPicker()" disabled>Start call (0)</button>
+    </div>
+  </div>
+</div>
+
+<!-- GISTAPP_GCALL_INCOMING_V1 -->
+<style>
+#gcall-incoming{position:fixed;inset:0;background:linear-gradient(160deg,#1a1a2e 0%,#0a0a0d 60%,#000 100%);z-index:99992;display:none;flex-direction:column;align-items:center;justify-content:center;padding:30px 24px calc(40px + env(safe-area-inset-bottom,0px))}
+#gcall-incoming.show{display:flex}
+.gci-pulse{position:absolute;width:220px;height:220px;border-radius:50%;border:2px solid rgba(123,140,255,.3);animation:gciPulse 2s ease-out infinite;top:38%;left:50%;transform:translate(-50%,-50%)}
+.gci-pulse.p2{animation-delay:.6s}
+.gci-pulse.p3{animation-delay:1.2s}
+@keyframes gciPulse{0%{transform:translate(-50%,-50%) scale(.6);opacity:1}100%{transform:translate(-50%,-50%) scale(1.5);opacity:0}}
+.gci-av{width:120px;height:120px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:42px;background:linear-gradient(135deg,#7b8cff,#b58cff);position:relative;z-index:2;background-size:cover;background-position:center;box-shadow:0 12px 40px rgba(123,140,255,.35)}
+.gci-badge{position:absolute;top:6px;right:6px;background:#7b8cff;color:#fff;font-size:11px;font-weight:800;padding:4px 9px;border-radius:12px;border:3px solid #0a0a0d;z-index:3}
+.gci-name{font-size:24px;font-weight:800;color:#fff;margin:20px 0 6px;text-align:center;letter-spacing:-.3px}
+.gci-sub{font-size:14px;color:#9a9aa5;text-align:center;line-height:1.5;margin-bottom:6px}
+.gci-kind{font-size:12px;color:#7b8cff;text-transform:uppercase;letter-spacing:1.5px;font-weight:700;margin-bottom:40px;display:flex;align-items:center;gap:6px}
+.gci-actions{display:flex;gap:60px;margin-top:20px}
+.gci-btn{width:72px;height:72px;border-radius:50%;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:transform .15s;box-shadow:0 8px 24px rgba(0,0,0,.4)}
+.gci-btn:active{transform:scale(.92)}
+.gci-btn.decline{background:#ff3b30;color:#fff}
+.gci-btn.accept{background:#22c55e;color:#fff;animation:gciAcceptBounce 1.6s ease-in-out infinite}
+@keyframes gciAcceptBounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+.gci-btn svg{width:32px;height:32px}
+.gci-label{font-size:12px;color:#9a9aa5;text-align:center;margin-top:10px;font-weight:600;letter-spacing:.3px}
+.gci-row{display:flex;gap:60px;justify-content:center}
+</style>
+
+<div id="gcall-incoming">
+  <div class="gci-pulse"></div>
+  <div class="gci-pulse p2"></div>
+  <div class="gci-pulse p3"></div>
+  <div class="gci-av" id="gci-av">?</div>
+  <div class="gci-badge" id="gci-count">2</div>
+  <h2 class="gci-name" id="gci-name">Someone</h2>
+  <p class="gci-sub" id="gci-sub">is inviting you to a group call</p>
+  <div class="gci-kind">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="13" height="12" rx="2.5"/><path d="M16 10.5l5-2.5v8l-5-2.5"/></svg>
+    <span id="gci-kind-text">Video call</span>
+  </div>
+  <div class="gci-row">
+    <div>
+      <button class="gci-btn decline" onclick="declineGroupIncoming()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 3.5h3l1.5 4-2 1.5a12 12 0 0 0 6 6l1.5-2 4 1.5v3a2 2 0 0 1-2.2 2A16.5 16.5 0 0 1 4.5 5.7a2 2 0 0 1 2-2.2z" transform="rotate(135 12 12)"/></svg>
+      </button>
+      <div class="gci-label">Decline</div>
+    </div>
+    <div>
+      <button class="gci-btn accept" onclick="acceptGroupIncoming()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="13" height="12" rx="2.5"/><path d="M16 10.5l5-2.5v8l-5-2.5"/></svg>
+      </button>
+      <div class="gci-label">Join</div>
+    </div>
   </div>
 </div>
 </body>
