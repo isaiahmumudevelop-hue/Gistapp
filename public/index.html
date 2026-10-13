@@ -1320,12 +1320,33 @@ if ('serviceWorker' in navigator){
     </form>
     <div class="dm-rec-timer" id="dm-rec-timer"></div>
     <div class="emoji-picker" id="emoji-picker">
-      <div class="emoji-head">
-        <span>Emoji</span>
+      <div class="emoji-head" style="display:flex;justify-content:space-between;align-items:center">
+        <div style="display:flex;gap:6px">
+          <button type="button" class="ep-tab on" data-tab="emoji" onclick="setPickerTab('emoji')">😀 Emoji</button>
+          <button type="button" class="ep-tab" data-tab="stickers" onclick="setPickerTab('stickers')">🎨 Stickers</button>
+        </div>
         <button class="emoji-close" onclick="closeEmojiPicker()">✕</button>
       </div>
       <div class="emoji-grid" id="emoji-grid"></div>
+      <div id="sticker-tray" style="display:none;flex:1;overflow-y:auto;padding:10px 12px 20px">
+        <button type="button" onclick="openStickerPicker()" style="width:100%;height:44px;background:rgba(123,140,255,.15);color:var(--accent,#7b8cff);border:none;border-radius:12px;font-family:inherit;font-size:13.5px;font-weight:700;cursor:pointer;margin-bottom:10px">+ Add sticker</button>
+        <div id="sticker-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px"></div>
+      </div>
     </div>
+
+    <!-- GISTAPP_STICKERS_UI_V1 — picker style additions -->
+    <style>
+    .ep-tab{background:transparent;border:none;color:#a0a0af;font-size:13.5px;font-weight:700;padding:7px 12px;border-radius:10px;cursor:pointer;font-family:inherit}
+    .ep-tab.on{background:rgba(123,140,255,.18);color:#7b8cff}
+    #sticker-grid .sticker-item{aspect-ratio:1;background:rgba(255,255,255,.04);border-radius:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;padding:6px}
+    #sticker-grid .sticker-item:hover{background:rgba(123,140,255,.12)}
+    #sticker-grid .sticker-item img{max-width:100%;max-height:100%;object-fit:contain}
+    #sticker-grid .sticker-empty{grid-column:1/-1;text-align:center;padding:30px 20px;color:#8e8e96;font-size:13px;line-height:1.5}
+    .bubble .sticker-img{max-width:140px;max-height:140px;display:block;margin:2px 0}
+    .bubble.sticker-only{background:transparent !important;padding:2px 4px}
+    .bubble.sticker-only .t{color:var(--sub,#8e8e96) !important;opacity:.7}
+    body.dark .bubble.sticker-only .t{color:#8e8e96 !important}
+    </style>
   </section>
 
   <!-- ============ CONTACT PROFILE ============ -->
@@ -3238,7 +3259,11 @@ function appendBubble(m, incoming){
         inner = '<div style="padding:20px;text-align:center;color:#8e8e93"><button class="btn" style="padding:10px 16px;background:rgba(123,140,255,.2);color:#7b8cff;border-radius:12px;border:none;cursor:pointer;font-family:inherit;font-weight:700" onclick="this.parentNode.innerHTML=\'<video src=&quot;' + m.media_url + '&quot; controls style=&quot;max-width:100%;border-radius:12px&quot;></video>\'">🎬 Tap to load video</button></div>';
       }
     }
-    else if (m.media_type === 'audio') inner = renderVoicePlayer(m.media_url, m.id || ('v' + Math.random().toString(36).slice(2,7)));
+    else if (m.media_type === 'sticker'){
+      d.classList.add('sticker-only');
+      inner = '<img class="sticker-img" src="' + m.media_url + '" alt="sticker">';
+    }
+        else if (m.media_type === 'audio') inner = renderVoicePlayer(m.media_url, m.id || ('v' + Math.random().toString(36).slice(2,7)));
     else inner = renderFileCard(m.media_url, m.body || '');
     d.innerHTML = reply + inner + (m.body ? '<div class="caption">' + linkify(m.body) + '</div>' : '') + '<span class="t">' + timeShort(m.created_at) + receipt + '</span>';
   } else {
@@ -3726,7 +3751,8 @@ const SETTINGS_SECTIONS = [
   ]},
   { title:'Chats', rows:[
     { icon:'folder', label:'Media visibility', sub:'Save media to gallery', key:'media_visibility', toggle:true },
-    { icon:'lock', label:'Chat lock', sub:'Require PIN to open selected chats', key:'chat_lock_manage' }
+    { icon:'lock', label:'Chat lock', sub:'Require PIN to open selected chats', key:'chat_lock_manage' },
+      { icon:'image', label:'My stickers', sub:'Custom emoji and sticker packs', key:'stickers' }
   ]},
   { title:'Notifications', rows:[
     { icon:'chat', label:'Show previews', sub:'Content in banners', key:'show_previews', toggle:true },
@@ -3828,6 +3854,7 @@ function handleSettingClick(key){
   if (key === 'accent_color'){ openAccentPicker(); return; }
   if (key === 'push_enabled'){ togglePush(); return; }
   if (key === 'backups'){ openBackups(); return; }
+  if (key === 'stickers'){ openStickerManager(); return; }
   switch (key){
     case 'wallpaper': openWallpaperPicker(); break;
     case 'blocked_list': openBlockedList(); break;
@@ -4098,6 +4125,171 @@ function stopRingtone(){
   if (ringCtx){ try { ringCtx.close(); } catch(_){} ringCtx = null; }
 }
 
+
+// Sticker file input listener
+(function attachStickerInput(){
+  function bind(){
+    const inp = document.getElementById('sticker-file-pick');
+    if (!inp || inp._bound) return;
+    inp._bound = true;
+    inp.addEventListener('change', function(e){
+      const f = e.target.files && e.target.files[0];
+      if (f) uploadStickerFile(f);
+      e.target.value = '';
+    });
+  }
+  if (document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', function(){ setTimeout(bind, 500); });
+  } else {
+    setTimeout(bind, 500);
+  }
+})();
+/* GISTAPP_STICKERS_UI_V1 */
+let _pickerTab = 'emoji';
+let _stickerCache = [];
+
+function setPickerTab(tab){
+  _pickerTab = tab;
+  document.querySelectorAll('.ep-tab').forEach(function(el){ el.classList.toggle('on', el.dataset.tab === tab); });
+  const eg = document.getElementById('emoji-grid');
+  const st = document.getElementById('sticker-tray');
+  if (tab === 'emoji'){
+    eg.style.display = '';
+    st.style.display = 'none';
+    renderEmojiGrid();
+  } else {
+    eg.style.display = 'none';
+    st.style.display = 'block';
+    renderStickerTray();
+  }
+}
+
+async function loadStickers(){
+  try {
+    const r = await api('/api/stickers');
+    _stickerCache = Array.isArray(r) ? r : [];
+    return _stickerCache;
+  } catch(e){
+    console.warn('loadStickers:', e.message);
+    return [];
+  }
+}
+
+async function renderStickerTray(){
+  const grid = document.getElementById('sticker-grid');
+  if (!grid) return;
+  grid.innerHTML = '<div class="sticker-empty">Loading…</div>';
+  const list = await loadStickers();
+  if (!list.length){
+    grid.innerHTML = '<div class="sticker-empty">No stickers yet.<br>Tap "Add sticker" to upload one.</div>';
+    return;
+  }
+  grid.innerHTML = list.map(function(s){
+    return '<div class="sticker-item" data-id="' + s.id + '" data-url="' + esc(s.url) + '"><img src="' + esc(s.url) + '" loading="lazy" alt=""></div>';
+  }).join('');
+  grid.querySelectorAll('.sticker-item').forEach(function(el){
+    el.addEventListener('click', function(){
+      sendSticker(el.dataset.url);
+    });
+  });
+}
+
+async function sendSticker(url){
+  if (!currentChat){ toast('Open a chat first'); return; }
+  closeEmojiPicker();
+  try {
+    const m = await api('/api/chats/' + currentChat.id + '/messages', {
+      method: 'POST',
+      body: JSON.stringify({ body: '', media_url: url, media_type: 'sticker' })
+    });
+    const msgs = document.getElementById('dm-messages');
+    if (!msgs.querySelector('.bubble[data-id="' + m.id + '"]')) appendBubble(m, false);
+    messagesCache.push(m);
+    loadChatsDebounced();
+    try { playSendSound(); } catch(_){}
+  } catch(e){ toast(e.message || 'Could not send sticker'); }
+}
+
+async function openStickerManager(){
+  const m = document.getElementById('sticker-manager');
+  if (!m) return;
+  m.style.display = 'flex';
+  await renderStickerManager();
+}
+
+function closeStickerManager(){
+  const m = document.getElementById('sticker-manager');
+  if (m) m.style.display = 'none';
+}
+
+async function renderStickerManager(){
+  const grid = document.getElementById('sticker-manager-grid');
+  if (!grid) return;
+  grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px 20px;color:var(--sub)">Loading…</div>';
+  const list = await loadStickers();
+  if (!list.length){
+    grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px 20px;color:var(--sub);font-size:13.5px">No stickers yet.<br>Tap "+ Add" to upload your first one.</div>';
+    return;
+  }
+  grid.innerHTML = list.map(function(s){
+    return '<div style="position:relative;aspect-ratio:1;background:var(--bg-2);border-radius:14px;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:10px">' +
+      '<img src="' + esc(s.url) + '" style="max-width:100%;max-height:100%;object-fit:contain" alt="">' +
+      '<button onclick="deleteSticker(' + s.id + ',this)" style="position:absolute;top:6px;right:6px;width:26px;height:26px;border-radius:50%;background:rgba(0,0,0,.5);color:#fff;border:none;font-size:14px;cursor:pointer">✕</button>' +
+    '</div>';
+  }).join('');
+}
+
+function pickStickerFile(){
+  const inp = document.getElementById('sticker-file-pick');
+  if (inp) inp.click();
+}
+
+async function openStickerPicker(){
+  // Used from the picker tray — opens file input for quick upload then adds
+  pickStickerFile();
+}
+
+async function uploadStickerFile(file){
+  if (!file) return;
+  if (file.size > 512 * 1024){ toast('Sticker too large (max 512 KB)'); return; }
+  toast('Uploading sticker…');
+  try {
+    const fd = new FormData();
+    fd.append('file', file, file.name || 'sticker.png');
+    const res = await fetch('/api/upload', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + token },
+      body: fd
+    });
+    const text = await res.text();
+    let data = {};
+    try { data = JSON.parse(text); } catch(_){}
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    await api('/api/stickers', {
+      method: 'POST',
+      body: JSON.stringify({ url: data.url, name: file.name || 'Sticker' })
+    });
+    toast('Sticker added');
+    // Refresh both the tray and the manager if open
+    try { renderStickerTray(); } catch(_){}
+    try { renderStickerManager(); } catch(_){}
+  } catch(e){
+    console.error('uploadSticker:', e);
+    toast(e.message || 'Upload failed');
+  }
+}
+
+async function deleteSticker(id, btn){
+  if (!confirm('Delete this sticker?')) return;
+  try {
+    await api('/api/stickers/' + id, { method: 'DELETE' });
+    try { renderStickerTray(); } catch(_){}
+    try { renderStickerManager(); } catch(_){}
+    toast('Deleted');
+  } catch(e){ toast(e.message || 'Delete failed'); }
+}
+
+/* GISTAPP_STICKERS_UI_V1 */
 /* GISTAPP_BACKUPS_V1 */
 async function openBackups(){
   if (!me || !me.is_admin){ toast('Admin only'); return; }
@@ -7092,6 +7284,22 @@ boot();
       <div style="padding:30px;text-align:center;color:var(--sub)">Loading…</div>
     </div>
   </div>
+</div>
+
+<!-- GISTAPP_STICKERS_UI_V1 manager -->
+<div id="sticker-manager" style="position:fixed;inset:0;background:var(--bg);z-index:9998;display:none;flex-direction:column">
+  <div style="display:flex;justify-content:space-between;align-items:center;padding:calc(14px + env(safe-area-inset-top,0px)) 18px 14px;border-bottom:1px solid var(--line)">
+    <button onclick="closeStickerManager()" style="background:transparent;border:none;color:var(--ink);font-size:20px;cursor:pointer;padding:6px 10px">✕</button>
+    <div style="font-size:16px;font-weight:800;color:var(--ink)">My stickers</div>
+    <button onclick="pickStickerFile()" style="background:var(--accent,#7b8cff);color:#fff;border:none;padding:9px 14px;border-radius:11px;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer">+ Add</button>
+  </div>
+  <div style="padding:10px 18px;color:var(--sub);font-size:12.5px;line-height:1.5">
+    Upload PNGs with transparent backgrounds. Max 512 KB each.
+  </div>
+  <div id="sticker-manager-grid" style="flex:1;overflow-y:auto;padding:14px 18px calc(24px + env(safe-area-inset-bottom,0px));display:grid;grid-template-columns:repeat(3,1fr);gap:12px;align-content:start">
+    <div style="grid-column:1/-1;text-align:center;padding:40px 20px;color:var(--sub)">Loading…</div>
+  </div>
+  <input type="file" id="sticker-file-pick" accept="image/png,image/webp,image/gif,image/jpeg" style="display:none">
 </div>
 </body>
 </html>

@@ -190,3 +190,8 @@ public/uploads/*
 
 *.bakbackups.*
 migrate_admin.js
+
+*.bakstickers.*
+*.bakstickersui.*
+*.bakstickerrow.*
+migrate_stickers.js

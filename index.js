@@ -1200,6 +1200,40 @@ app.post('/api/upload', uploadLimiter, auth, upload.single('file'), async (req,r
   }
 });
 
+/* ---------- stickers ---------- GISTAPP_STICKERS_V1 */
+app.get('/api/stickers', auth, async (req, res) => {
+  try {
+    const r = await pool.query(
+      'SELECT id, url, name, created_at FROM stickers WHERE user_id=$1 ORDER BY created_at DESC LIMIT 100',
+      [req.user.id]
+    );
+    res.json(r.rows);
+  } catch(e){ console.error('stickers list:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+app.post('/api/stickers', auth, async (req, res) => {
+  try {
+    const { url, name } = req.body || {};
+    if (!url) return res.status(400).json({ error: 'Missing url' });
+    const count = await pool.query('SELECT COUNT(*)::int AS n FROM stickers WHERE user_id=$1', [req.user.id]);
+    if (count.rows[0].n >= 50) return res.status(400).json({ error: 'Sticker limit reached (50 max)' });
+    const r = await pool.query(
+      'INSERT INTO stickers (user_id, url, name) VALUES ($1,$2,$3) RETURNING id, url, name, created_at',
+      [req.user.id, url, (name || '').slice(0, 60)]
+    );
+    res.json(r.rows[0]);
+  } catch(e){ console.error('sticker create:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+app.delete('/api/stickers/:id', auth, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ error: 'Invalid id' });
+    await pool.query('DELETE FROM stickers WHERE id=$1 AND user_id=$2', [id, req.user.id]);
+    res.json({ ok: true });
+  } catch(e){ console.error('sticker delete:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
 /* ---------- block ---------- */
 app.post('/api/users/:id/block', auth, async (req,res)=>{
   try {
