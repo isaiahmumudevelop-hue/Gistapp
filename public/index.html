@@ -867,6 +867,40 @@ body.dark .up-stat b{color:#fff}
 body.dark .up-stats{border-color:#26262f}
 body.dark .up-btn-msg{background:#1e1e28;color:#c5c5d0}
 body.dark .up-close:hover{background:#1e1e28}
+
+/* GISTAPP_ACCENT_V1 — theme accent color */
+:root{--accent:#7b8cff;--accent-soft:rgba(123,140,255,.15);--accent-hover:rgba(123,140,255,.28)}
+.btn, .auth-main-btn, .pc-post:not(:disabled), .ob-btn:not(:disabled), .sc-post:not(:disabled) {background:var(--accent) !important;color:#fff !important}
+.btn:hover, .auth-main-btn:hover, .pc-post:not(:disabled):hover {background:var(--accent-hover) !important}
+.nav-ic.on {color:var(--accent) !important}
+.ob-prog span.on {background:var(--accent) !important}
+.ob-chip.on {border-color:var(--accent) !important;background:var(--accent-soft) !important;color:var(--accent) !important}
+.ob-sel:focus {border-color:var(--accent) !important}
+.bubble.out {background:var(--accent) !important}
+.sw.on {background:var(--accent) !important}
+.post-act.like.on, .post-act.up.on {color:var(--accent) !important}
+.picker-row.on {border-color:var(--accent) !important;color:var(--accent) !important}
+.tab.on, .feed-tab.on {background:var(--accent) !important;color:#fff !important}
+.pc-preview-link, a {color:var(--accent)}
+.link-accent {color:var(--accent)}
+.up-btn-follow {background:var(--accent) !important;color:#fff !important}
+
+/* Accent picker modal */
+#accent-modal{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:2700;display:none;align-items:flex-end;justify-content:center}
+#accent-modal.show{display:flex}
+.accent-sheet{background:var(--bg);width:100%;max-width:480px;border-radius:24px 24px 0 0;padding:24px 20px calc(24px + env(safe-area-inset-bottom,0px));animation:upSlide .28s ease}
+.accent-title{font-size:18px;font-weight:800;color:var(--ink);margin:0 0 4px;text-align:center;letter-spacing:-.3px}
+.accent-sub{font-size:13px;color:var(--sub);text-align:center;margin:0 0 20px}
+.accent-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:20px}
+.accent-swatch{aspect-ratio:1;border-radius:50%;cursor:pointer;border:3px solid transparent;transition:transform .12s,border-color .12s;position:relative;box-shadow:0 2px 8px rgba(0,0,0,.15)}
+.accent-swatch:hover{transform:scale(1.08)}
+.accent-swatch.on{border-color:var(--ink);box-shadow:0 4px 14px rgba(0,0,0,.25)}
+.accent-swatch.on::after{content:"✓";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:20px;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.5)}
+.accent-preview{background:var(--bg-2);border-radius:14px;padding:14px 16px;margin-bottom:20px;display:flex;align-items:center;gap:12px}
+.accent-preview .pb{background:var(--accent);color:#fff;padding:9px 18px;border-radius:12px;font-weight:700;font-size:13.5px}
+.accent-preview .pl{color:var(--accent);font-weight:600;font-size:14px}
+.accent-preview .ps{color:var(--sub);font-size:12px;margin-left:auto}
+.accent-close{width:100%;height:50px;background:var(--bg-2);color:var(--ink);border:none;border-radius:14px;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer}
 </style>
 
   
@@ -1990,6 +2024,9 @@ function goList(){ if (socket && currentChat) socket.emit('leave', currentChat.i
 
 /* ---------- ENTER APP ---------- */
 async function enterApp(){
+  // GISTAPP_ACCENT_V1: apply saved accent
+  try { if (typeof initAccent === 'function') initAccent(); } catch(_){}
+
   try {
     userPrefs = (me && me.prefs) || {};
     applyDark(!!(me && me.dark_mode));
@@ -2849,6 +2886,7 @@ async function loadProfileMedia(){
 const SETTINGS_SECTIONS = [
   { title:'Appearance', rows:[
     { icon:'moon', label:'Theme', sub:'Light, dark, or system', key:'theme', options:['System','Light','Dark'] },
+      { icon:'image', label:'Accent colour', sub:'Buttons, bubbles, and highlights', key:'accent_color' },
     { icon:'image', label:'Chat wallpaper', sub:'Personalise your chat background', key:'wallpaper' }
   ]},
   { title:'Account', rows:[
@@ -2965,6 +3003,7 @@ function handleSettingClick(key){
   const row = findRow(key);
   if (!row) return;
   if (row.options){ showPicker(row.label, row.options, key); return; }
+  if (key === 'accent_color'){ openAccentPicker(); return; }
   switch (key){
     case 'wallpaper': openWallpaperPicker(); break;
     case 'blocked_list': openBlockedList(); break;
@@ -3323,6 +3362,79 @@ async function upMessage(userId){
   } catch(e){
     toast(e.message || 'Could not open chat');
   }
+}
+
+
+/* GISTAPP_ACCENT_V1 */
+const ACCENT_COLORS = [
+  { name:'Indigo',  hex:'#7b8cff', soft:'rgba(123,140,255,.15)', hover:'rgba(123,140,255,.28)' },
+  { name:'Violet',  hex:'#a86bff', soft:'rgba(168,107,255,.15)', hover:'rgba(168,107,255,.28)' },
+  { name:'Rose',    hex:'#f56aa8', soft:'rgba(245,106,168,.15)', hover:'rgba(245,106,168,.28)' },
+  { name:'Coral',   hex:'#ff6b5a', soft:'rgba(255,107,90,.15)',  hover:'rgba(255,107,90,.28)'  },
+  { name:'Amber',   hex:'#f5a623', soft:'rgba(245,166,35,.15)',  hover:'rgba(245,166,35,.28)'  },
+  { name:'Emerald', hex:'#22c98a', soft:'rgba(34,201,138,.15)',  hover:'rgba(34,201,138,.28)'  },
+  { name:'Sky',     hex:'#38bdf8', soft:'rgba(56,189,248,.15)',  hover:'rgba(56,189,248,.28)'  },
+  { name:'Teal',    hex:'#14b8a6', soft:'rgba(20,184,166,.15)',  hover:'rgba(20,184,166,.28)'  },
+  { name:'Rosewood',hex:'#e11d48', soft:'rgba(225,29,72,.15)',   hover:'rgba(225,29,72,.28)'   },
+  { name:'Slate',   hex:'#64748b', soft:'rgba(100,116,139,.15)', hover:'rgba(100,116,139,.28)' }
+];
+
+function applyAccent(hex){
+  const c = ACCENT_COLORS.find(function(x){ return x.hex === hex; }) || ACCENT_COLORS[0];
+  const r = document.documentElement.style;
+  r.setProperty('--accent', c.hex);
+  r.setProperty('--accent-soft', c.soft);
+  r.setProperty('--accent-hover', c.hover);
+  // Update meta theme-color for PWA
+  try {
+    var meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', c.hex);
+  } catch(_){}
+}
+
+function renderAccentGrid(){
+  const grid = document.getElementById('accent-grid');
+  if (!grid) return;
+  const cur = (userPrefs && userPrefs.accent_color) || ACCENT_COLORS[0].hex;
+  grid.innerHTML = ACCENT_COLORS.map(function(c){
+    return '<div class="accent-swatch' + (c.hex===cur?' on':'') + '" style="background:' + c.hex + '" data-hex="' + c.hex + '" title="' + c.name + '"></div>';
+  }).join('');
+  grid.querySelectorAll('.accent-swatch').forEach(function(el){
+    el.addEventListener('click', function(){ pickAccent(el.dataset.hex); });
+  });
+  // Preview colors
+  const prev = document.getElementById('acc-prev-btn');
+  if (prev) prev.style.background = 'var(--accent)';
+}
+
+function openAccentPicker(){
+  const m = document.getElementById('accent-modal');
+  if (!m) return;
+  renderAccentGrid();
+  m.classList.add('show');
+}
+
+function closeAccentPicker(){
+  const m = document.getElementById('accent-modal');
+  if (m) m.classList.remove('show');
+}
+
+async function pickAccent(hex){
+  applyAccent(hex);
+  userPrefs = userPrefs || {};
+  userPrefs.accent_color = hex;
+  renderAccentGrid();
+  try {
+    await api('/api/me', { method:'PATCH', body: JSON.stringify({ prefs: { accent_color: hex } }) });
+    toast('Accent updated');
+  } catch(e){
+    toast('Could not save accent');
+  }
+}
+
+function initAccent(){
+  const hex = (userPrefs && userPrefs.accent_color) || ACCENT_COLORS[0].hex;
+  applyAccent(hex);
 }
 
 function renderPostCard(p){
@@ -5344,6 +5456,21 @@ boot();
     <div class="up-body" id="up-body">
       <div style="text-align:center;padding:40px 20px;color:#8e8e96">Loading…</div>
     </div>
+  </div>
+</div>
+
+<!-- GISTAPP_ACCENT_V1 modal -->
+<div id="accent-modal" onclick="if(event.target===this)closeAccentPicker()">
+  <div class="accent-sheet" onclick="event.stopPropagation()">
+    <h2 class="accent-title">Accent colour</h2>
+    <p class="accent-sub">Personalise buttons, bubbles, and highlights</p>
+    <div class="accent-grid" id="accent-grid"></div>
+    <div class="accent-preview">
+      <span class="pb" id="acc-prev-btn">Button</span>
+      <span class="pl" id="acc-prev-link">Link</span>
+      <span class="ps" id="acc-prev-note">Preview</span>
+    </div>
+    <button class="accent-close" onclick="closeAccentPicker()">Done</button>
   </div>
 </div>
 </body>
