@@ -6,7 +6,8 @@
   "type": "commonjs",
   "scripts": {
     "start": "node index.js",
-    "dev": "node index.js"
+    "dev": "node index.js",
+    "test": "bash tests/run.sh"
   },
   "dependencies": {
     "@sentry/node": "^11.7.0",
