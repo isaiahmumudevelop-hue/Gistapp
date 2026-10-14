@@ -195,3 +195,12 @@ migrate_admin.js
 *.bakstickersui.*
 *.bakstickerrow.*
 migrate_stickers.js
+
+*.bakmomo.*
+*.bakmomomock.*
+*.bakmomomock2.*
+get_token.js
+migrate_momo.js
+momo_setup.sh
+momo_retry.sh
+patch_momo*.py

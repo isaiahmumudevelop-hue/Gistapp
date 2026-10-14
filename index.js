@@ -362,7 +362,8 @@ const sign = u => jwt.sign({
   id: u.id,
   email: u.email,
   verified: !!u.verified,
-  google_id: u.google_id || null
+  google_id: u.google_id || null,
+  subscription_tier: u.subscription_tier || 'free'
 }, JWT_SECRET, {expiresIn:'30d'});
 
 async function isMember(chatId,userId){ const r = await pool.query('SELECT status,is_admin,muted,archived,favorite FROM chat_members WHERE chat_id=$1 AND user_id=$2',[chatId,userId]); return r.rows[0]; }
@@ -2918,6 +2919,286 @@ socket.on('disconnect', async ()=>{
   });
 });
 
+
+/* ---------- MoMo billing ---------- GISTAPP_MOMO_V1 */
+const MOMO_BASE = process.env.MOMO_BASE_URL || 'https://sandbox.momodeveloper.mtn.com';
+const MOMO_SUB_KEY = process.env.MOMO_SUBSCRIPTION_KEY || '';
+const MOMO_API_USER = process.env.MOMO_API_USER || '';
+const MOMO_API_KEY = process.env.MOMO_API_KEY || '';
+const MOMO_TARGET_ENV = process.env.MOMO_TARGET_ENV || 'sandbox';
+const MOMO_READY = !!(MOMO_SUB_KEY && MOMO_API_USER && MOMO_API_KEY);
+const PREMIUM_PRICE = Number(process.env.PREMIUM_PRICE_NGN) || 7500;
+const PREMIUM_DAYS = 30;
+
+console.log(MOMO_READY ? '✅ MoMo billing ready (₦' + PREMIUM_PRICE + '/mo)' : 'ℹ️  MoMo billing disabled (missing env vars)');
+
+let _momoToken = { token: null, exp: 0 };
+async function momoGetToken(){
+  if (_momoToken.token && Date.now() < _momoToken.exp - 60000) return _momoToken.token;
+  const creds = Buffer.from(MOMO_API_USER + ':' + MOMO_API_KEY).toString('base64');
+  const r = await fetch(MOMO_BASE + '/collection/token/', {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Basic ' + creds,
+      'Ocp-Apim-Subscription-Key': MOMO_SUB_KEY
+    }
+  });
+  const data = await r.json().catch(()=>({}));
+  if (!data.access_token) throw new Error('MoMo token failed: ' + JSON.stringify(data).slice(0,200));
+  _momoToken.token = data.access_token;
+  _momoToken.exp = Date.now() + (data.expires_in || 3600) * 1000;
+  return _momoToken.token;
+}
+
+function momoFormatPhone(raw){
+  let s = String(raw || '').replace(/\D/g, '');
+  if (s.startsWith('234')) return s;
+  if (s.startsWith('0')) return '234' + s.slice(1);
+  if (s.length === 10) return '234' + s;
+  return s;
+}
+
+async function momoRequestToPay({ phone, amount, referenceId, payerMessage, payeeNote }){
+  // GISTAPP_MOMO_MOCK — simulate payment when MTN sandbox is unavailable
+  if (process.env.MOMO_MOCK === 'true'){
+    console.log('🎭 MOCK: requestToPay', { phone, amount, referenceId });
+    // Simulate MTN accepting the request
+    return { ok: true, referenceId: referenceId, mock: true };
+  }
+  if (!MOMO_READY) return { ok: false, error: 'MoMo not configured' };
+  try {
+    const token = await momoGetToken();
+    const msisdn = momoFormatPhone(phone);
+    const r = await fetch(MOMO_BASE + '/collection/v1_0/requesttopay', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + token,
+        'X-Reference-Id': referenceId,
+        'X-Target-Environment': MOMO_TARGET_ENV,
+        'Ocp-Apim-Subscription-Key': MOMO_SUB_KEY,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        amount: String(amount),
+        currency: 'NGN',
+        externalId: referenceId,
+        payer: { partyIdType: 'MSISDN', partyId: msisdn },
+        payerMessage: payerMessage || 'GistApp Premium',
+        payeeNote: payeeNote || 'Subscription'
+      })
+    });
+    if (r.status === 202) return { ok: true, referenceId: referenceId };
+    const err = await r.text();
+    return { ok: false, error: 'HTTP ' + r.status + ': ' + err.slice(0, 250) };
+  } catch(e){ return { ok: false, error: e.message }; }
+}
+
+async function momoCheckStatus(referenceId){
+  // GISTAPP_MOMO_MOCK — auto-succeed 5s after request when mocked
+  if (process.env.MOMO_MOCK === 'true'){
+    try {
+      const r = await pool.query('SELECT created_at FROM payments WHERE reference_id=$1', [referenceId]);
+      if (r.rowCount && (Date.now() - new Date(r.rows[0].created_at).getTime()) > 5000){
+        return { ok: true, status: 'SUCCESSFUL', reason: 'mock' };
+      }
+      return { ok: true, status: 'PENDING' };
+    } catch(_){ return { ok: true, status: 'PENDING' }; }
+  }
+  if (!MOMO_READY) return { ok: false, error: 'MoMo not configured' };
+  try {
+    const token = await momoGetToken();
+    const r = await fetch(MOMO_BASE + '/collection/v1_0/requesttopay/' + referenceId, {
+      headers: {
+        'Authorization': 'Bearer ' + token,
+        'X-Target-Environment': MOMO_TARGET_ENV,
+        'Ocp-Apim-Subscription-Key': MOMO_SUB_KEY
+      }
+    });
+    if (!r.ok) return { ok: false, error: 'HTTP ' + r.status };
+    const data = await r.json();
+    return { ok: true, status: data.status, reason: data.reason || null, raw: data };
+  } catch(e){ return { ok: false, error: e.message }; }
+}
+
+async function isPremium(userId){
+  try {
+    const r = await pool.query('SELECT subscription_tier, subscription_status, subscription_ends_at FROM users WHERE id=$1', [userId]);
+    if (!r.rowCount) return false;
+    const u = r.rows[0];
+    if (u.subscription_tier !== 'premium') return false;
+    if (u.subscription_status !== 'active') return false;
+    if (u.subscription_ends_at && new Date(u.subscription_ends_at) < new Date()) return false;
+    return true;
+  } catch(_){ return false; }
+}
+
+// GET /api/billing/status
+app.get('/api/billing/status', auth, async (req, res) => {
+  try {
+    const r = await pool.query(
+      'SELECT subscription_tier, subscription_status, subscription_ends_at, auto_renew, momo_number FROM users WHERE id=$1',
+      [req.user.id]
+    );
+    const u = r.rows[0] || {};
+    const isPrem = u.subscription_tier === 'premium' && u.subscription_status === 'active'
+      && (!u.subscription_ends_at || new Date(u.subscription_ends_at) > new Date());
+    res.json({
+      tier: u.subscription_tier || 'free',
+      status: u.subscription_status || null,
+      ends_at: u.subscription_ends_at || null,
+      auto_renew: !!u.auto_renew,
+      momo_number: u.momo_number || null,
+      is_premium: isPrem,
+      price: PREMIUM_PRICE,
+      currency: 'NGN',
+      momo_ready: MOMO_READY,
+      momo_mock: process.env.MOMO_MOCK === 'true'
+    });
+  } catch(e){ console.error('billing status:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+// POST /api/billing/subscribe { phone }
+app.post('/api/billing/subscribe', auth, async (req, res) => {
+  try {
+    const phone = momoFormatPhone(req.body && req.body.phone);
+    if (!phone || phone.length < 12) return res.status(400).json({ error: 'Valid phone number required (e.g. 08012345678)' });
+    if (!MOMO_READY && process.env.MOMO_MOCK !== 'true') return res.status(503).json({ error: 'MoMo billing not configured' }); // MOMO_READY_OR_MOCK
+
+    // Save phone on user
+    await pool.query('UPDATE users SET momo_number=$1 WHERE id=$2', [phone, req.user.id]);
+
+    const referenceId = require('crypto').randomUUID();
+    await pool.query(
+      `INSERT INTO payments (user_id, reference_id, amount, phone, status) VALUES ($1,$2,$3,$4,'pending')`,
+      [req.user.id, referenceId, PREMIUM_PRICE, phone]
+    );
+
+    const r = await momoRequestToPay({
+      phone: phone,
+      amount: PREMIUM_PRICE,
+      referenceId: referenceId,
+      payerMessage: 'GistApp Premium monthly',
+      payeeNote: 'Subscription'
+    });
+    if (!r.ok){
+      await pool.query('UPDATE payments SET status=$1 WHERE reference_id=$2', ['failed', referenceId]);
+      return res.status(500).json({ error: r.error });
+    }
+    res.json({
+      ok: true,
+      reference: referenceId,
+      message: 'Check your phone for the MoMo prompt and approve to complete payment.',
+      amount: PREMIUM_PRICE,
+      currency: 'NGN'
+    });
+  } catch(e){ console.error('billing subscribe:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+// GET /api/billing/verify/:ref
+app.get('/api/billing/verify/:ref', auth, async (req, res) => {
+  try {
+    const ref = String(req.params.ref);
+    const p = await pool.query('SELECT id, status, user_id FROM payments WHERE reference_id=$1 AND user_id=$2', [ref, req.user.id]);
+    if (!p.rowCount) return res.status(404).json({ error: 'Payment not found' });
+    if (p.rows[0].status === 'success') return res.json({ status: 'success' });
+
+    const s = await momoCheckStatus(ref);
+    if (!s.ok) return res.json({ status: 'pending', error: s.error });
+
+    if (s.status === 'SUCCESSFUL'){
+      await pool.query('UPDATE payments SET status=$1, momo_status=$2, completed_at=NOW() WHERE id=$3', ['success', 'SUCCESSFUL', p.rows[0].id]);
+      await pool.query(`
+        UPDATE users
+        SET subscription_tier='premium',
+            subscription_status='active',
+            subscription_ends_at = GREATEST(COALESCE(subscription_ends_at, NOW()), NOW()) + INTERVAL '30 days'
+        WHERE id=$1
+      `, [req.user.id]);
+      return res.json({ status: 'success' });
+    }
+    if (s.status === 'FAILED'){
+      await pool.query('UPDATE payments SET status=$1, momo_status=$2 WHERE id=$3', ['failed', 'FAILED', p.rows[0].id]);
+      return res.json({ status: 'failed', reason: s.reason });
+    }
+    res.json({ status: 'pending', momo_status: s.status });
+  } catch(e){ console.error('billing verify:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+// POST /api/billing/cancel
+app.post('/api/billing/cancel', auth, async (req, res) => {
+  try {
+    await pool.query('UPDATE users SET auto_renew=false WHERE id=$1', [req.user.id]);
+    res.json({ ok: true, message: 'Auto-renewal disabled. Access continues until period ends.' });
+  } catch(e){ res.status(500).json({ error: 'Server error' }); }
+});
+
+// Auto-renewal scheduler — every 6h, check subscriptions expiring in <=5 days
+async function momoRenewalCheck(){
+  if (!MOMO_READY) return;
+  try {
+    const soon = await pool.query(`
+      SELECT id, momo_number, subscription_ends_at, auto_renew
+      FROM users
+      WHERE subscription_tier='premium'
+        AND subscription_status='active'
+        AND auto_renew=true
+        AND subscription_ends_at IS NOT NULL
+        AND subscription_ends_at < NOW() + INTERVAL '5 days'
+        AND subscription_ends_at > NOW() - INTERVAL '7 days'
+        AND momo_number IS NOT NULL
+      LIMIT 20
+    `);
+    for (const u of soon.rows){
+      const pending = await pool.query(
+        `SELECT 1 FROM payments WHERE user_id=$1 AND status='pending' AND created_at > NOW() - INTERVAL '2 days' LIMIT 1`,
+        [u.id]
+      );
+      if (pending.rowCount) continue;
+      const referenceId = require('crypto').randomUUID();
+      await pool.query(
+        `INSERT INTO payments (user_id, reference_id, amount, phone, status) VALUES ($1,$2,$3,$4,'pending')`,
+        [u.id, referenceId, PREMIUM_PRICE, u.momo_number]
+      );
+      const r = await momoRequestToPay({ phone: u.momo_number, amount: PREMIUM_PRICE, referenceId: referenceId });
+      console.log(r.ok ? '💳 renewal sent → user ' + u.id : '💳 renewal failed → user ' + u.id + ': ' + r.error);
+    }
+  } catch(e){ console.warn('renewal check:', e.message); }
+}
+
+// Auto-poll pending payments every 30s
+async function momoCheckPending(){
+  if (!MOMO_READY) return;
+  try {
+    const r = await pool.query(`SELECT id, user_id, reference_id FROM payments WHERE status='pending' AND created_at > NOW() - INTERVAL '1 hour'`);
+    for (const p of r.rows){
+      const s = await momoCheckStatus(p.reference_id);
+      if (!s.ok) continue;
+      if (s.status === 'SUCCESSFUL'){
+        await pool.query('UPDATE payments SET status=$1, momo_status=$2, completed_at=NOW() WHERE id=$3', ['success', 'SUCCESSFUL', p.id]);
+        await pool.query(`
+          UPDATE users
+          SET subscription_tier='premium',
+              subscription_status='active',
+              subscription_ends_at = GREATEST(COALESCE(subscription_ends_at, NOW()), NOW()) + INTERVAL '30 days'
+          WHERE id=$1
+        `, [p.user_id]);
+        console.log('✅ MoMo payment confirmed → user', p.user_id);
+      } else if (s.status === 'FAILED'){
+        await pool.query('UPDATE payments SET status=$1, momo_status=$2 WHERE id=$3', ['failed', 'FAILED', p.id]);
+      }
+    }
+    // Expire overdue subscriptions
+    await pool.query(`
+      UPDATE users SET subscription_status='past_due'
+      WHERE subscription_tier='premium' AND subscription_status='active'
+        AND subscription_ends_at < NOW() - INTERVAL '2 days'
+    `);
+  } catch(e){ console.warn('check pending:', e.message); }
+}
+
+setTimeout(momoRenewalCheck, 60 * 1000);
+setInterval(momoRenewalCheck, 6 * 60 * 60 * 1000);
+setInterval(momoCheckPending, 30 * 1000);
 
 /* ---------- admin + backups ---------- GISTAPP_BACKUPS_V1 */
 const ADMIN_EMAILS = new Set(['isaiahmumudevelop@gmail.com']);
