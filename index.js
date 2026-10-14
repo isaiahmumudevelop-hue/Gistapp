@@ -508,7 +508,7 @@ app.post('/api/login', loginLimiter, async (req,res)=>{
   } catch(e){ console.error(e); res.status(500).json({error:'Server error'}); }
 });
 app.get('/api/me', auth, async (req,res)=>{
-  const r = await pool.query('SELECT id,email,display_name,username,avatar_color,dark_mode,font_size,blocked_ids,prefs,avatar_url,cover_url,bio,totp_enabled,onboarded,onboard_stage,birthday,interests,follows,joined_communities,permissions,pin_hash,app_lock_enabled,app_lock_timeout_min,chat_lock_enabled,locked_chats FROM users WHERE id=$1',[req.user.id]);
+  const r = await pool.query('SELECT id,email,display_name,username,avatar_color,dark_mode,font_size,blocked_ids,prefs,avatar_url,cover_url,bio,totp_enabled,onboarded,onboard_stage,birthday,interests,follows,joined_communities,permissions,pin_hash,app_lock_enabled,app_lock_timeout_min,chat_lock_enabled,locked_chats, subscription_tier, subscription_status, subscription_ends_at, is_admin FROM users /* GISTAPP_ME_TIER */ /* GISTAPP_ADMIN_FLAG */ WHERE id=$1',[req.user.id]);
   res.json(r.rows[0]);
 });
 app.patch('/api/me', auth, async (req,res)=>{
@@ -725,7 +725,7 @@ app.get('/api/chats', auth, async (req,res)=>{
       (SELECT body FROM messages WHERE chat_id=c.id AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1) AS last_message,
       (SELECT created_at FROM messages WHERE chat_id=c.id AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1) AS last_at,
       (SELECT COUNT(*) FROM messages WHERE chat_id=c.id AND sender_id<>$1 AND deleted_at IS NULL AND created_at > COALESCE(m.last_read_at,'1970-01-01')) AS unread,
-      o.id AS other_id, o.display_name AS other_name, o.email AS other_email, o.avatar_color AS other_color,
+      o.id AS other_id, o.display_name AS other_name, o.email AS other_email, o.avatar_color AS other_color, o.subscription_tier AS other_tier,
       o.avatar_url   AS other_url,
       o.last_seen_at AS other_last_seen,
       om.status AS other_status,
@@ -896,7 +896,7 @@ app.get('/api/chats/:id/messages', auth, async (req,res)=>{
   const r = await pool.query(`
     SELECT m.id, m.body, m.created_at, m.edited_at, m.sender_id, m.reactions, m.read_at,
            m.media_url, m.media_type, m.deleted_at, m.starred_by, m.pinned, m.reply_to_id,
-           u.display_name, u.avatar_color, u.avatar_url,
+           u.display_name, u.avatar_color, u.avatar_url, u.subscription_tier AS sender_tier, u.subscription_tier AS author_tier,
            rp.body AS reply_body,
            rp.sender_id AS reply_sender_id,
            ru.display_name AS reply_sender
@@ -1199,6 +1199,65 @@ app.post('/api/upload', uploadLimiter, auth, upload.single('file'), async (req,r
     console.error('❌ Upload top error:', (e && e.message) || e);
     res.status(500).json({ error: 'Upload failed: ' + ((e && e.message) || 'unknown') });
   }
+});
+
+/* ---------- change email ---------- GISTAPP_CHANGE_EMAIL_V1 */
+app.post('/api/me/request-email-change', auth, async (req, res) => {
+  try {
+    const newEmail = String((req.body && req.body.new_email) || '').trim().toLowerCase();
+    const password = String((req.body && req.body.password) || '');
+    if (!newEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail)){
+      return res.status(400).json({ error: 'Enter a valid email address' });
+    }
+    if (!password) return res.status(400).json({ error: 'Password required' });
+
+    const me = await pool.query('SELECT email, password_hash FROM users WHERE id=$1', [req.user.id]);
+    if (!me.rowCount) return res.status(404).json({ error: 'User not found' });
+    const u = me.rows[0];
+
+    if (u.email && u.email.toLowerCase() === newEmail){
+      return res.status(400).json({ error: 'That is already your email' });
+    }
+    const taken = await pool.query('SELECT 1 FROM users WHERE LOWER(email)=$1 AND id<>$2', [newEmail, req.user.id]);
+    if (taken.rowCount) return res.status(409).json({ error: 'That email is already in use' });
+
+    // Verify password (skip for Google-only users with no password)
+    if (u.password_hash){
+      const ok = await bcrypt.compare(password, u.password_hash);
+      if (!ok) return res.status(403).json({ error: 'Incorrect password' });
+    }
+
+    // Create token + expiry (1h)
+    const token = makeToken();
+    const expires = new Date(Date.now() + 60 * 60 * 1000);
+    await pool.query(
+      'UPDATE users SET email_change_token=$1, email_change_new=$2, email_change_expires=$3 WHERE id=$4',
+      [token, newEmail, expires, req.user.id]
+    );
+
+    // Send verification to the NEW email
+    const baseUrl = process.env.APP_URL || 'http://localhost:3000';
+    const link = baseUrl + '/verify-email-change?token=' + token;
+    try {
+      await mailer.sendMail({
+        from: '"GistApp" <' + (process.env.GMAIL_SENDER || process.env.SMTP_USER) + '>',
+        to: newEmail,
+        subject: 'Confirm your new GistApp email',
+        html: '<div style="font-family:Inter,sans-serif;max-width:480px;margin:0 auto;padding:24px">' +
+          '<h2 style="color:#1c1c22;margin:0 0 12px">Confirm your new email</h2>' +
+          '<p style="color:#4a4a55;line-height:1.6">Click the button below to switch your GistApp account email to <b>' + newEmail + '</b>. This link expires in 1 hour.</p>' +
+          '<a href="' + link + '" style="display:inline-block;background:#7b8cff;color:#fff;text-decoration:none;padding:12px 24px;border-radius:10px;font-weight:700;margin-top:14px">Confirm new email</a>' +
+          '<p style="color:#8e8e96;font-size:12.5px;margin-top:20px;line-height:1.5">If you did not request this change, ignore this email — your account email stays the same.</p>' +
+          '</div>'
+      });
+      console.log('✅ Email change verification sent to', newEmail);
+    } catch(mailErr){
+      console.error('❌ Email change send failed:', mailErr.message);
+      return res.status(500).json({ error: 'Could not send verification email. Try again later.' });
+    }
+
+    res.json({ ok: true, sent_to: newEmail });
+  } catch(e){ console.error('request-email-change:', e.message); res.status(500).json({ error: 'Server error' }); }
 });
 
 /* ---------- stickers ---------- GISTAPP_STICKERS_V1 */
@@ -2596,7 +2655,7 @@ app.get('/api/users/:id/profile-card', auth, async (req, res) => {
   try {
     const id = Number(req.params.id);
     const r = await pool.query(`
-      SELECT u.id, u.display_name, u.username, u.avatar_color, u.avatar_url, u.cover_url, u.bio, u.gender,
+      SELECT u.id, u.display_name, u.username, u.avatar_color, u.subscription_tier, u.avatar_url, u.cover_url, u.bio, u.gender,
         (SELECT COUNT(*) FROM user_follows WHERE following_id=u.id) AS followers,
         (SELECT COUNT(*) FROM user_follows WHERE follower_id=u.id) AS following,
         (SELECT COUNT(*) FROM user_likes WHERE liked_id=u.id) AS likes,
@@ -2927,7 +2986,13 @@ const MOMO_API_USER = process.env.MOMO_API_USER || '';
 const MOMO_API_KEY = process.env.MOMO_API_KEY || '';
 const MOMO_TARGET_ENV = process.env.MOMO_TARGET_ENV || 'sandbox';
 const MOMO_READY = !!(MOMO_SUB_KEY && MOMO_API_USER && MOMO_API_KEY);
-const PREMIUM_PRICE = Number(process.env.PREMIUM_PRICE_NGN) || 7500;
+// GISTAPP_TIERS_V1 — multi-tier plans
+const PLANS = {
+  free:     { name: 'Free',     price: 0,     days: 0,   badge: null   },
+  pro:      { name: 'Pro',      price: 7500,  days: 30,  badge: 'gold' },
+  business: { name: 'Business', price: 25000, days: 30,  badge: 'blue' }
+};
+const PREMIUM_PRICE = PLANS.pro.price;   // legacy fallback
 const PREMIUM_DAYS = 30;
 
 console.log(MOMO_READY ? '✅ MoMo billing ready (₦' + PREMIUM_PRICE + '/mo)' : 'ℹ️  MoMo billing disabled (missing env vars)');
@@ -3042,7 +3107,9 @@ app.get('/api/billing/status', auth, async (req, res) => {
     const u = r.rows[0] || {};
     const isPrem = u.subscription_tier === 'premium' && u.subscription_status === 'active'
       && (!u.subscription_ends_at || new Date(u.subscription_ends_at) > new Date());
+    const paystackMode = PAYSTACK_SECRET.startsWith('sk_live_') ? 'live' : (PAYSTACK_SECRET.startsWith('sk_test_') ? 'test' : 'off');
     res.json({
+      paystack_mode: paystackMode,
       tier: u.subscription_tier || 'free',
       status: u.subscription_status || null,
       ends_at: u.subscription_ends_at || null,
@@ -3052,77 +3119,14 @@ app.get('/api/billing/status', auth, async (req, res) => {
       price: PREMIUM_PRICE,
       currency: 'NGN',
       momo_ready: MOMO_READY,
-      momo_mock: process.env.MOMO_MOCK === 'true'
+      momo_mock: process.env.MOMO_MOCK === 'true',
+      plans: PLANS,
+      current_plan: u.subscription_tier || 'free'
     });
   } catch(e){ console.error('billing status:', e.message); res.status(500).json({ error: 'Server error' }); }
 });
 
-// POST /api/billing/subscribe { phone }
-app.post('/api/billing/subscribe', auth, async (req, res) => {
-  try {
-    const phone = momoFormatPhone(req.body && req.body.phone);
-    if (!phone || phone.length < 12) return res.status(400).json({ error: 'Valid phone number required (e.g. 08012345678)' });
-    if (!MOMO_READY && process.env.MOMO_MOCK !== 'true') return res.status(503).json({ error: 'MoMo billing not configured' }); // MOMO_READY_OR_MOCK
-
-    // Save phone on user
-    await pool.query('UPDATE users SET momo_number=$1 WHERE id=$2', [phone, req.user.id]);
-
-    const referenceId = require('crypto').randomUUID();
-    await pool.query(
-      `INSERT INTO payments (user_id, reference_id, amount, phone, status) VALUES ($1,$2,$3,$4,'pending')`,
-      [req.user.id, referenceId, PREMIUM_PRICE, phone]
-    );
-
-    const r = await momoRequestToPay({
-      phone: phone,
-      amount: PREMIUM_PRICE,
-      referenceId: referenceId,
-      payerMessage: 'GistApp Premium monthly',
-      payeeNote: 'Subscription'
-    });
-    if (!r.ok){
-      await pool.query('UPDATE payments SET status=$1 WHERE reference_id=$2', ['failed', referenceId]);
-      return res.status(500).json({ error: r.error });
-    }
-    res.json({
-      ok: true,
-      reference: referenceId,
-      message: 'Check your phone for the MoMo prompt and approve to complete payment.',
-      amount: PREMIUM_PRICE,
-      currency: 'NGN'
-    });
-  } catch(e){ console.error('billing subscribe:', e.message); res.status(500).json({ error: 'Server error' }); }
-});
-
-// GET /api/billing/verify/:ref
-app.get('/api/billing/verify/:ref', auth, async (req, res) => {
-  try {
-    const ref = String(req.params.ref);
-    const p = await pool.query('SELECT id, status, user_id FROM payments WHERE reference_id=$1 AND user_id=$2', [ref, req.user.id]);
-    if (!p.rowCount) return res.status(404).json({ error: 'Payment not found' });
-    if (p.rows[0].status === 'success') return res.json({ status: 'success' });
-
-    const s = await momoCheckStatus(ref);
-    if (!s.ok) return res.json({ status: 'pending', error: s.error });
-
-    if (s.status === 'SUCCESSFUL'){
-      await pool.query('UPDATE payments SET status=$1, momo_status=$2, completed_at=NOW() WHERE id=$3', ['success', 'SUCCESSFUL', p.rows[0].id]);
-      await pool.query(`
-        UPDATE users
-        SET subscription_tier='premium',
-            subscription_status='active',
-            subscription_ends_at = GREATEST(COALESCE(subscription_ends_at, NOW()), NOW()) + INTERVAL '30 days'
-        WHERE id=$1
-      `, [req.user.id]);
-      return res.json({ status: 'success' });
-    }
-    if (s.status === 'FAILED'){
-      await pool.query('UPDATE payments SET status=$1, momo_status=$2 WHERE id=$3', ['failed', 'FAILED', p.rows[0].id]);
-      return res.json({ status: 'failed', reason: s.reason });
-    }
-    res.json({ status: 'pending', momo_status: s.status });
-  } catch(e){ console.error('billing verify:', e.message); res.status(500).json({ error: 'Server error' }); }
-});
+/* GISTAPP_MOMO_SUB_REMOVED — Paystack handles subscribe/verify now */
 
 // POST /api/billing/cancel
 app.post('/api/billing/cancel', auth, async (req, res) => {
@@ -3175,13 +3179,16 @@ async function momoCheckPending(){
       if (!s.ok) continue;
       if (s.status === 'SUCCESSFUL'){
         await pool.query('UPDATE payments SET status=$1, momo_status=$2, completed_at=NOW() WHERE id=$3', ['success', 'SUCCESSFUL', p.id]);
+        const pl = await pool.query('SELECT plan FROM payments WHERE id=$1', [p.id]);
+        const planKey = (pl.rows[0] && pl.rows[0].plan) || 'pro';
+        const plan = PLANS[planKey] || PLANS.pro;
         await pool.query(`
           UPDATE users
-          SET subscription_tier='premium',
+          SET subscription_tier=$2,
               subscription_status='active',
-              subscription_ends_at = GREATEST(COALESCE(subscription_ends_at, NOW()), NOW()) + INTERVAL '30 days'
+              subscription_ends_at = NOW() + INTERVAL '1 day' * $3
           WHERE id=$1
-        `, [p.user_id]);
+        `, [p.user_id, planKey, plan.days]);
         console.log('✅ MoMo payment confirmed → user', p.user_id);
       } else if (s.status === 'FAILED'){
         await pool.query('UPDATE payments SET status=$1, momo_status=$2 WHERE id=$3', ['failed', 'FAILED', p.id]);
@@ -3199,6 +3206,300 @@ async function momoCheckPending(){
 setTimeout(momoRenewalCheck, 60 * 1000);
 setInterval(momoRenewalCheck, 6 * 60 * 60 * 1000);
 setInterval(momoCheckPending, 30 * 1000);
+
+/* ---------- Paystack billing ---------- GISTAPP_PAYSTACK_V1 */
+const PAYSTACK_SECRET = process.env.PAYSTACK_SECRET_KEY || '';
+const PAYSTACK_PUBLIC = process.env.PAYSTACK_PUBLIC_KEY || '';
+const PAYSTACK_BASE = 'https://api.paystack.co';
+const PAYSTACK_READY = !!PAYSTACK_SECRET;
+
+const PAYSTACK_APP_URL = process.env.APP_URL || 'http://localhost:4000';
+
+console.log(PAYSTACK_READY ? '✅ Paystack billing ready' : 'ℹ️  Paystack disabled (missing PAYSTACK_SECRET_KEY)');
+
+async function paystackRequest(method, path, body){
+  const r = await fetch(PAYSTACK_BASE + path, {
+    method: method,
+    headers: {
+      'Authorization': 'Bearer ' + PAYSTACK_SECRET,
+      'Content-Type': 'application/json'
+    },
+    body: body ? JSON.stringify(body) : undefined
+  });
+  const data = await r.json().catch(()=>({}));
+  return { ok: r.ok && data && data.status, status: r.status, data: data };
+}
+
+// POST /api/billing/subscribe — creates Paystack transaction
+app.post('/api/billing/subscribe', auth, async (req, res) => {
+  try {
+    if (!PAYSTACK_READY) return res.status(503).json({ error: 'Billing not configured' });
+    const planKey = String((req.body && req.body.plan) || 'pro').toLowerCase();
+    const plan = PLANS[planKey];
+    if (!plan || planKey === 'free') return res.status(400).json({ error: 'Invalid plan' });
+
+    // Get user email (Paystack requires it)
+    const u = await pool.query('SELECT email, display_name FROM users WHERE id=$1', [req.user.id]);
+    if (!u.rowCount) return res.status(404).json({ error: 'User not found' });
+    const userEmail = u.rows[0].email;
+    const userName = u.rows[0].display_name || 'User';
+
+    // Create a payment record first
+    const referenceId = 'gist_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+    await pool.query(
+      `INSERT INTO payments (user_id, reference_id, amount, phone, status, plan) VALUES ($1,$2,$3,$4,'pending',$5)`,
+      [req.user.id, referenceId, plan.price, 'paystack', planKey]
+    );
+
+    // Initialize Paystack transaction
+    const callbackUrl = PAYSTACK_APP_URL + '/?payment=success&ref=' + encodeURIComponent(referenceId);
+    const init = await paystackRequest('POST', '/transaction/initialize', {
+      email: userEmail,
+      amount: plan.price * 100,       // kobo (Paystack uses subunits)
+      currency: 'NGN',
+      reference: referenceId,
+      callback_url: callbackUrl,
+      metadata: {
+        user_id: req.user.id,
+        plan: planKey,
+        custom_fields: [
+          { display_name: 'Plan', variable_name: 'plan', value: plan.name },
+          { display_name: 'User', variable_name: 'user', value: userName }
+        ]
+      }
+    });
+
+    if (!init.ok){
+      await pool.query('UPDATE payments SET status=$1 WHERE reference_id=$2', ['failed', referenceId]);
+      console.error('paystack init failed:', JSON.stringify(init.data).slice(0, 300));
+      return res.status(500).json({ error: (init.data && init.data.message) || 'Paystack init failed' });
+    }
+
+    res.json({
+      ok: true,
+      reference: referenceId,
+      authorization_url: init.data.data.authorization_url,
+      access_code: init.data.data.access_code,
+      amount: plan.price,
+      currency: 'NGN'
+    });
+  } catch(e){ console.error('subscribe:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+// GET /api/billing/verify/:ref — verify with Paystack
+app.get('/api/billing/verify/:ref', auth, async (req, res) => {
+  try {
+    const ref = String(req.params.ref);
+    const p = await pool.query('SELECT id, status, plan FROM payments WHERE reference_id=$1 AND user_id=$2', [ref, req.user.id]);
+    if (!p.rowCount) return res.status(404).json({ error: 'Payment not found' });
+    if (p.rows[0].status === 'success') return res.json({ status: 'success' });
+
+    if (!PAYSTACK_READY) return res.json({ status: 'pending' });
+
+    const v = await paystackRequest('GET', '/transaction/verify/' + encodeURIComponent(ref));
+    if (!v.ok) return res.json({ status: 'pending' });
+
+    const d = v.data.data;
+    if (d.status === 'success'){
+      await pool.query('UPDATE payments SET status=$1, completed_at=NOW(), raw_response=$2 WHERE id=$3',
+        ['success', JSON.stringify(d).slice(0, 2000), p.rows[0].id]);
+
+      const planKey = (p.rows[0].plan || 'pro');
+      const plan = PLANS[planKey] || PLANS.pro;
+      await pool.query(`
+        UPDATE users
+        SET subscription_tier=$2,
+            subscription_status='active',
+            subscription_ends_at = NOW() + INTERVAL '1 day' * $3
+        WHERE id=$1
+      `, [req.user.id, planKey, plan.days]);
+
+      return res.json({ status: 'success' });
+    }
+    if (d.status === 'failed' || d.status === 'abandoned'){
+      await pool.query('UPDATE payments SET status=$1, momo_status=$2 WHERE id=$3', ['failed', d.status, p.rows[0].id]);
+      return res.json({ status: 'failed', reason: d.gateway_response || d.status });
+    }
+    res.json({ status: 'pending', gateway: d.status });
+  } catch(e){ console.error('verify:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+// POST /api/billing/webhook — Paystack webhook
+app.post('/api/billing/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+  try {
+    const crypto = require('crypto');
+    const hash = crypto.createHmac('sha512', PAYSTACK_SECRET).update(req.body).digest('hex');
+    if (hash !== req.headers['x-paystack-signature']){
+      console.warn('⚠️  Paystack webhook signature mismatch');
+      return res.status(401).send('Invalid signature');
+    }
+    const event = JSON.parse(req.body.toString());
+    console.log('📥 Paystack webhook:', event.event);
+
+    if (event.event === 'charge.success'){
+      const ref = event.data.reference;
+      const p = await pool.query('SELECT id, user_id, status, plan FROM payments WHERE reference_id=$1', [ref]);
+      if (p.rowCount && p.rows[0].status !== 'success'){
+        await pool.query('UPDATE payments SET status=$1, completed_at=NOW(), raw_response=$2 WHERE id=$3',
+          ['success', JSON.stringify(event.data).slice(0, 2000), p.rows[0].id]);
+        const planKey = (p.rows[0].plan || 'pro');
+        const plan = PLANS[planKey] || PLANS.pro;
+        await pool.query(`
+          UPDATE users
+          SET subscription_tier=$2, subscription_status='active',
+              subscription_ends_at = NOW() + INTERVAL '1 day' * $3
+          WHERE id=$1
+        `, [p.rows[0].user_id, planKey, plan.days]);
+        console.log('✅ Paystack webhook activated user', p.rows[0].user_id, 'plan', planKey);
+      }
+    }
+    res.sendStatus(200);
+  } catch(e){ console.error('webhook:', e.message); res.status(500).end(); }
+});
+
+// GET /api/billing/paystack-public — returns public key for frontend
+app.get('/api/billing/paystack-public', (req, res) => {
+  res.json({ public_key: PAYSTACK_PUBLIC, enabled: PAYSTACK_READY });
+});
+
+/* ---------- OPay bank transfer ---------- GISTAPP_OPAY_V1 */
+const OPAY_ACCOUNT = {
+  bank: 'OPay',
+  account_number: '7071690772',
+  account_name: 'PERION DEVELOPMENT LTD'
+};
+
+// GET /api/billing/manual-info — returns OPay details + reference for current user
+app.get('/api/billing/manual-info', auth, async (req, res) => {
+  try {
+    // Generate a unique reference for this user
+    const r = await pool.query('SELECT id, email, display_name FROM users WHERE id=$1', [req.user.id]);
+    if (!r.rowCount) return res.status(404).json({ error: 'Not found' });
+    const u = r.rows[0];
+    const shortId = String(u.id).padStart(4, '0');
+    const ref = 'GIST-' + shortId + '-' + Math.random().toString(36).slice(2, 6).toUpperCase();
+
+    // Store as pending payment
+    const existing = await pool.query(
+      "SELECT id, reference_id, plan, amount FROM payments WHERE user_id=$1 AND status='awaiting_manual' ORDER BY created_at DESC LIMIT 1",
+      [req.user.id]
+    );
+    let payment = existing.rows[0];
+    if (!payment){
+      const ins = await pool.query(
+        "INSERT INTO payments (user_id, reference_id, amount, phone, status, plan, method) VALUES ($1,$2,$3,'opay','awaiting_manual','pro','manual') RETURNING id, reference_id, plan, amount",
+        [req.user.id, ref, 7500]
+      );
+      payment = ins.rows[0];
+    }
+
+    res.json({
+      bank: OPAY_ACCOUNT.bank,
+      account_number: OPAY_ACCOUNT.account_number,
+      account_name: OPAY_ACCOUNT.account_name,
+      reference: payment.reference_id,
+      amount: payment.amount,
+      plan: payment.plan,
+      note: 'Transfer the exact amount and include the reference in the transfer description.'
+    });
+  } catch(e){ console.error('manual-info:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+// POST /api/billing/manual-submit — user says "I've paid"
+app.post('/api/billing/manual-submit', auth, async (req, res) => {
+  try {
+    const { reference, payer_name, payer_bank, notes, plan } = req.body || {};
+    if (!reference) return res.status(400).json({ error: 'Missing reference' });
+    if (!payer_name) return res.status(400).json({ error: 'Enter the name on your transfer' });
+
+    const pl = await pool.query(
+      'SELECT id, plan, amount, status FROM payments WHERE reference_id=$1 AND user_id=$2',
+      [reference, req.user.id]
+    );
+    if (!pl.rowCount) return res.status(404).json({ error: 'Payment not found' });
+    if (pl.rows[0].status === 'success') return res.json({ ok: true, already: true });
+
+    await pool.query(`
+      UPDATE payments
+      SET status='submitted',
+          payer_name=$1,
+          payer_bank=$2,
+          notes=$3,
+          submitted_at=NOW()
+      WHERE id=$4
+    `, [payer_name.slice(0,80), (payer_bank||'').slice(0,40), (notes||'').slice(0,300), pl.rows[0].id]);
+
+    // Notify admins (log only for now — could email later)
+    console.log('💰 Manual payment submitted:', reference, 'by user', req.user.id, '—', payer_name);
+
+    res.json({ ok: true, message: 'Submitted — admin will verify and activate your plan shortly.' });
+  } catch(e){ console.error('manual-submit:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+// GET /api/billing/manual-status/:ref — check approval status
+app.get('/api/billing/manual-status/:ref', auth, async (req, res) => {
+  try {
+    const r = await pool.query(
+      'SELECT status FROM payments WHERE reference_id=$1 AND user_id=$2',
+      [req.params.ref, req.user.id]
+    );
+    if (!r.rowCount) return res.status(404).json({ error: 'Not found' });
+    res.json({ status: r.rows[0].status });
+  } catch(e){ res.status(500).json({ error: 'Server error' }); }
+});
+
+// GET /api/admin/manual-payments — list pending
+app.get('/api/admin/manual-payments', auth, adminOnly, async (req, res) => {
+  try {
+    const r = await pool.query(`
+      SELECT p.id, p.reference_id, p.amount, p.plan, p.payer_name, p.payer_bank, p.notes,
+             p.status, p.created_at, p.submitted_at,
+             u.id AS user_id, u.email, u.display_name
+      FROM payments p
+      JOIN users u ON u.id = p.user_id
+      WHERE p.method='manual' AND p.status IN ('awaiting_manual','submitted')
+      ORDER BY p.submitted_at DESC NULLS LAST, p.created_at DESC
+      LIMIT 50
+    `);
+    res.json(r.rows);
+  } catch(e){ console.error('admin manual list:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+// POST /api/admin/manual-approve/:id
+app.post('/api/admin/manual-approve/:id', auth, adminOnly, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ error: 'Invalid id' });
+    const p = await pool.query('SELECT id, user_id, plan, status FROM payments WHERE id=$1', [id]);
+    if (!p.rowCount) return res.status(404).json({ error: 'Not found' });
+    if (p.rows[0].status === 'success') return res.json({ ok: true, already: true });
+
+    const planKey = p.rows[0].plan || 'pro';
+    const plan = PLANS[planKey] || PLANS.pro;
+
+    await pool.query(`
+      UPDATE users
+      SET subscription_tier=$2, subscription_status='active',
+          subscription_ends_at = NOW() + INTERVAL '1 day' * $3
+      WHERE id=$1
+    `, [p.rows[0].user_id, planKey, plan.days]);
+
+    await pool.query("UPDATE payments SET status='success', completed_at=NOW() WHERE id=$1", [id]);
+
+    console.log('✅ Manual payment approved — user', p.rows[0].user_id, 'plan', planKey);
+    res.json({ ok: true });
+  } catch(e){ console.error('manual-approve:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+// POST /api/admin/manual-reject/:id
+app.post('/api/admin/manual-reject/:id', auth, adminOnly, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const reason = (req.body && req.body.reason || 'Payment not confirmed').slice(0,200);
+    await pool.query("UPDATE payments SET status='failed', notes=COALESCE(notes,'') || ' | REJECTED: ' || $1 WHERE id=$2", [reason, id]);
+    res.json({ ok: true });
+  } catch(e){ console.error('manual-reject:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
 
 /* ---------- admin + backups ---------- GISTAPP_BACKUPS_V1 */
 const ADMIN_EMAILS = new Set(['isaiahmumudevelop@gmail.com']);

@@ -1088,6 +1088,14 @@ body.dark .up-close:hover{background:#1e1e28}
 .pdf-head button{background:transparent;border:none;color:#fff;font-size:18px;cursor:pointer;padding:6px 10px}
 .pdf-body{flex:1;background:#fff}
 .pdf-body iframe{width:100%;height:100%;border:none}
+
+/* GISTAPP_PREMIUM_BADGE_V1 — crown badge for premium users */
+.prem-badge{display:inline-flex;align-items:center;justify-content:center;font-size:11px;line-height:1;vertical-align:middle;margin-left:4px;padding:2px 5px;border-radius:6px;font-weight:800;letter-spacing:.2px;position:relative;top:-1px;flex-shrink:0}
+.prem-badge.gold{background:linear-gradient(135deg,#f5a623,#ff9500);color:#fff;box-shadow:0 1px 3px rgba(245,166,35,.4)}
+.prem-badge.blue{background:linear-gradient(135deg,#38bdf8,#0284c7);color:#fff;box-shadow:0 1px 3px rgba(56,189,248,.4)}
+.prem-badge .b-ic{font-size:10px;margin-right:1px}
+.prem-badge.big{font-size:12.5px;padding:3px 7px;border-radius:8px}
+.prem-badge.big .b-ic{font-size:12px}
 </style>
 
   
@@ -1107,7 +1115,8 @@ if ('serviceWorker' in navigator){
     location.reload();
   });
 }
-</script></head>
+</script>  <script src="https://js.paystack.co/v1/inline.js"></script>
+<!-- GISTAPP_PAYSTACK_UI_V1 --></head>
 <body>
 
 <div class="app">
@@ -2654,7 +2663,7 @@ function doOpenChat(summary){
   currentChat = summary;
   const name = displayName(summary);
   const color = summary.other_color || colorFor(name);
-  document.getElementById('dm-name').textContent = name;
+  document.getElementById('dm-name').innerHTML = esc(name) + premBadgeHTML(summary);
   const av = document.getElementById('dm-avatar');
   if (summary.other_url){ av.textContent=''; av.style.background = 'url(' + summary.other_url + ') center/cover'; }
   else { av.textContent = initials(name); av.style.background = color; }
@@ -3634,7 +3643,7 @@ function openProfile(){
   else { av.textContent = initials(name); av.style.backgroundImage = ''; av.style.background = me.avatar_color || 'linear-gradient(135deg,#7b8cff,#b58cff)'; av.style.color = '#fff'; }
   const cover = document.getElementById('pf-cover');
   if (cover && me.cover_url){ cover.style.backgroundImage = 'url(' + me.cover_url + ')'; cover.style.backgroundSize = 'cover'; cover.style.backgroundPosition = 'center'; }
-  document.getElementById('pf-name').textContent = name;
+  document.getElementById('pf-name').innerHTML = esc(name) + premBadgeHTML(me, 'big');
   document.getElementById('pf-email').textContent = email;
   document.getElementById('pf-bio').textContent = me.bio || 'Hey there! I am using GistApp.';
   document.getElementById('pf-name-input').value = name;
@@ -3760,8 +3769,10 @@ const SETTINGS_SECTIONS = [
   ]},
   { title:'Other', rows:[
     { icon:'translate', label:'App language', key:'language', options:['English','Español','Français','हिन्दी','Yorùbá'] },
+    { icon:'star', label:'Premium', sub:'Unlock more features', key:'premium' },
     { icon:'help', label:'Help & contact us', sub:'Help center and support', key:'help' },
-    { icon:'folder', label:'Backups', sub:'Database snapshots (admin)', key:'backups', adminOnly:true }
+    { icon:'folder', label:'Backups', sub:'Database snapshots (admin)', key:'backups', adminOnly:true },
+    { icon:'star', label:'Pending payments', sub:'Approve OPay transfers', key:'opay_admin', adminOnly:true }
   ]}
 ];
 const SET_ICONS = {
@@ -3789,7 +3800,7 @@ function updateSettingsHeader(){
   const av = document.getElementById('set-avatar');
   if (me.avatar_url){ av.innerHTML = ''; av.style.background = 'url(' + me.avatar_url + ') center/cover'; }
   else { av.innerHTML = '<span class="glyph">@</span>'; av.style.background = 'var(--bg-3)'; }
-  document.getElementById('set-name').textContent = me.display_name || 'User';
+  document.getElementById('set-name').innerHTML = esc(me.display_name || 'User') + premBadgeHTML(me, 'big');
   document.getElementById('set-email').textContent = me.email || '';
 }
 /* GISTAPP_SETTINGS_FIX — clean rewrite, no escaped quotes */
@@ -3854,14 +3865,16 @@ function handleSettingClick(key){
   if (key === 'accent_color'){ openAccentPicker(); return; }
   if (key === 'push_enabled'){ togglePush(); return; }
   if (key === 'backups'){ openBackups(); return; }
+  if (key === 'opay_admin'){ openOpayAdmin(); return; }
   if (key === 'stickers'){ openStickerManager(); return; }
+  if (key === 'premium'){ openPremiumScreen(); return; }
   switch (key){
     case 'wallpaper': openWallpaperPicker(); break;
     case 'blocked_list': openBlockedList(); break;
     case 'app_lock_manage': openPinSetup(); break;
     case 'chat_lock_manage': toggleChatLockFeature(); break;
     case 'two_factor': open2FA(); break;
-    case 'change_email': toast('Change email coming soon'); break;
+    case 'change_email': openChangeEmail(); break;
     case 'delete_account': if (confirm('Delete your account permanently?')) api('/api/me', { method:'DELETE' }).then(function(){ logout(); }); break;
     case 'help': window.location.href = 'mailto:support@gistapp.app'; break;
     default: if (row.toggle) togglePref(key); else toast(row.label);
@@ -4144,151 +4157,606 @@ function stopRingtone(){
     setTimeout(bind, 500);
   }
 })();
-/* GISTAPP_STICKERS_UI_V1 */
-let _pickerTab = 'emoji';
-let _stickerCache = [];
-
-function setPickerTab(tab){
-  _pickerTab = tab;
-  document.querySelectorAll('.ep-tab').forEach(function(el){ el.classList.toggle('on', el.dataset.tab === tab); });
-  const eg = document.getElementById('emoji-grid');
-  const st = document.getElementById('sticker-tray');
-  if (tab === 'emoji'){
-    eg.style.display = '';
-    st.style.display = 'none';
-    renderEmojiGrid();
-  } else {
-    eg.style.display = 'none';
-    st.style.display = 'block';
-    renderStickerTray();
-  }
+/* GISTAPP_CHANGE_EMAIL_V1 */
+function openChangeEmail(){
+  if (!me) return;
+  const modal = document.getElementById('change-email-modal');
+  if (!modal) return;
+  const cur = document.getElementById('ce-current');
+  const nu  = document.getElementById('ce-new');
+  const pw  = document.getElementById('ce-pass');
+  const err = document.getElementById('ce-err');
+  if (cur) cur.value = me.email || '';
+  if (nu)  nu.value = '';
+  if (pw)  pw.value = '';
+  if (err) err.textContent = '';
+  modal.style.display = 'flex';
+  setTimeout(function(){ if (nu) nu.focus(); }, 100);
 }
 
-async function loadStickers(){
-  try {
-    const r = await api('/api/stickers');
-    _stickerCache = Array.isArray(r) ? r : [];
-    return _stickerCache;
-  } catch(e){
-    console.warn('loadStickers:', e.message);
-    return [];
-  }
-}
-
-async function renderStickerTray(){
-  const grid = document.getElementById('sticker-grid');
-  if (!grid) return;
-  grid.innerHTML = '<div class="sticker-empty">Loading…</div>';
-  const list = await loadStickers();
-  if (!list.length){
-    grid.innerHTML = '<div class="sticker-empty">No stickers yet.<br>Tap "Add sticker" to upload one.</div>';
-    return;
-  }
-  grid.innerHTML = list.map(function(s){
-    return '<div class="sticker-item" data-id="' + s.id + '" data-url="' + esc(s.url) + '"><img src="' + esc(s.url) + '" loading="lazy" alt=""></div>';
-  }).join('');
-  grid.querySelectorAll('.sticker-item').forEach(function(el){
-    el.addEventListener('click', function(){
-      sendSticker(el.dataset.url);
-    });
-  });
-}
-
-async function sendSticker(url){
-  if (!currentChat){ toast('Open a chat first'); return; }
-  closeEmojiPicker();
-  try {
-    const m = await api('/api/chats/' + currentChat.id + '/messages', {
-      method: 'POST',
-      body: JSON.stringify({ body: '', media_url: url, media_type: 'sticker' })
-    });
-    const msgs = document.getElementById('dm-messages');
-    if (!msgs.querySelector('.bubble[data-id="' + m.id + '"]')) appendBubble(m, false);
-    messagesCache.push(m);
-    loadChatsDebounced();
-    try { playSendSound(); } catch(_){}
-  } catch(e){ toast(e.message || 'Could not send sticker'); }
-}
-
-async function openStickerManager(){
-  const m = document.getElementById('sticker-manager');
-  if (!m) return;
-  m.style.display = 'flex';
-  await renderStickerManager();
-}
-
-function closeStickerManager(){
-  const m = document.getElementById('sticker-manager');
+function closeChangeEmail(){
+  const m = document.getElementById('change-email-modal');
   if (m) m.style.display = 'none';
 }
 
-async function renderStickerManager(){
-  const grid = document.getElementById('sticker-manager-grid');
-  if (!grid) return;
-  grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px 20px;color:var(--sub)">Loading…</div>';
-  const list = await loadStickers();
-  if (!list.length){
-    grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px 20px;color:var(--sub);font-size:13.5px">No stickers yet.<br>Tap "+ Add" to upload your first one.</div>';
-    return;
+async function submitChangeEmail(){
+  const nu  = (document.getElementById('ce-new') || {}).value || '';
+  const pw  = (document.getElementById('ce-pass') || {}).value || '';
+  const err = document.getElementById('ce-err');
+  const btn = document.getElementById('ce-submit');
+  if (err) err.textContent = '';
+  const email = String(nu).trim().toLowerCase();
+  if (!email){ if (err) err.textContent = 'Enter your new email'; return; }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ if (err) err.textContent = 'Enter a valid email'; return; }
+  if (!pw){ if (err) err.textContent = 'Enter your password'; return; }
+  if (btn){ btn.disabled = true; btn.textContent = 'Sending…'; }
+  try {
+    await api('/api/me/request-email-change', { method: 'POST', body: JSON.stringify({ new_email: email, password: pw }) });
+    closeChangeEmail();
+    toast('Verification sent to ' + email);
+    setTimeout(function(){
+      alert('Check your inbox at ' + email + '\n\nClick the verification link to confirm the change. Your email stays the same until you click.');
+    }, 200);
+  } catch(e){
+    if (err) err.textContent = e.message || 'Could not send';
+    else alert(e.message || 'Could not send');
   }
-  grid.innerHTML = list.map(function(s){
-    return '<div style="position:relative;aspect-ratio:1;background:var(--bg-2);border-radius:14px;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:10px">' +
-      '<img src="' + esc(s.url) + '" style="max-width:100%;max-height:100%;object-fit:contain" alt="">' +
-      '<button onclick="deleteSticker(' + s.id + ',this)" style="position:absolute;top:6px;right:6px;width:26px;height:26px;border-radius:50%;background:rgba(0,0,0,.5);color:#fff;border:none;font-size:14px;cursor:pointer">✕</button>' +
+  if (btn){ btn.disabled = false; btn.textContent = 'Send verification'; }
+}
+
+/* GISTAPP_OPAY_ADMIN_V1 */
+async function openOpayAdmin(){
+  if (!me || !me.is_admin){ toast('Admin only'); return; }
+  const m = document.getElementById('opay-admin-modal');
+  const b = document.getElementById('opay-admin-body');
+  if (!m || !b) return;
+  b.innerHTML = '<div style="padding:30px;text-align:center;color:var(--sub)">Loading…</div>';
+  m.style.display = 'flex';
+  await opayAdminRefresh();
+}
+
+function closeOpayAdmin(){
+  const m = document.getElementById('opay-admin-modal');
+  if (m) m.style.display = 'none';
+}
+
+async function opayAdminRefresh(){
+  const b = document.getElementById('opay-admin-body');
+  if (!b) return;
+  try {
+    const list = await api('/api/admin/manual-payments');
+    if (!list.length){
+      b.innerHTML = '<div style="padding:40px 20px;text-align:center;color:var(--sub);font-size:13.5px">No pending payments.</div>';
+      return;
+    }
+    b.innerHTML = list.map(function(p){
+      var badge = p.status === 'submitted' ? '🟡 Submitted' : '⚪ Awaiting';
+      var submitted = p.submitted_at ? new Date(p.submitted_at).toLocaleString() : '—';
+      return '<div style="background:var(--bg-2);border-radius:14px;padding:14px;margin-bottom:10px">' +
+        '<div style="display:flex;justify-content:space-between;margin-bottom:8px">' +
+          '<div style="font-size:12px;color:var(--sub)">' + esc(badge) + '</div>' +
+          '<div style="font-family:ui-monospace,monospace;font-size:11.5px;color:var(--accent,#7b8cff)">' + esc(p.reference_id) + '</div>' +
+        '</div>' +
+        '<div style="font-size:14px;font-weight:700;color:var(--ink);margin-bottom:4px">' + esc(p.display_name) + ' · ₦' + Number(p.amount).toLocaleString() + '</div>' +
+        '<div style="font-size:12px;color:var(--sub);margin-bottom:2px">' + esc(p.email) + '</div>' +
+        (p.payer_name ? '<div style="font-size:12px;color:var(--sub);margin-bottom:2px">Payer: <b style="color:var(--ink)">' + esc(p.payer_name) + '</b>' + (p.payer_bank ? ' · ' + esc(p.payer_bank) : '') + '</div>' : '') +
+        (p.notes ? '<div style="font-size:11.5px;color:var(--sub);font-style:italic;margin-top:4px">"' + esc(p.notes) + '"</div>' : '') +
+        '<div style="font-size:11px;color:var(--sub);margin-top:6px">' + esc(submitted) + '</div>' +
+        (p.status === 'submitted' ?
+          '<div style="display:flex;gap:8px;margin-top:12px">' +
+            '<button onclick="opayAdminApprove(' + p.id + ')" style="flex:1;height:40px;background:#22c55e;color:#fff;border:none;border-radius:10px;font-family:inherit;font-size:13px;font-weight:800;cursor:pointer">Approve</button>' +
+            '<button onclick="opayAdminReject(' + p.id + ')" style="flex:1;height:40px;background:var(--bg-3);color:#e5484d;border:none;border-radius:10px;font-family:inherit;font-size:13px;font-weight:800;cursor:pointer">Reject</button>' +
+          '</div>' : ''
+        ) +
+      '</div>';
+    }).join('');
+  } catch(e){
+    b.innerHTML = '<div style="padding:30px;text-align:center;color:#e5484d">' + esc(e.message || 'Error') + '</div>';
+  }
+}
+
+async function opayAdminApprove(id){
+  if (!confirm('Approve this payment? User gets Premium instantly.')) return;
+  try {
+    await api('/api/admin/manual-approve/' + id, { method: 'POST' });
+    toast('Approved');
+    opayAdminRefresh();
+  } catch(e){ alert(e.message || 'Failed'); }
+}
+
+async function opayAdminReject(id){
+  const reason = prompt('Reason for rejection?', 'Payment not confirmed');
+  if (reason === null) return;
+  try {
+    await api('/api/admin/manual-reject/' + id, { method: 'POST', body: JSON.stringify({ reason: reason }) });
+    toast('Rejected');
+    opayAdminRefresh();
+  } catch(e){ alert(e.message || 'Failed'); }
+}
+
+/* GISTAPP_OPAY_ADMIN_V1 */
+/* GISTAPP_OPAY_UI_V1 */
+let _opayData = null;
+
+async function openOpayModal(plan){
+  const modal = document.getElementById('opay-modal');
+  const sheet = document.getElementById('opay-sheet');
+  if (!modal || !sheet) return;
+  modal.classList.add('show');
+  sheet.innerHTML = '<div style="text-align:center;padding:40px;color:var(--sub)">Loading…</div>';
+  try {
+    // Update plan on the pending payment
+    if (plan && plan !== 'pro'){
+      await api('/api/billing/manual-info').then(function(info){
+        return api('/api/billing/manual-submit', { method: 'POST', body: JSON.stringify({
+          reference: info.reference, payer_name: '', plan: plan
+        })}).catch(function(){});
+      }).catch(function(){});
+    }
+    const info = await api('/api/billing/manual-info');
+    _opayData = info;
+    opayRender(info, plan || info.plan);
+  } catch(e){
+    sheet.innerHTML = '<div style="text-align:center;padding:40px;color:#e5484d">' + esc(e.message || 'Could not load') + '</div>';
+  }
+}
+
+function closeOpayModal(){
+  const m = document.getElementById('opay-modal');
+  if (m) m.classList.remove('show');
+}
+
+function opayRender(info, plan){
+  const sheet = document.getElementById('opay-sheet');
+  const planInfo = (PA_PLAN_INFO && PA_PLAN_INFO[plan]) || { name: 'Pro' };
+  const price = plan === 'business' ? 25000 : 7500;
+
+  sheet.innerHTML =
+    '<div class="opay-head">' +
+      '<h3>Pay with OPay</h3>' +
+      '<button class="opay-close" onclick="closeOpayModal()">✕</button>' +
+    '</div>' +
+    '<div class="opay-amount">' +
+      '<div class="amt">₦' + price.toLocaleString() + '</div>' +
+      '<div class="sub">' + esc(planInfo.name) + ' · monthly</div>' +
+    '</div>' +
+    '<div class="opay-card">' +
+      '<div class="bank">OPay</div>' +
+      '<div class="row"><span class="lbl">Account number</span>' +
+        '<span><span class="val mono" id="opay-acct">' + esc(info.account_number) + '</span>' +
+        '<button class="opay-copy" onclick="opayCopy(\'' + esc(info.account_number) + '\')">Copy</button></span></div>' +
+      '<div class="row"><span class="lbl">Account name</span><span class="val" style="font-size:13.5px">' + esc(info.account_name) + '</span></div>' +
+      '<div class="row"><span class="lbl">Amount</span><span class="val">₦' + price.toLocaleString() + '</span></div>' +
+    '</div>' +
+    '<div class="opay-ref">' +
+      '<div class="lbl">Your reference</div>' +
+      '<div class="val" id="opay-ref-val">' + esc(info.reference) + '</div>' +
+      '<button class="opay-copy" style="background:rgba(123,140,255,.15);color:var(--accent,#7b8cff);margin-top:8px;display:inline-block" onclick="opayCopy(\'' + esc(info.reference) + '\')">Copy reference</button>' +
+    '</div>' +
+    '<div class="opay-note">' +
+      '<b>💚 Real payment — instant approval</b><br>' +
+      'You transfer the exact amount to our OPay account. Send us the reference in the transfer note, and our team activates your account within minutes.<br><br>' +
+      '<b>Steps:</b><br>' +
+      '1. Send ₦' + price.toLocaleString() + ' to the OPay account above from your bank app or OPay app.<br>' +
+      '2. Add the reference <b>' + esc(info.reference) + '</b> in the transfer note.<br>' +
+      '3. Come back here and tap "I\'ve sent it" below.<br>' +
+      '4. We\'ll confirm within a few minutes and activate your Premium.' +
+    '</div>' +
+    '<input type="text" class="opay-input" id="opay-payer-name" placeholder="Name on your bank account" autocomplete="name">' +
+    '<input type="text" class="opay-input" id="opay-payer-bank" placeholder="Your bank (e.g. GTBank, Access)" autocomplete="off">' +
+    '<input type="text" class="opay-input" id="opay-notes" placeholder="Optional note for admin" autocomplete="off">' +
+    '<button class="opay-btn" onclick="opaySubmit()">I\'ve sent it</button>' +
+    '<button class="opay-btn secondary" onclick="closeOpayModal()">Cancel</button>';
+}
+
+function opayCopy(text){
+  navigator.clipboard.writeText(text).then(function(){ toast('Copied'); }).catch(function(){});
+}
+
+async function opaySubmit(){
+  if (!_opayData) return;
+  const name = (document.getElementById('opay-payer-name') || {}).value || '';
+  const bank = (document.getElementById('opay-payer-bank') || {}).value || '';
+  const notes = (document.getElementById('opay-notes') || {}).value || '';
+  if (!name.trim()){ alert('Enter the name on your bank account'); return; }
+
+  const btns = document.querySelectorAll('.opay-btn');
+  btns.forEach(function(b){ b.disabled = true; });
+  try {
+    const r = await api('/api/billing/manual-submit', {
+      method: 'POST',
+      body: JSON.stringify({
+        reference: _opayData.reference,
+        payer_name: name,
+        payer_bank: bank,
+        notes: notes
+      })
+    });
+    if (!r.ok) throw new Error(r.error || 'Failed');
+    opayShowSuccess();
+  } catch(e){
+    btns.forEach(function(b){ b.disabled = false; });
+    alert('Could not submit: ' + (e.message || 'unknown'));
+  }
+}
+
+function opayShowSuccess(){
+  const sheet = document.getElementById('opay-sheet');
+  sheet.innerHTML =
+    '<div class="opay-success">' +
+      '<div class="icon">✅</div>' +
+      '<h3>Payment submitted</h3>' +
+      '<p>We received your submission.<br>We\'ll confirm your payment and activate Premium shortly.</p>' +
+    '</div>' +
+    '<button class="opay-btn" onclick="closeOpayModal()">Done</button>';
+  setTimeout(function(){
+    try { if (typeof paRefresh === 'function') paRefresh(); } catch(_){}
+  }, 500);
+}
+
+/* GISTAPP_OPAY_UI_V1 */
+/* GISTAPP_PREMIUM_APPLE JS */
+let _paSelectedPlan = 'pro';
+let _paBillingMode = 'monthly';
+let _paStatus = null;
+let _paPoll = null;
+
+const PA_FEATURES = {
+  free: [
+    { text: '1 GB storage',           on: true  },
+    { text: '20 MB uploads',          on: true  },
+    { text: '6-way group calls',      on: true  },
+    { text: '360p video quality',     on: true  },
+    { text: '30-day message history', on: true  },
+    { text: '50 stickers',            on: true  },
+    { text: 'Verified badge',         on: false },
+    { text: 'HD video 720p',          on: false },
+    { text: 'Priority support',       on: false }
+  ],
+  pro: [
+    { text: '50 GB storage',           on: true },
+    { text: '500 MB uploads',          on: true },
+    { text: '15-way group calls',      on: true },
+    { text: 'HD 720p video quality',   on: true },
+    { text: 'Forever message history', on: true },
+    { text: 'Unlimited stickers',      on: true },
+    { text: 'Gold verified badge 👑',  on: true },
+    { text: 'All accent colors',       on: true },
+    { text: 'Advanced profile insights', on: true },
+    { text: 'Priority support',        on: true }
+  ],
+  business: [
+    { text: '500 GB storage',           on: true },
+    { text: '2 GB uploads',             on: true },
+    { text: '50-way group calls',       on: true },
+    { text: '1080p full HD video',      on: true },
+    { text: 'Forever message history',  on: true },
+    { text: 'Unlimited stickers',       on: true },
+    { text: 'Blue verified badge ✓✓',   on: true },
+    { text: 'Custom accent themes',     on: true },
+    { text: 'Advanced insights + export', on: true },
+    { text: 'Dedicated support',        on: true },
+    { text: 'API access',               on: true }
+  ]
+};
+
+const PA_PLAN_INFO = {
+  free:     { name: 'Free',     desc: 'Basic features for everyday use' },
+  pro:      { name: 'Pro',      desc: 'For power users and creators' },
+  business: { name: 'Business', desc: 'For teams and heavy usage' }
+};
+
+async function openPremiumScreen(){
+  const s = document.getElementById('premium-screen');
+  if (!s) return;
+  s.classList.add('show');
+  _paSelectedPlan = 'pro';
+  await paRefresh();
+}
+
+function closePremiumScreen(){
+  const s = document.getElementById('premium-screen');
+  if (s) s.classList.remove('show');
+  if (_paPoll){ clearInterval(_paPoll); _paPoll = null; }
+}
+
+async function paRefresh(){
+  const body = document.getElementById('premium-body');
+  if (!body) return;
+  body.innerHTML = '<div style="text-align:center;padding:40px;color:var(--sub)">Loading…</div>';
+  try {
+    const st = await api('/api/billing/status');
+    _paStatus = st;
+    // Auto-select current tier as "upgrade target" if free
+    if (st.is_premium){ _paSelectedPlan = st.tier; }
+    else { _paSelectedPlan = 'pro'; }
+    paRender();
+  } catch(e){
+    body.innerHTML = '<div style="text-align:center;padding:40px;color:#e5484d">' + esc(e.message || 'Could not load plans') + '</div>';
+  }
+}
+
+
+/* GISTAPP_MODE_INDICATOR */
+function renderModeBanner(st){ /* removed */ }
+
+function paRender(){
+  const body = document.getElementById('premium-body');
+  const footer = document.getElementById('premium-footer');
+  const st = _paStatus || {};
+  const isPremium = !!st.is_premium;
+  const currentTier = st.tier || 'free';
+
+  const heroHtml =
+    '<div class="pa-hero">' +
+      '<div class="pa-crown">' + (isPremium ? '👑' : '✨') + '</div>' +
+      '<h1>' + (isPremium ? 'You are Premium' : 'Choose your plan') + '</h1>' +
+      '<p>' + (isPremium
+        ? 'Your subscription is active until ' + (st.ends_at ? new Date(st.ends_at).toLocaleDateString() : '—')
+        : 'Upgrade to unlock more storage, HD calls, and exclusive features.') + '</p>' +
+    '</div>';
+
+  const toggleHtml = isPremium ? '' :
+    '<div class="pa-toggle">' +
+      '<button class="' + (_paBillingMode === 'monthly' ? 'on' : '') + '" onclick="paSetBilling(\'monthly\')">Monthly</button>' +
+      '<button class="' + (_paBillingMode === 'yearly' ? 'on' : '') + '" onclick="paSetBilling(\'yearly\')">Yearly <span class="save">save 20%</span></button>' +
+    '</div>';
+
+  const plans = ['free', 'pro', 'business'];
+  const planCardsHtml = plans.map(function(key){
+    const info = PA_PLAN_INFO[key];
+    const priceBase = key === 'free' ? 0 : (key === 'pro' ? 7500 : 25000);
+    const price = _paBillingMode === 'yearly' ? Math.round(priceBase * 12 * 0.8) : priceBase;
+    const priceLabel = price === 0 ? 'Free forever' : ('₦' + price.toLocaleString());
+    const isCurrent = key === currentTier;
+    const isSelected = key === _paSelectedPlan;
+    const isFeatured = key === 'pro';
+
+    const cls = 'pa-plan' +
+      (isCurrent ? ' current' : '') +
+      (isSelected && !isCurrent ? ' featured' : '');
+
+    const features = (PA_FEATURES[key] || []).map(function(f){
+      return '<li class="' + (f.on ? '' : 'off') + '">' +
+        '<span class="check ' + (f.on ? 'yes' : 'no') + '">' + (f.on ? '✓' : '·') + '</span>' +
+        '<span>' + esc(f.text) + '</span>' +
+      '</li>';
+    }).join('');
+
+    let btnHtml = '';
+    if (isCurrent){
+      btnHtml = '<button class="pa-plan-btn current-btn" disabled>✓ Current plan</button>';
+    } else if (key === 'free'){
+      btnHtml = '<button class="pa-plan-btn ghost" disabled>Always free</button>';
+    } else {
+      const selected = isSelected;
+      btnHtml = '<button class="pa-plan-btn" onclick="paSelectPlan(\'' + key + '\')">' +
+        (selected ? '✓ Selected' : 'Select ' + info.name) + '</button>';
+    }
+
+    return '<div class="' + cls + '">' +
+      (isFeatured && !isCurrent ? '<div class="pa-badge">Most popular</div>' : '') +
+      '<div class="pa-plan-head">' +
+        '<div><h3 class="pa-plan-name">' + esc(info.name) + '</h3>' +
+        '<p class="pa-plan-desc">' + esc(info.desc) + '</p></div>' +
+        '<div class="pa-plan-price"><b>' + priceLabel + '</b>' +
+        (price > 0 ? '<span>/ ' + (_paBillingMode === 'yearly' ? 'year' : 'month') + '</span>' : '') + '</div>' +
+      '</div>' +
+      '<ul class="pa-features">' + features + '</ul>' +
+      btnHtml +
     '</div>';
   }).join('');
-}
 
-function pickStickerFile(){
-  const inp = document.getElementById('sticker-file-pick');
-  if (inp) inp.click();
-}
+  const termsHtml =
+    '<div class="pa-terms">' +
+      'Subscriptions renew automatically via MTN MoMo. Cancel anytime — access continues until the end of the billing period.' +
+    '</div>';
 
-async function openStickerPicker(){
-  // Used from the picker tray — opens file input for quick upload then adds
-  pickStickerFile();
-}
+  body.innerHTML = heroHtml + toggleHtml + planCardsHtml + termsHtml;
 
-async function uploadStickerFile(file){
-  if (!file) return;
-  if (file.size > 512 * 1024){ toast('Sticker too large (max 512 KB)'); return; }
-  toast('Uploading sticker…');
-  try {
-    const fd = new FormData();
-    fd.append('file', file, file.name || 'sticker.png');
-    const res = await fetch('/api/upload', {
-      method: 'POST',
-      headers: { Authorization: 'Bearer ' + token },
-      body: fd
-    });
-    const text = await res.text();
-    let data = {};
-    try { data = JSON.parse(text); } catch(_){}
-    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
-    await api('/api/stickers', {
-      method: 'POST',
-      body: JSON.stringify({ url: data.url, name: file.name || 'Sticker' })
-    });
-    toast('Sticker added');
-    // Refresh both the tray and the manager if open
-    try { renderStickerTray(); } catch(_){}
-    try { renderStickerManager(); } catch(_){}
-  } catch(e){
-    console.error('uploadSticker:', e);
-    toast(e.message || 'Upload failed');
+  // Footer — GISTAPP_OPAY_PRIMARY
+  if (!isPremium && _paSelectedPlan !== 'free'){
+    const plan = _paSelectedPlan;
+    const info = PA_PLAN_INFO[plan];
+    const price = plan === 'pro' ? 7500 : 25000;
+    footer.style.display = 'block';
+    const note = document.getElementById('pa-paystack-note');
+    if (note) note.style.display = 'block';
+    // Paystack button = Coming Soon (disabled)
+    const cont = document.getElementById('pa-continue-btn');
+    cont.textContent = 'Card payment (Coming Soon)';
+    cont.disabled = true;
+    cont.style.opacity = '0.5';
+    cont.style.cursor = 'not-allowed';
+    cont.onclick = function(){};
+    // OPay button = active, primary action
+    const opayBtn = document.getElementById('pa-opay-btn');
+    if (opayBtn){
+      opayBtn.textContent = 'Pay ₦' + price.toLocaleString() + ' with OPay';
+      opayBtn.style.background = 'linear-gradient(135deg,#0a8a4a,#00b060)';
+      opayBtn.style.color = '#fff';
+      opayBtn.style.fontWeight = '800';
+      opayBtn.style.height = '56px';
+      opayBtn.style.fontSize = '16px';
+      opayBtn.style.marginTop = '0';
+      opayBtn.style.boxShadow = '0 8px 24px rgba(0,176,96,.3)';
+    }
+  } else if (isPremium){
+    footer.style.display = 'block';
+    const note = document.getElementById('pa-paystack-note');
+    if (note) note.style.display = 'none';
+    const btn = document.getElementById('pa-continue-btn');
+    if (st.auto_renew){
+      btn.textContent = 'Cancel auto-renew';
+      btn.onclick = paCancelSub;
+    } else {
+      btn.textContent = 'Reactivate auto-renew';
+      btn.onclick = paReactivate;
+    }
+  } else {
+    footer.style.display = 'none';
   }
 }
 
-async function deleteSticker(id, btn){
-  if (!confirm('Delete this sticker?')) return;
-  try {
-    await api('/api/stickers/' + id, { method: 'DELETE' });
-    try { renderStickerTray(); } catch(_){}
-    try { renderStickerManager(); } catch(_){}
-    toast('Deleted');
-  } catch(e){ toast(e.message || 'Delete failed'); }
+function paSetBilling(mode){
+  _paBillingMode = mode;
+  paRender();
 }
 
+function paSelectPlan(key){
+  _paSelectedPlan = key;
+  paRender();
+  // Scroll to footer button
+  const footer = document.getElementById('premium-footer');
+  if (footer) footer.scrollIntoView({ behavior: 'smooth', block: 'end' });
+}
+
+function paContinue(){
+  if (_paStatus && _paStatus.is_premium){
+    // Handled by paCancelSub / paReactivate via onclick override
+    return;
+  }
+  paStartPayment(_paSelectedPlan);
+}
+
+async function paStartPayment(plan){
+  if (plan === 'free') return;
+
+  // GISTAPP_PAYSTACK_UI_V1 — open Paystack Inline checkout
+  paShowLoading('Paystack');
+
+  try {
+    const r = await api('/api/billing/subscribe', {
+      method: 'POST',
+      body: JSON.stringify({ plan: plan })
+    });
+    if (!r.ok || r.error) throw new Error((r && r.error) || 'Failed');
+
+    // Use Paystack Inline JS to open the checkout inside the app
+    if (typeof PaystackPop === 'undefined'){
+      // Fallback: redirect to hosted checkout
+      paHideLoading();
+      window.location.href = r.authorization_url;
+      return;
+    }
+
+    paHideLoading();
+
+    const handler = PaystackPop.setup({
+      key: 'pk_test_2ce59828b6b300eed89199bd0571e2ecc5f3fbdd',  // public key from Paystack
+      email: (me && me.email) || 'user@gistapp.app',
+      amount: r.amount * 100,      // kobo
+      currency: 'NGN',
+      ref: r.reference,
+      metadata: {
+        custom_fields: [
+          { display_name: 'Plan', variable_name: 'plan', value: plan },
+          { display_name: 'User', variable_name: 'user_id', value: String(me && me.id) }
+        ]
+      },
+      callback: function(response){
+        // Payment completed in Paystack modal
+        console.log('Paystack callback:', response);
+        paShowLoading('Verifying payment');
+        paPollPayment(response.reference || r.reference, r.amount, plan);
+      },
+      onClose: function(){
+        // User closed the modal without paying
+        toast('Payment cancelled');
+      }
+    });
+
+    handler.openIframe();
+  } catch(e){
+    paHideLoading();
+    alert('Could not start payment: ' + (e.message || 'unknown'));
+  }
+}
+
+function paShowLoading(label){
+  const el = document.getElementById('premium-loading');
+  const phoneEl = document.getElementById('pa-loading-phone');
+  if (el) el.classList.add('show');
+  if (phoneEl) phoneEl.textContent = label ? ('Payment: ' + label) : '';
+  document.getElementById('pa-loading-title').textContent = 'Processing payment';
+  document.getElementById('pa-loading-sub').textContent = 'Please complete the payment in the Paystack window.';
+}
+
+function paHideLoading(){
+  const el = document.getElementById('premium-loading');
+  if (el) el.classList.remove('show');
+}
+
+function paPollPayment(ref, amount, plan){
+  if (_paPoll) clearInterval(_paPoll);
+  let tries = 0;
+  _paPoll = setInterval(async function(){
+    tries++;
+    if (tries > 90){ // 90 * 2s = 3 min
+      clearInterval(_paPoll); _paPoll = null;
+      paHideLoading();
+      alert('Payment not confirmed. You can try again.');
+      paRefresh();
+      return;
+    }
+    try {
+      const r = await api('/api/billing/verify/' + ref);
+      if (r.status === 'success'){
+        clearInterval(_paPoll); _paPoll = null;
+        paHideLoading();
+        paShowSuccess(plan);
+        return;
+      }
+      if (r.status === 'failed'){
+        clearInterval(_paPoll); _paPoll = null;
+        paHideLoading();
+        alert('Payment failed: ' + (r.reason || 'declined'));
+        paRefresh();
+      }
+    } catch(_){}
+  }, 2000);
+}
+
+function paShowSuccess(plan){
+  const el = document.getElementById('premium-success');
+  const title = document.getElementById('pa-success-title');
+  const msg = document.getElementById('pa-success-msg');
+  const info = PA_PLAN_INFO[plan] || PA_PLAN_INFO.pro;
+  if (title) title.textContent = 'Welcome to ' + info.name;
+  if (msg) msg.textContent = 'Your subscription is active. Enjoy your new features!';
+  if (el) el.classList.add('show');
+  // Refresh me object in background
+  api('/api/me').then(function(u){ if (u) me = Object.assign({}, me, u); }).catch(function(){});
+  // Refresh feed/settings so badge shows
+  try { if (typeof renderSettingsSections === 'function') renderSettingsSections(); } catch(_){}
+}
+
+function paSuccessDone(){
+  const el = document.getElementById('premium-success');
+  if (el) el.classList.remove('show');
+  paRefresh();
+}
+
+async function paCancelSub(){
+  if (!confirm('Cancel auto-renew? You keep Premium until the period ends.')) return;
+  try {
+    await api('/api/billing/cancel', { method: 'POST' });
+    toast('Auto-renew cancelled');
+    paRefresh();
+  } catch(e){ alert(e.message || 'Could not cancel'); }
+}
+
+async function paReactivate(){
+  const st = _paStatus || {};
+  if (!st.momo_number){
+    toast('Add a MoMo number first');
+    paStartPayment(st.tier || 'pro');
+    return;
+  }
+  paStartPayment(st.tier || 'pro');
+}
+
+/* GISTAPP_PREMIUM_APPLE JS */
 /* GISTAPP_STICKERS_UI_V1 */
 /* GISTAPP_BACKUPS_V1 */
 async function openBackups(){
@@ -4743,7 +5211,7 @@ async function openUserProfile(userId){
     const avInner = u.avatar_url ? '' : esc(initials(name));
     body.innerHTML =
       '<div class="up-av" style="' + avStyle + '">' + avInner + '</div>' +
-      '<h2 class="up-name">' + esc(name) + '</h2>' +
+      '<h2 class="up-name">' + esc(name) + premBadgeHTML(u, 'big') + '</h2>' +
       (u.username ? '<p class="up-username">@' + esc(u.username) + '</p>' : '<p class="up-username"></p>') +
       (u.bio ? '<p class="up-bio">' + esc(u.bio) + '</p>' : '') +
       '<div class="up-stats">' +
@@ -4868,6 +5336,38 @@ function initAccent(){
   applyAccent(hex);
 }
 
+/* GISTAPP_PREMIUM_BADGE_V1 */
+function getTierFromUser(u){
+  if (!u) return 'free';
+  // Try several field names the backend might return
+  var t = u.subscription_tier || u.tier || u.other_tier || null;
+  if (!t && (u.is_premium === true || u.premium === true)) t = 'premium';
+  if (!t) return 'free';
+  if (t === 'pro' || t === 'premium') return 'pro';
+  if (t === 'business') return 'business';
+  if (t === 'free') return 'free';
+  return 'free';
+}
+
+function premBadgeHTML(u, size){
+  var t = getTierFromUser(u);
+  if (t === 'free') return '';
+  var cls = t === 'business' ? 'blue' : 'gold';
+  var icon = t === 'business' ? '💎' : '👑';
+  var label = t === 'business' ? 'BIZ' : 'PRO';
+  return '<span class="prem-badge ' + cls + (size === 'big' ? ' big' : '') + '">' +
+    '<span class="b-ic">' + icon + '</span>' + label + '</span>';
+}
+
+function premBadgeByTier(tier, size){
+  if (!tier || tier === 'free') return '';
+  var cls = tier === 'business' ? 'blue' : 'gold';
+  var icon = tier === 'business' ? '💎' : '👑';
+  var label = tier === 'business' ? 'BIZ' : 'PRO';
+  return '<span class="prem-badge ' + cls + (size === 'big' ? ' big' : '') + '">' +
+    '<span class="b-ic">' + icon + '</span>' + label + '</span>';
+}
+
 function renderPostCard(p){
   const color = p.avatar_color || colorFor(p.display_name);
   const av = p.avatar_url ? '<div class="post-av" style="background-image:url('+p.avatar_url+')"></div>' : '<div class="post-av" style="background:'+color+'">'+esc(initials(p.display_name))+'</div>';
@@ -4880,7 +5380,7 @@ function renderPostCard(p){
   const votes = (p.upvotes||0) - (p.downvotes||0);
   return '<article class="post" data-post-id="'+p.id+'"><div class="post-inner">' +
     '<div class="post-head">' +
-      '<div style="cursor:pointer;display:flex;align-items:center;gap:10px;flex:1;min-width:0" onclick="event.stopPropagation();openUserProfile(' + p.user_id + ')">' + av + '<div class="post-meta"><b>'+esc(p.display_name)+'</b><small>'+timeAgo(p.created_at)+'</small></div></div>' +
+      '<div style="cursor:pointer;display:flex;align-items:center;gap:10px;flex:1;min-width:0" onclick="event.stopPropagation();openUserProfile(' + p.user_id + ')">' + av + '<div class="post-meta"><b>'+esc(p.display_name)+'</b>'+premBadgeHTML(p)+'<small>'+timeAgo(p.created_at)+'</small></div></div>' +
     (Number(p.user_id)===Number(me.id) ? '<button class="post-menu" onclick="openPostMenu(event,'+p.id+')">⋯</button>' : '<button class="post-menu" onclick="openPostMenu(event,'+p.id+')">⋯</button>') + '</div>' +
     body + media +
     '<div class="post-stats"><span>'+(p.like_count||0)+' likes</span><span>'+(p.comment_count||0)+' comments</span></div>' +
@@ -7300,6 +7800,179 @@ boot();
     <div style="grid-column:1/-1;text-align:center;padding:40px 20px;color:var(--sub)">Loading…</div>
   </div>
   <input type="file" id="sticker-file-pick" accept="image/png,image/webp,image/gif,image/jpeg" style="display:none">
+</div>
+
+<!-- GISTAPP_PREMIUM_APPLE removed old -->
+</div>
+
+<!-- GISTAPP_PREMIUM_APPLE -->
+<style>
+#premium-screen{position:fixed;inset:0;background:var(--bg);z-index:9997;display:none;flex-direction:column;overflow:hidden}
+#premium-screen.show{display:flex}
+.pa-header{display:flex;justify-content:space-between;align-items:center;padding:calc(14px + env(safe-area-inset-top,0px)) 18px 14px;border-bottom:1px solid var(--line);background:var(--bg)}
+.pa-header .pa-title{font-size:16px;font-weight:700;color:var(--ink)}
+.pa-header button{background:transparent;border:none;color:var(--ink);font-size:17px;cursor:pointer;padding:6px 10px;font-family:inherit}
+.pa-scroll{flex:1;overflow-y:auto;padding:24px 20px 140px}
+.pa-hero{text-align:center;margin-bottom:28px}
+.pa-hero .pa-crown{font-size:44px;margin-bottom:8px;display:inline-block;filter:drop-shadow(0 4px 10px rgba(245,166,35,.4))}
+.pa-hero h1{font-size:24px;font-weight:800;color:var(--ink);margin:0 0 6px;letter-spacing:-.4px}
+.pa-hero p{font-size:14px;color:var(--sub);margin:0;line-height:1.5}
+.pa-toggle{display:flex;justify-content:center;gap:6px;background:var(--bg-2);padding:5px;border-radius:12px;margin:20px auto 24px;max-width:280px}
+.pa-toggle button{flex:1;background:transparent;border:none;padding:10px 14px;font-size:13.5px;font-weight:700;font-family:inherit;color:var(--sub);border-radius:9px;cursor:pointer;transition:all .18s}
+.pa-toggle button.on{background:var(--bg);color:var(--ink);box-shadow:0 2px 6px rgba(0,0,0,.06)}
+.pa-toggle button .save{font-size:11px;color:#22c55e;font-weight:800;margin-left:4px}
+
+.pa-plan{background:var(--bg-2);border:2px solid transparent;border-radius:18px;padding:20px 18px;margin-bottom:14px;transition:all .18s;position:relative}
+.pa-plan.current{border-color:#22c55e;background:rgba(34,197,94,.06)}
+.pa-plan.featured{border-color:var(--accent,#7b8cff);box-shadow:0 8px 32px rgba(123,140,255,.15)}
+.pa-plan.featured .pa-badge{position:absolute;top:-11px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#7b8cff,#a86bff);color:#fff;font-size:10.5px;font-weight:800;padding:4px 12px;border-radius:20px;letter-spacing:.5px;text-transform:uppercase;white-space:nowrap}
+.pa-plan-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px}
+.pa-plan-name{font-size:17px;font-weight:800;color:var(--ink);margin:0 0 2px}
+.pa-plan-desc{font-size:12.5px;color:var(--sub);margin:0}
+.pa-plan-price{text-align:right}
+.pa-plan-price b{font-size:22px;font-weight:800;color:var(--ink);letter-spacing:-.5px}
+.pa-plan-price span{font-size:12px;color:var(--sub);display:block}
+.pa-features{list-style:none;padding:0;margin:0 0 16px}
+.pa-features li{display:flex;align-items:center;gap:10px;padding:7px 0;font-size:13.5px;color:var(--ink);line-height:1.4}
+.pa-features .check{width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:11px;font-weight:800;color:#fff}
+.pa-features .check.yes{background:#22c55e}
+.pa-features .check.no{background:rgba(142,142,150,.25);color:var(--sub)}
+.pa-features li.off{color:var(--sub);opacity:.6}
+.pa-plan-btn{width:100%;height:48px;border:none;border-radius:12px;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;background:var(--accent,#7b8cff);color:#fff;transition:transform .12s}
+.pa-plan-btn:active{transform:scale(.98)}
+.pa-plan-btn.ghost{background:var(--bg-3);color:var(--sub);cursor:default}
+.pa-plan-btn.current-btn{background:#22c55e;color:#fff;cursor:default}
+
+.pa-footer{position:absolute;bottom:0;left:0;right:0;padding:14px 20px calc(16px + env(safe-area-inset-bottom,0px));background:linear-gradient(180deg,transparent 0%,var(--bg) 30%);pointer-events:none}
+.pa-footer-btn{width:100%;height:56px;background:var(--ink);color:var(--bg);border:none;border-radius:16px;font-size:16px;font-weight:800;font-family:inherit;cursor:pointer;pointer-events:auto;letter-spacing:-.2px}
+.pa-footer-btn:disabled{opacity:.4;cursor:not-allowed}
+
+.pa-terms{text-align:center;font-size:11.5px;color:var(--sub);line-height:1.5;margin-top:24px;padding:0 10px}
+.pa-terms a{color:var(--accent,#7b8cff);text-decoration:none}
+
+/* Apple-style loading */
+.pa-loading{position:fixed;inset:0;background:var(--bg);z-index:9998;display:none;flex-direction:column;align-items:center;justify-content:center;padding:40px 30px}
+.pa-loading.show{display:flex}
+.pa-spinner{width:44px;height:44px;border:3px solid var(--line);border-top-color:var(--accent,#7b8cff);border-radius:50%;animation:paSpin .9s linear infinite;margin-bottom:22px}
+@keyframes paSpin{to{transform:rotate(360deg)}}
+.pa-loading-title{font-size:20px;font-weight:800;color:var(--ink);margin:0 0 8px;letter-spacing:-.3px}
+.pa-loading-sub{font-size:14px;color:var(--sub);text-align:center;line-height:1.5;max-width:340px}
+.pa-loading-phone{font-size:13px;color:var(--sub);margin-top:14px;padding:8px 16px;background:var(--bg-2);border-radius:10px}
+
+/* Success state */
+.pa-success{position:fixed;inset:0;background:var(--bg);z-index:9999;display:none;flex-direction:column;align-items:center;justify-content:center;padding:40px 30px;text-align:center}
+.pa-success.show{display:flex}
+.pa-success-icon{width:88px;height:88px;border-radius:50%;background:#22c55e;display:flex;align-items:center;justify-content:center;margin-bottom:24px;animation:paPop .5s cubic-bezier(.34,1.56,.64,1)}
+.pa-success-icon svg{width:44px;height:44px;stroke:#fff;stroke-width:3.5;fill:none;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:40;stroke-dashoffset:40;animation:paCheck .6s .25s forwards ease-out}
+@keyframes paPop{0%{transform:scale(.4);opacity:0}100%{transform:scale(1);opacity:1}}
+@keyframes paCheck{to{stroke-dashoffset:0}}
+.pa-success h2{font-size:26px;font-weight:800;color:var(--ink);margin:0 0 8px;letter-spacing:-.5px}
+.pa-success p{font-size:15px;color:var(--sub);margin:0 0 32px;line-height:1.5;max-width:320px}
+.pa-success-btn{background:var(--ink);color:var(--bg);border:none;padding:15px 32px;border-radius:14px;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer}
+</style>
+
+<div id="premium-screen">
+  <div class="pa-header">
+    <button onclick="closePremiumScreen()">✕</button>
+    <div class="pa-title">GistApp Premium</div>
+    <button style="opacity:0;pointer-events:none">✕</button>
+  </div>
+  <div class="pa-scroll" id="premium-body"></div>
+  <div id="pa-paystack-note" style="display:none;position:absolute;bottom:calc(120px + env(safe-area-inset-bottom,0px));left:20px;right:20px;text-align:center;font-size:11.5px;color:var(--sub);pointer-events:none">
+    💳 Card payments via Paystack — coming soon. Use OPay for now.
+  </div>
+  <div class="pa-footer" id="premium-footer" style="display:none">
+    <button class="pa-footer-btn" id="pa-opay-btn" style="background:linear-gradient(135deg,#0a8a4a,#00b060);color:#fff;font-weight:800;height:56px;font-size:16px;box-shadow:0 8px 24px rgba(0,176,96,.3)" onclick="openOpayModal(_paSelectedPlan)">Pay with OPay</button>
+    <button class="pa-footer-btn" id="pa-continue-btn" disabled style="margin-top:8px;background:var(--bg-2);color:var(--sub);font-size:13.5px;height:48px;opacity:.55;cursor:not-allowed">Card payment — Coming Soon</button>
+  </div>
+</div>
+
+<div class="pa-loading" id="premium-loading">
+  <div class="pa-spinner"></div>
+  <div class="pa-loading-title" id="pa-loading-title">Waiting for approval</div>
+  <div class="pa-loading-sub" id="pa-loading-sub">Check your phone and approve the payment request.</div>
+  <div class="pa-loading-phone" id="pa-loading-phone"></div>
+</div>
+
+<div class="pa-success" id="premium-success">
+  <div class="pa-success-icon">
+    <svg viewBox="0 0 24 24"><polyline points="5 13 10 18 19 7"/></svg>
+  </div>
+  <h2 id="pa-success-title">Welcome to Premium</h2>
+  <p id="pa-success-msg">Your subscription is active. Enjoy!</p>
+  <button class="pa-success-btn" onclick="paSuccessDone()">Done</button>
+</div>
+
+<!-- GISTAPP_OPAY_UI_V1 -->
+<style>
+#opay-modal{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;display:none;align-items:flex-end;justify-content:center;padding:0}
+#opay-modal.show{display:flex}
+.opay-sheet{background:var(--bg);width:100%;max-width:520px;max-height:92vh;border-radius:24px 24px 0 0;overflow-y:auto;padding:20px 20px calc(28px + env(safe-area-inset-bottom,0px))}
+.opay-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+.opay-head h3{margin:0;font-size:18px;font-weight:800;color:var(--ink)}
+.opay-close{background:transparent;border:none;color:var(--sub);font-size:18px;cursor:pointer;padding:6px 10px}
+.opay-amount{text-align:center;margin-bottom:20px}
+.opay-amount .amt{font-size:36px;font-weight:800;color:var(--ink);letter-spacing:-1px}
+.opay-amount .sub{font-size:13px;color:var(--sub);margin-top:2px}
+.opay-card{background:linear-gradient(135deg,#0a8a4a,#00b060);color:#fff;padding:20px;border-radius:18px;margin-bottom:16px;box-shadow:0 8px 24px rgba(0,176,96,.25)}
+.opay-card .bank{font-size:11px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;opacity:.9;margin-bottom:10px}
+.opay-card .row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.15)}
+.opay-card .row:last-child{border-bottom:none}
+.opay-card .lbl{font-size:11.5px;opacity:.85;text-transform:uppercase;letter-spacing:.4px}
+.opay-card .val{font-size:15.5px;font-weight:700;font-variant-numeric:tabular-nums}
+.opay-card .val.mono{font-family:ui-monospace,monospace;letter-spacing:.5px;font-size:16.5px}
+.opay-copy{background:rgba(255,255,255,.2);border:none;color:#fff;font-size:11px;font-weight:700;padding:4px 10px;border-radius:8px;cursor:pointer;margin-left:8px;font-family:inherit}
+.opay-note{font-size:12.5px;color:var(--sub);line-height:1.5;margin-bottom:16px;padding:12px;background:var(--bg-2);border-radius:12px}
+.opay-note b{color:var(--ink)}
+.opay-ref{background:var(--bg-3);border:1.5px dashed var(--line);border-radius:12px;padding:12px;text-align:center;margin-bottom:16px}
+.opay-ref .lbl{font-size:11.5px;color:var(--sub);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px}
+.opay-ref .val{font-family:ui-monospace,monospace;font-size:18px;font-weight:800;color:var(--accent,#7b8cff);letter-spacing:1px}
+.opay-input{width:100%;height:52px;background:var(--bg-2);border:1.5px solid var(--line);border-radius:14px;padding:0 16px;font-size:15px;color:var(--ink);outline:none;font-family:inherit;box-sizing:border-box;margin-bottom:12px}
+.opay-input:focus{border-color:var(--accent,#7b8cff)}
+.opay-btn{width:100%;height:54px;background:linear-gradient(135deg,#0a8a4a,#00b060);color:#fff;border:none;border-radius:14px;font-size:15px;font-weight:800;font-family:inherit;cursor:pointer;margin-bottom:10px;box-shadow:0 6px 16px rgba(0,176,96,.3)}
+.opay-btn.secondary{background:var(--bg-2);color:var(--ink);box-shadow:none;font-weight:700;font-size:14px;height:48px}
+.opay-success{text-align:center;padding:30px 20px}
+.opay-success .icon{font-size:60px;margin-bottom:12px}
+.opay-success h3{margin:0 0 8px;color:var(--ink);font-size:20px}
+.opay-success p{margin:0;color:var(--sub);font-size:14px;line-height:1.5}
+</style>
+
+<div id="opay-modal">
+  <div class="opay-sheet" id="opay-sheet"></div>
+</div>
+
+<!-- GISTAPP_OPAY_ADMIN_V1 -->
+<div id="opay-admin-modal" style="position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:2901;display:none;align-items:flex-end;justify-content:center">
+  <div style="background:var(--bg);width:100%;max-width:520px;max-height:88vh;border-radius:24px 24px 0 0;display:flex;flex-direction:column;overflow:hidden" onclick="event.stopPropagation()">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 20px 8px">
+      <div style="font-size:18px;font-weight:800;color:var(--ink)">Pending payments</div>
+      <button onclick="closeOpayAdmin()" style="background:transparent;border:none;font-size:18px;color:var(--sub);cursor:pointer;padding:6px 10px">✕</button>
+    </div>
+    <div id="opay-admin-body" style="overflow-y:auto;padding:8px 20px calc(24px + env(safe-area-inset-bottom,0px))">
+      <div style="padding:30px;text-align:center;color:var(--sub)">Loading…</div>
+    </div>
+  </div>
+</div>
+
+<!-- GISTAPP_CHANGE_EMAIL_V1 modal -->
+<div id="change-email-modal" style="position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:2900;display:none;align-items:flex-end;justify-content:center">
+  <div style="background:var(--bg);width:100%;max-width:480px;border-radius:22px 22px 0 0;padding:24px 20px calc(24px + env(safe-area-inset-bottom,0px))" onclick="event.stopPropagation()">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <h3 style="margin:0;font-size:18px;font-weight:800;color:var(--ink)">Change email</h3>
+      <button onclick="closeChangeEmail()" style="background:transparent;border:none;font-size:18px;color:var(--sub);cursor:pointer;padding:6px 10px">✕</button>
+    </div>
+    <p style="color:var(--sub);font-size:13px;line-height:1.55;margin:0 0 16px">
+      We'll send a verification link to your new email. Click it to confirm the change.
+    </p>
+    <label style="display:block;font-size:12px;font-weight:700;color:var(--sub);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">Current email</label>
+    <input id="ce-current" type="email" disabled style="width:100%;height:50px;background:var(--bg-3);border:1px solid var(--line);border-radius:12px;padding:0 14px;font-size:14px;color:var(--sub);outline:none;font-family:inherit;box-sizing:border-box;margin-bottom:14px">
+    <label style="display:block;font-size:12px;font-weight:700;color:var(--sub);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">New email</label>
+    <input id="ce-new" type="email" placeholder="you@example.com" autocomplete="email" style="width:100%;height:52px;background:var(--bg-2);border:1.5px solid var(--line);border-radius:12px;padding:0 14px;font-size:15px;color:var(--ink);outline:none;font-family:inherit;box-sizing:border-box;margin-bottom:14px">
+    <label style="display:block;font-size:12px;font-weight:700;color:var(--sub);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">Password</label>
+    <input id="ce-pass" type="password" placeholder="Your current password" autocomplete="current-password" style="width:100%;height:52px;background:var(--bg-2);border:1.5px solid var(--line);border-radius:12px;padding:0 14px;font-size:15px;color:var(--ink);outline:none;font-family:inherit;box-sizing:border-box;margin-bottom:8px">
+    <div id="ce-err" style="color:#e5484d;font-size:12.5px;min-height:16px;margin-bottom:6px"></div>
+    <button id="ce-submit" onclick="submitChangeEmail()" style="width:100%;height:52px;background:var(--accent,#7b8cff);color:#fff;border:none;border-radius:14px;font-size:15px;font-weight:800;font-family:inherit;cursor:pointer;margin-top:4px">Send verification</button>
+  </div>
 </div>
 </body>
 </html>
