@@ -1096,6 +1096,65 @@ body.dark .up-close:hover{background:#1e1e28}
 .prem-badge .b-ic{font-size:10px;margin-right:1px}
 .prem-badge.big{font-size:12.5px;padding:3px 7px;border-radius:8px}
 .prem-badge.big .b-ic{font-size:12px}
+
+/* GISTAPP_LV_A — TikTok-style live viewer design */
+.lv-top2{position:absolute;top:calc(16px + env(safe-area-inset-top,0px));left:0;right:0;display:flex;justify-content:space-between;align-items:flex-start;padding:0 14px;z-index:10;gap:8px}
+.lv-host-wrap{display:flex;align-items:center;gap:10px;background:rgba(0,0,0,.55);padding:5px 12px 5px 5px;border-radius:30px;backdrop-filter:blur(12px);max-width:70%;border:1px solid rgba(255,255,255,.15)}
+.lv-host-av2{width:36px;height:36px;border-radius:50%;background:#7b8cff;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;background-size:cover;background-position:center;flex-shrink:0;border:2px solid #ff3b30}
+.lv-host-info2{display:flex;flex-direction:column;line-height:1.15;min-width:0}
+.lv-host-name2{color:#fff;font-size:13.5px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lv-host-followers{color:rgba(255,255,255,.75);font-size:10.5px}
+.lv-follow-btn{background:#ff3b30;color:#fff;border:none;padding:5px 12px;border-radius:14px;font-size:11.5px;font-weight:800;font-family:inherit;cursor:pointer;flex-shrink:0;margin-left:4px}
+.lv-follow-btn.on{background:rgba(255,255,255,.2);color:#fff}
+.lv-top2-actions{display:flex;gap:6px;align-items:center;flex-shrink:0}
+.lv-icon-round{background:rgba(0,0,0,.5);color:#fff;border:none;width:36px;height:36px;border-radius:50%;font-size:14px;cursor:pointer;backdrop-filter:blur(10px);display:flex;align-items:center;justify-content:center}
+
+.lv-emoji-bar{position:absolute;right:14px;bottom:calc(140px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:8px;z-index:11}
+.lv-emoji-btn{width:44px;height:44px;border-radius:50%;background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.15);color:#fff;font-size:20px;cursor:pointer;backdrop-filter:blur(10px);display:flex;align-items:center;justify-content:center;transition:transform .12s}
+.lv-emoji-btn:active{transform:scale(.9)}
+
+.lv-gift-tray{position:absolute;bottom:calc(14px + env(safe-area-inset-bottom,0px));left:0;right:0;background:linear-gradient(180deg,rgba(0,0,0,.85) 0%,rgba(0,0,0,.95) 100%);border-radius:24px 24px 0 0;padding:14px 16px calc(16px + env(safe-area-inset-bottom,0px));transform:translateY(110%);transition:transform .28s cubic-bezier(.34,1.56,.64,1);z-index:15;backdrop-filter:blur(20px);max-height:60vh;overflow-y:auto}
+.lv-gift-tray.show{transform:translateY(0)}
+.lv-gift-title{color:#fff;font-size:14px;font-weight:800;text-align:center;margin-bottom:12px;letter-spacing:.3px}
+.lv-gift-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}
+.lv-gift-item{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:12px 6px;cursor:pointer;text-align:center;transition:transform .12s}
+.lv-gift-item:active{transform:scale(.94)}
+.lv-gift-item .g-emo{font-size:32px;line-height:1;margin-bottom:4px;display:block}
+.lv-gift-item .g-lbl{color:#fff;font-size:10.5px;font-weight:600}
+.lv-gift-close{width:100%;height:44px;background:rgba(255,255,255,.1);color:#fff;border:none;border-radius:12px;font-family:inherit;font-size:14px;font-weight:700;cursor:pointer}
+
+.lv-gift-float{position:absolute;font-size:40px;pointer-events:none;z-index:14;animation:lvGiftUp 2.5s ease-out forwards;filter:drop-shadow(0 4px 10px rgba(0,0,0,.5))}
+@keyframes lvGiftUp{0%{opacity:0;transform:translateY(0) scale(.5) rotate(0deg)}15%{opacity:1;transform:translateY(-30px) scale(1.2) rotate(-8deg)}50%{transform:translateY(-140px) scale(1) rotate(8deg)}100%{opacity:0;transform:translateY(-320px) scale(.6) rotate(0deg)}}
+
+.lv-system-msg{background:linear-gradient(90deg,rgba(255,59,48,.4),rgba(168,107,255,.4));border:1px solid rgba(255,255,255,.15);padding:7px 12px;border-radius:16px;margin-bottom:6px;color:#fff;font-size:12px;font-weight:600;backdrop-filter:blur(6px);text-align:center;animation:lvFadeIn .3s}
+@keyframes lvFadeIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
+
+.lv-chat-msg.unread-flash{animation:lvFlash .8s}
+@keyframes lvFlash{0%,100%{background:rgba(0,0,0,.4)}50%{background:rgba(123,140,255,.4)}}
+
+.lv-chat-msg .msg-name{color:#7b8cff;font-weight:800;margin-right:4px}
+.lv-chat-msg.out .msg-name{color:#22c55e}
+.lv-chat-msg .msg-crown{display:inline-block;font-size:9px;background:linear-gradient(135deg,#f5a623,#ff9500);color:#fff;padding:1px 5px;border-radius:5px;font-weight:800;margin-right:4px;vertical-align:middle}
+
+.lv-gift-item .g-coins{display:block;font-size:9.5px;color:#f5a623;font-weight:800;margin-top:3px;letter-spacing:.3px}
+.lv-gift-title{color:#fff;font-size:14px;font-weight:800;text-align:center;margin-bottom:6px;letter-spacing:.3px}
+.lv-gift-item{position:relative}
+
+/* GISTAPP_COHOST_TILES — TikTok-style co-host tiles on host broadcast */
+.sb-guests{position:absolute;right:14px;top:calc(130px + env(safe-area-inset-top,0px));display:flex;flex-direction:column;gap:8px;z-index:11;max-height:calc(100vh - 300px);overflow-y:auto}
+.sb-guest-tile{width:100px;height:150px;background:#1a1a22;border-radius:14px;overflow:hidden;position:relative;border:2px solid rgba(255,255,255,.25);box-shadow:0 6px 20px rgba(0,0,0,.5);animation:sbGuestIn .35s cubic-bezier(.34,1.56,.64,1)}
+@keyframes sbGuestIn{from{opacity:0;transform:scale(.7) translateX(20px)}to{opacity:1;transform:scale(1) translateX(0)}}
+.sb-guest-tile video{width:100%;height:100%;object-fit:cover;background:#000}
+.sb-guest-tile .g-name{position:absolute;left:4px;bottom:4px;right:4px;font-size:10px;font-weight:700;color:#fff;background:rgba(0,0,0,.6);padding:3px 6px;border-radius:8px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;backdrop-filter:blur(6px)}
+.sb-guest-tile .g-crown{position:absolute;top:4px;left:4px;font-size:12px;background:linear-gradient(135deg,#f5a623,#ff9500);color:#fff;padding:2px 6px;border-radius:8px;font-weight:800;box-shadow:0 2px 6px rgba(0,0,0,.3)}
+.sb-guest-tile .g-mute{position:absolute;top:4px;right:4px;font-size:11px;background:rgba(255,59,48,.85);color:#fff;padding:2px 5px;border-radius:6px;display:none}
+.sb-guest-tile.muted .g-mute{display:block}
+
+/* Viewer-side co-host tiles (bottom-right, TikTok style) */
+.lv-guests{position:absolute;right:14px;bottom:calc(180px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:8px;z-index:11;max-height:calc(100vh - 400px);overflow-y:auto}
+.lv-guest-tile{width:92px;height:138px;background:#1a1a22;border-radius:14px;overflow:hidden;position:relative;border:2px solid rgba(255,255,255,.25);box-shadow:0 4px 16px rgba(0,0,0,.5);animation:sbGuestIn .35s cubic-bezier(.34,1.56,.64,1)}
+.lv-guest-tile video{width:100%;height:100%;object-fit:cover;background:#000}
+.lv-guest-tile .name{position:absolute;left:4px;bottom:4px;right:4px;font-size:10px;font-weight:700;color:#fff;background:rgba(0,0,0,.55);padding:2px 6px;border-radius:8px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;backdrop-filter:blur(6px)}
 </style>
 
   
@@ -1116,7 +1175,8 @@ if ('serviceWorker' in navigator){
   });
 }
 </script>  <script src="https://js.paystack.co/v1/inline.js"></script>
-<!-- GISTAPP_PAYSTACK_UI_V1 --></head>
+<!-- GISTAPP_PAYSTACK_UI_V1 -->  <script src="/livekit-client.umd.min.js"></script>
+<!-- GISTAPP_STREAMER_UI_V1 --><!-- GISTAPP_LV_A --><!-- GISTAPP_LV_C --><!-- GISTAPP_LV_A2 --><!-- GISTAPP_LV_NULLFIX --><!-- GISTAPP_LV_BULLETPROOF --><!-- GISTAPP_SESSION_KICK --><!-- GISTAPP_LIVE_TRACE --><!-- GISTAPP_LIVE_HOST_FIX --><!-- GISTAPP_LIVE_SOCK_FIX --><!-- GISTAPP_GIFT_PRICES --><!-- GISTAPP_COHOST_TILES --></head>
 <body>
 
 <div class="app">
@@ -1231,6 +1291,7 @@ if ('serviceWorker' in navigator){
   <section class="screen" id="screen-feed">
     <div class="feed-head">
       <div class="feed-title">Home</div>
+      <div id="live-strip" style="display:none;padding:12px 16px 6px;gap:10px;overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch"></div>
       <div class="feed-tabs" id="feed-tabs">
         <button class="feed-tab on" data-tab="foryou" onclick="switchFeedTab('foryou')">For You</button>
         <button class="feed-tab" data-tab="home" onclick="switchFeedTab('home')">Home</button>
@@ -2045,7 +2106,16 @@ async function api(path, opts={}){
   clearTimeout(timer);
 
   const data = await res.json().catch(()=>({}));
-  if (!res.ok) throw new Error(data.error || 'Request failed');
+  if (!res.ok){
+    // GISTAPP_SESSION_KICK — if session was replaced by another device, force logout
+    if (res.status === 401 && data && data.code === 'SESSION_REPLACED'){
+      try { localStorage.clear(); } catch(_){}
+      alert('You were logged in on another device. Please sign in again.');
+      location.reload();
+      throw new Error('Session replaced');
+    }
+    throw new Error(data.error || 'Request failed');
+  }
   return data;
 }
 const esc = function(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); };
@@ -2259,7 +2329,7 @@ function setNavActive(navId){
   const el = document.getElementById(navId);
   if (el) el.classList.add('on');
 }
-function openFeed(){ setNavActive('nav-home'); show('screen-feed'); loadFeed(); }
+function openFeed(){ setNavActive('nav-home'); show('screen-feed'); loadFeed(); try { refreshGoLiveBtn(); } catch(_){} } // streamerRefreshOnFeed
 function openChatsTab(){ setNavActive('nav-chats'); show('screen-list'); loadChats(); loadStories(); }
 function openCallsTab(){ show('screen-calls'); loadCalls(); }
 function closeCallsTab(){ show('screen-list'); loadChats(); }
@@ -2291,7 +2361,8 @@ async function enterApp(){
     applyDark(!!(me && me.dark_mode));
     if (me && me.font_size) applyFontSize(me.font_size);
     connectSocket();
-    setNavActive('nav-home');
+      try { bindLiveSocketHandlers(); } catch(_){}
+        setNavActive('nav-home');
     show('screen-feed');
     loadFeed();
     loadChats();
@@ -2299,6 +2370,7 @@ async function enterApp(){
     loadStories();
     applyWallpaper();
     refreshLockStatus();
+    try { refreshGoLiveBtn(); } catch(_){}
     if (pollTimer) clearInterval(pollTimer);
     pollTimer = setInterval(function(){
       if (!document.hidden){ loadChats(); loadRequests(); }
@@ -2311,6 +2383,7 @@ async function enterApp(){
 function connectSocket(){
   if (socket) socket.disconnect();
   socket = io({ auth:{ token } });
+  setTimeout(function(){ try { if (typeof bindLiveSocketHandlers === 'function') bindLiveSocketHandlers(); } catch(_){} }, 200);
   socket.on('presence-list', function(ids){ onlineIds = new Set(ids.map(Number)); renderChats(); renderStories(); updateHeaderStatus(); });
   socket.on('presence', function(p){ if (p.online) onlineIds.add(Number(p.userId)); else onlineIds.delete(Number(p.userId)); renderChats(); renderStories(); updateHeaderStatus(); });
   socket.on('message', function(m){
@@ -4204,6 +4277,1346 @@ async function submitChangeEmail(){
   if (btn){ btn.disabled = false; btn.textContent = 'Send verification'; }
 }
 
+
+/* GISTAPP_VIEWER_COUNT_FIX — socket-driven count */
+if (socket){
+  socket.on('live-viewers-update', function(p){
+    if (!p || Number(p.stream_id) !== Number(_ssStreamId)) return;
+    var el = document.getElementById('sb-viewer-count');
+    if (el) el.textContent = p.count || 0;
+  });
+}
+
+
+/* GISTAPP_LV_B — viewer extras */
+const LV_GIFTS = [
+  { id: 'rose',   emo: '🌹', lbl: 'Rose',    coins: 1 },
+  { id: 'heart',  emo: '❤️', lbl: 'Heart',   coins: 5 },
+  { id: 'fire',   emo: '🔥', lbl: 'Fire',    coins: 10 },
+  { id: 'star',   emo: '⭐', lbl: 'Star',    coins: 25 },
+  { id: 'cake',   emo: '🎂', lbl: 'Cake',    coins: 50 },
+  { id: 'crown',  emo: '👑', lbl: 'Crown',   coins: 100 },
+  { id: 'gem',    emo: '💎', lbl: 'Gem',     coins: 500 },
+  { id: 'rocket', emo: '🚀', lbl: 'Rocket',  coins: 1000 }
+];
+
+function lvOpenGiftTray(){
+  var t = document.getElementById('lv-gift-tray');
+  var g = document.getElementById('lv-gift-grid');
+  if (!t || !g) return;
+  var header = '<div style="grid-column:1/-1;text-align:center;color:#fff;font-size:12.5px;padding:4px 0 8px;opacity:.75">Send a gift to support the streamer</div>';
+  g.innerHTML = header + LV_GIFTS.map(function(x){
+    return '<div class="lv-gift-item" onclick="lvSendGift(\''+x.id+'\',\''+x.emo+'\')">' +
+      '<span class="g-emo">' + x.emo + '</span>' +
+      '<span class="g-lbl">' + x.lbl + '</span>' +
+      '<span class="g-coins">' + x.coins + ' 💰</span>' +
+    '</div>';
+  }).join('');
+  t.classList.add('show');
+}
+
+function lvCloseGiftTray(){
+  var t = document.getElementById('lv-gift-tray');
+  if (t) t.classList.remove('show');
+}
+
+async function lvSendGift(id, emo){
+  if (!_lvStreamId) return;
+  lvCloseGiftTray();
+  try { await api('/api/live/' + _lvStreamId + '/gift', { method: 'POST', body: JSON.stringify({ gift: id }) }); } catch(_){}
+  lvSpawnGiftAnim(emo || '❤️');
+}
+
+function lvSpawnGiftAnim(emo){
+  var v = document.getElementById('live-viewer');
+  if (!v) return;
+  var h = document.createElement('div');
+  h.className = 'lv-gift-float';
+  h.textContent = emo;
+  h.style.right = (30 + Math.random() * 60) + 'px';
+  h.style.bottom = '120px';
+  v.appendChild(h);
+  setTimeout(function(){ try { v.removeChild(h); } catch(_){} }, 2600);
+}
+
+function lvQuickReact(emo){
+  // Send as gift (floats up) AND post as chat
+  lvSpawnGiftAnim(emo);
+  try {
+    if (socket && _lvStreamId){
+      socket.emit('live-reaction', { stream_id: _lvStreamId, emo: emo });
+    }
+  } catch(_){}
+  // Also send via API as a chat message so it persists
+  api('/api/live/' + _lvStreamId + '/chat', {
+    method: 'POST',
+    body: JSON.stringify({ text: emo })
+  }).catch(function(){});
+}
+
+async function lvToggleFollow(){
+  if (!_lvStreamer) return;
+  var btn = document.getElementById('lv-follow-btn');
+  var on = btn && btn.classList.contains('on');
+  if (btn){ btn.disabled = true; btn.textContent = '…'; }
+  try {
+    await api('/api/users/' + _lvStreamer.streamer_id + '/follow', { method: 'POST' });
+    if (btn){ btn.classList.toggle('on', !on); btn.textContent = !on ? '✓ Following' : 'Follow'; btn.disabled = false; }
+    toast(!on ? 'Following' : 'Unfollowed');
+  } catch(e){
+    if (btn){ btn.disabled = false; btn.textContent = on ? '✓ Following' : 'Follow'; }
+    toast(e.message || 'Failed');
+  }
+}
+
+function lvShareStream(){
+  if (!_lvStreamId) return;
+  var url = location.origin + '/?live=' + _lvStreamId;
+  if (navigator.share){
+    navigator.share({ title: 'Watch live on GistApp', text: 'Join the live stream!', url: url }).catch(function(){});
+  } else {
+    navigator.clipboard.writeText(url).then(function(){ toast('Link copied'); }).catch(function(){ prompt('Copy this link:', url); });
+  }
+}
+
+// Override openLiveViewer to load chat history + show follow button
+var _origOpenLiveViewer = window.openLiveViewer;
+window.openLiveViewer = async function(streamId){
+  await _origOpenLiveViewer(streamId);
+  if (!_lvStreamer) return;
+
+  // Load chat history
+  try {
+    var msgs = await api('/api/live/' + streamId + '/chat');
+    var c = document.getElementById('lv-chat');
+    if (c) c.innerHTML = '';
+    (msgs || []).forEach(function(m){ lvChatMsgFull(m); });
+  } catch(_){}
+
+  // Update follower count + follow button
+  try {
+    var info = await api('/api/users/' + _lvStreamer.streamer_id + '/profile-card');
+    var fl = document.getElementById('lv-host-followers');
+    if (fl) fl.textContent = (info.followers || 0) + ' followers';
+    var btn = document.getElementById('lv-follow-btn');
+    if (btn && me && _lvStreamer.streamer_id !== me.id){
+      btn.style.display = 'inline-block';
+      btn.textContent = info.is_following ? '✓ Following' : 'Follow';
+      btn.classList.toggle('on', !!info.is_following);
+    }
+  } catch(_){}
+
+  // Join socket room
+  try { if (socket) socket.emit('live-join-room', streamId); } catch(_){}
+};
+
+function lvChatMsgFull(m){
+  if (!m) return;
+  var c = document.getElementById('lv-chat');
+  if (!c) return;
+  try {
+    var d = document.createElement('div');
+    d.className = 'lv-chat-msg' + (me && m.user_id === me.id ? ' out' : '');
+    var crown = (m.subscription_tier && m.subscription_tier !== 'free') ? '<span class="msg-crown">' + (m.subscription_tier === 'business' ? '💎' : '👑') + '</span>' : '';
+    d.innerHTML = crown + '<span class="msg-name">' + esc(m.display_name || 'User') + ':</span>' + esc(m.text);
+    c.appendChild(d);
+    c.scrollTop = c.scrollHeight;
+    while (c.children.length > 80) c.removeChild(c.firstChild);
+  } catch(e){ console.warn('lvChatMsgFull:', e.message); }
+}
+
+// Override sendLiveChat to use API (persistence)
+window.sendLiveChat = async function(){
+  var inp = document.getElementById('lv-chat-input');
+  if (!inp || !_lvStreamId) return;
+  var text = (inp.value || '').trim();
+  if (!text) return;
+  inp.value = '';
+  var b = document.getElementById('lv-send-btn');
+  if (b) b.disabled = true;
+  try {
+    await api('/api/live/' + _lvStreamId + '/chat', { method: 'POST', body: JSON.stringify({ text: text }) });
+    // Message appears via socket broadcast
+  } catch(e){ toast(e.message || 'Could not send'); }
+};
+
+// Socket hooks for live events
+(function(){
+  if (typeof socket === 'undefined' || !socket) return;
+  socket.on('live-chat', function(m){ lvChatMsgFull(m); });
+  socket.on('live-chat-delete', function(p){
+    if (p.message_id){
+      var c = document.getElementById('lv-chat');
+      if (c) c.innerHTML = '';
+    }
+  });
+  socket.on('live-gift', function(p){
+    lvSpawnGiftAnim(['🌹','❤️','🔥','⭐','🎂','👑','💎','🚀'][Math.floor(Math.random()*8)]);
+    lvSystemMsg((p.display_name || 'Someone') + ' sent a gift!');
+  });
+  socket.on('live-join-approved', async function(p){
+    lvSystemMsg('🎉 Your join request was approved!');
+    toast('You are now a co-host!');
+    // Reconnect with publisher token
+    if (_lvRoom){
+      try {
+        await _lvRoom.disconnect();
+        _lvRoom = null;
+        var LK = (typeof LivekitClient !== 'undefined') ? LivekitClient : (typeof livekitClient !== 'undefined' ? livekitClient : null);
+        if (LK && LK.Room){
+          _lvRoom = new LK.Room({ adaptiveStream: true, dynacast: true });
+          await _lvRoom.connect(p.room || (_lvStreamer && _lvStreamer.room), p.token);
+          if (navigator.mediaDevices){
+            var s = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+            await _lvRoom.localParticipant.publishTrack(s.getVideoTracks()[0]);
+            await _lvRoom.localParticipant.publishTrack(s.getAudioTracks()[0]);
+          }
+        }
+      } catch(e){ console.warn('co-host connect:', e); }
+    }
+  });
+  socket.on('live-join-rejected', function(){ toast('Join request declined'); });
+  socket.on('live-kicked', function(){ toast('You were removed from the stream'); closeLiveViewer(); });
+})();
+
+
+/* GISTAPP_LV_B */
+
+/* GISTAPP_LV_BULLETPROOF — safe element helpers */
+function _lvSet(id, prop, val){
+  var el = document.getElementById(id);
+  if (!el) return false;
+  try { el[prop] = val; return true; } catch(_) { return false; }
+}
+function _lvText(id, text){ return _lvSet(id, 'textContent', text); }
+function _lvHTML(id, html){ return _lvSet(id, 'innerHTML', html); }
+function _lvShow(id, show){ return _lvSet(id, 'style', { display: show ? 'block' : 'none' }); }
+function _lvStyle(id, prop, val){
+  var el = document.getElementById(id);
+  if (!el || !el.style) return false;
+  try { el.style[prop] = val; return true; } catch(_) { return false; }
+}
+
+/* GISTAPP_COHOST_TILES — host-side guest rendering */
+function sbAddGuestTile(participant){
+  var wrap = document.getElementById('sb-guests');
+  if (!wrap || !participant) return;
+  var id = String(participant.identity);
+  if (document.getElementById('sb-guest-' + id)) return;
+
+  var name = participant.name || 'Guest';
+  var tile = document.createElement('div');
+  tile.className = 'sb-guest-tile';
+  tile.id = 'sb-guest-' + id;
+  tile.innerHTML =
+    '<video autoplay playsinline></video>' +
+    '<div class="g-crown">👑</div>' +
+    '<div class="g-mute">🔇</div>' +
+    '<div class="g-name">' + esc(name) + '</div>';
+  wrap.appendChild(tile);
+  console.log('👥 guest tile added:', name, id);
+
+  // Attach any existing video tracks
+  participant.trackPublications.forEach(function(pub){
+    if (pub.track && pub.track.kind === 'video'){
+      var v = tile.querySelector('video');
+      v.srcObject = new MediaStream([pub.track.mediaStreamTrack]);
+    }
+    if (pub.track && pub.track.kind === 'audio'){
+      var a = new Audio();
+      a.srcObject = new MediaStream([pub.track.mediaStreamTrack]);
+      a.play().catch(function(){});
+    }
+  });
+}
+
+function sbRemoveGuestTile(identity){
+  var el = document.getElementById('sb-guest-' + identity);
+  if (el){
+    el.style.transition = 'opacity .3s, transform .3s';
+    el.style.opacity = '0';
+    el.style.transform = 'scale(.7) translateX(20px)';
+    setTimeout(function(){ try { el.remove(); } catch(_){} }, 320);
+  }
+}
+
+function ssAttachRoomHandlers(){
+  if (!_ssRoom) return;
+  if (_ssRoom._handlersAttached) return;
+  _ssRoom._handlersAttached = true;
+
+  _ssRoom.on('participantConnected', function(p){
+    console.log('👥 participant connected (host):', p.identity, p.name);
+    sbAddGuestTile(p);
+    sbHostSystemMsg('👋 ' + (p.name || 'Guest') + ' joined');
+  });
+
+  _ssRoom.on('participantDisconnected', function(p){
+    console.log('👥 participant disconnected (host):', p.identity);
+    sbRemoveGuestTile(p.identity);
+  });
+
+  _ssRoom.on('trackSubscribed', function(track, pub, participant){
+    // Video from a guest
+    if (track.kind === 'video'){
+      var tile = document.getElementById('sb-guest-' + participant.identity);
+      if (!tile) { sbAddGuestTile(participant); tile = document.getElementById('sb-guest-' + participant.identity); }
+      if (tile){
+        var v = tile.querySelector('video');
+        v.srcObject = new MediaStream([track.mediaStreamTrack]);
+      }
+    }
+    if (track.kind === 'audio'){
+      var a = new Audio();
+      a.srcObject = new MediaStream([track.mediaStreamTrack]);
+      a.play().catch(function(){});
+    }
+  });
+
+  _ssRoom.on('trackMuted', function(pub, participant){
+    var tile = document.getElementById('sb-guest-' + participant.identity);
+    if (tile && pub.kind === 'audio') tile.classList.add('muted');
+  });
+
+  _ssRoom.on('trackUnmuted', function(pub, participant){
+    var tile = document.getElementById('sb-guest-' + participant.identity);
+    if (tile && pub.kind === 'audio') tile.classList.remove('muted');
+  });
+
+  console.log('✅ host room handlers attached');
+}
+
+/* GISTAPP_COHOST_TILES */
+/* GISTAPP_LIVE_HOST_FIX — host-side hooks */
+let _sbReqPollTimer = null;
+
+function sbAttachHostChat(){
+  // Create a floating chat overlay on the broadcast screen
+  var b = document.getElementById('stream-broadcast');
+  if (!b) return;
+  if (document.getElementById('sb-chat-overlay')) return;
+  var div = document.createElement('div');
+  div.id = 'sb-chat-overlay';
+  div.style.cssText = 'position:absolute;left:12px;bottom:calc(100px + env(safe-area-inset-bottom,0px));width:min(72%,360px);max-height:40vh;overflow-y:auto;padding:0 12px;z-index:9;pointer-events:none';
+  b.appendChild(div);
+
+  // Gift animation container
+  var gifts = document.createElement('div');
+  gifts.id = 'sb-gift-anim';
+  gifts.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:14;overflow:hidden';
+  b.appendChild(gifts);
+
+  // Requests badge (top-left, below LIVE badge)
+  var badge = document.createElement('div');
+  badge.id = 'sb-req-badge';
+  badge.style.cssText = 'position:absolute;top:calc(76px + env(safe-area-inset-top,0px));left:14px;background:#22c55e;color:#fff;font-size:12px;font-weight:800;padding:6px 12px;border-radius:20px;display:none;z-index:12;cursor:pointer;box-shadow:0 4px 12px rgba(34,197,94,.4)';
+  badge.onclick = function(){ sbShowRequests(); };
+  b.appendChild(badge);
+
+  // Requests panel
+  var panel = document.createElement('div');
+  panel.id = 'sb-req-panel';
+  panel.style.cssText = 'position:absolute;left:14px;top:calc(120px + env(safe-area-inset-top,0px));width:min(320px,calc(100vw - 28px));max-height:50vh;background:rgba(20,20,28,.95);border-radius:16px;padding:12px;backdrop-filter:blur(14px);z-index:13;display:none;overflow-y:auto';
+  b.appendChild(panel);
+
+  console.log('✅ host chat overlay attached');
+}
+
+function sbHostSystemMsg(text){
+  var c = document.getElementById('sb-chat-overlay');
+  if (!c) return;
+  try {
+    var d = document.createElement('div');
+    d.style.cssText = 'background:linear-gradient(90deg,rgba(255,59,48,.4),rgba(168,107,255,.4));padding:6px 10px;border-radius:14px;margin-bottom:6px;color:#fff;font-size:12px;font-weight:600;backdrop-filter:blur(6px);text-align:center;animation:lvFadeIn .3s';
+    d.textContent = text;
+    c.appendChild(d);
+    c.scrollTop = c.scrollHeight;
+    while (c.children.length > 30) c.removeChild(c.firstChild);
+  } catch(_){}
+}
+
+function sbHostChatMsg(m){
+  var c = document.getElementById('sb-chat-overlay');
+  if (!c || !m) return;
+  try {
+    var d = document.createElement('div');
+    d.style.cssText = 'background:rgba(0,0,0,.5);padding:5px 10px;border-radius:14px;margin-bottom:5px;color:#fff;font-size:12.5px;line-height:1.35;backdrop-filter:blur(6px)';
+    var crown = (m.subscription_tier && m.subscription_tier !== 'free') ? '<span style="display:inline-block;font-size:9px;background:linear-gradient(135deg,#f5a623,#ff9500);color:#fff;padding:1px 5px;border-radius:5px;font-weight:800;margin-right:4px">' + (m.subscription_tier === 'business' ? '💎' : '👑') + '</span>' : '';
+    d.innerHTML = crown + '<b style="color:#7b8cff">' + esc(m.display_name || 'User') + ':</b> ' + esc(m.text);
+    c.appendChild(d);
+    c.scrollTop = c.scrollHeight;
+    while (c.children.length > 30) c.removeChild(c.firstChild);
+  } catch(_){}
+}
+
+function sbGiftAnim(emo){
+  var g = document.getElementById('sb-gift-anim');
+  if (!g) return;
+  var h = document.createElement('div');
+  h.style.cssText = 'position:absolute;font-size:40px;right:' + (30 + Math.random()*60) + 'px;bottom:120px;filter:drop-shadow(0 4px 10px rgba(0,0,0,.5));animation:lvGiftUp 2.5s ease-out forwards';
+  h.textContent = emo || '❤️';
+  g.appendChild(h);
+  setTimeout(function(){ try { g.removeChild(h); } catch(_){} }, 2600);
+}
+
+async function sbStartRequestPoll(){
+  sbStopRequestPoll();
+  await sbRefreshRequests();
+  _sbReqPollTimer = setInterval(sbRefreshRequests, 3000);
+}
+
+function sbStopRequestPoll(){
+  if (_sbReqPollTimer){ clearInterval(_sbReqPollTimer); _sbReqPollTimer = null; }
+}
+
+async function sbRefreshRequests(){
+  if (!_ssStreamId) return;
+  try {
+    var r = await api('/api/live/' + _ssStreamId + '/requests');
+    var pending = (r || []).filter(function(x){ return x.status === 'pending'; });
+    var badge = document.getElementById('sb-req-badge');
+    var panel = document.getElementById('sb-req-panel');
+
+    if (!r || !r.length){
+      if (badge) badge.style.display = 'none';
+      if (panel) panel.style.display = 'none';
+      return;
+    }
+
+    if (badge){
+      if (pending.length > 0){
+        badge.style.display = 'block';
+        badge.textContent = '👋 ' + pending.length + ' request' + (pending.length > 1 ? 's' : '');
+      } else {
+        badge.style.display = 'none';
+      }
+    }
+
+    // Render list
+    var listHtml = '<div style="color:#fff;font-size:13px;font-weight:800;margin-bottom:8px">Join requests</div>';
+    listHtml += r.map(function(q){
+      var nm = q.display_name || 'User';
+      var av = q.avatar_url
+        ? '<div style="width:34px;height:34px;border-radius:50%;background-image:url(' + esc(q.avatar_url) + ');background-size:cover;background-position:center;flex-shrink:0"></div>'
+        : '<div style="width:34px;height:34px;border-radius:50%;background:' + (q.avatar_color || '#7b8cff') + ';color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;flex-shrink:0">' + esc(initials(nm)) + '</div>';
+      var actions = q.status === 'approved'
+        ? '<span style="color:#22c55e;font-size:11px;font-weight:800">✓ On</span>'
+        : '<button onclick="sbApproveReq(' + q.id + ')" style="background:#22c55e;color:#fff;border:none;padding:5px 10px;border-radius:8px;font-size:11.5px;font-weight:800;font-family:inherit;cursor:pointer">Accept</button>'
+        + '<button onclick="sbRejectReq(' + q.id + ')" style="background:rgba(255,255,255,.1);color:#fff;border:none;padding:5px 10px;border-radius:8px;font-size:11.5px;font-weight:800;font-family:inherit;cursor:pointer;margin-left:4px">✕</button>';
+      return '<div style="display:flex;align-items:center;gap:10px;padding:8px;background:rgba(255,255,255,.05);border-radius:12px;margin-bottom:6px">' +
+        av +
+        '<div style="flex:1;color:#fff;font-size:13.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(nm) + '</div>' +
+        actions +
+        '</div>';
+    }).join('');
+
+    if (panel) panel.innerHTML = listHtml;
+  } catch(e){
+    console.warn('sbRefreshRequests:', e.message);
+  }
+}
+
+function sbShowRequests(){
+  var p = document.getElementById('sb-req-panel');
+  if (!p) return;
+  p.style.display = p.style.display === 'block' ? 'none' : 'block';
+  sbRefreshRequests();
+}
+
+async function sbApproveReq(rid){
+  try {
+    await api('/api/live/' + _ssStreamId + '/approve/' + rid, { method: 'POST' });
+    toast('Guest added');
+    sbHostSystemMsg('🎉 You approved a co-host');
+    sbRefreshRequests();
+  } catch(e){ toast(e.message || 'Failed'); }
+}
+
+async function sbRejectReq(rid){
+  try {
+    await api('/api/live/' + _ssStreamId + '/reject/' + rid, { method: 'POST' });
+    sbRefreshRequests();
+  } catch(_){}
+}
+
+// GISTAPP_LIVE_SOCK_FIX — bind AFTER socket connects
+let _liveSockBound = false;
+function bindLiveSocketHandlers(){
+  if (_liveSockBound) return;
+  if (typeof socket === 'undefined' || !socket) return;
+  _liveSockBound = true;
+  console.log('🔗 binding live socket handlers');
+
+  // HOST side
+  socket.on('live-chat', function(m){
+    var b = document.getElementById('stream-broadcast');
+    if (b && b.classList.contains('show')) sbHostChatMsg(m);
+  });
+  socket.on('live-gift', function(p){
+    var b = document.getElementById('stream-broadcast');
+    if (!b || !b.classList.contains('show')) return;
+    var emo = ['🌹','❤️','🔥','⭐','🎂','👑','💎','🚀'][Math.floor(Math.random()*8)];
+    sbGiftAnim(emo);
+    sbHostSystemMsg('🎁 ' + (p.display_name || 'Someone') + ' sent a gift!');
+    // Also show in host chat overlay
+    sbHostChatMsg({ display_name: p.display_name, text: '🎁 sent ' + (p.gift || 'gift'), subscription_tier: p.subscription_tier });
+  });
+  socket.on('live-join-request', function(p){
+    var b = document.getElementById('stream-broadcast');
+    if (!b || !b.classList.contains('show')) return;
+    sbHostSystemMsg('👋 ' + (p.display_name || 'Someone') + ' wants to join');
+    sbRefreshRequests();
+  });
+  socket.on('live-viewers-update', function(p){
+    if (!p) return;
+    var el = document.getElementById('sb-viewer-count');
+    if (el) el.textContent = p.count || 0;
+  });
+
+  // VIEWER side
+  socket.on('live-chat', function(m){
+    if (typeof _lvStreamId !== 'undefined' && _lvStreamId){
+      var c = document.getElementById('lv-chat');
+      if (c && c.closest && c.closest('#live-viewer').classList.contains('show')){
+        if (typeof lvChatMsgFull === 'function') lvChatMsgFull(m);
+      }
+    }
+  });
+  socket.on('live-chat-delete', function(p){
+    if (p && p.message_id && typeof _lvStreamId !== 'undefined' && _lvStreamId){
+      // Reload chat if we're viewing
+      var v = document.getElementById('live-viewer');
+      if (v && v.classList.contains('show')){
+        api('/api/live/' + _lvStreamId + '/chat').then(function(msgs){
+          var c = document.getElementById('lv-chat');
+          if (!c) return;
+          c.innerHTML = '';
+          (msgs||[]).forEach(function(m){ lvChatMsgFull(m); });
+        }).catch(function(){});
+      }
+    }
+  });
+  socket.on('live-gift', function(p){
+    var v = document.getElementById('live-viewer');
+    if (!v || !v.classList.contains('show')) return;
+    if (typeof lvSpawnGiftAnim === 'function'){
+      lvSpawnGiftAnim(['🌹','❤️','🔥','⭐','🎂','👑','💎','🚀'][Math.floor(Math.random()*8)]);
+    }
+    if (typeof lvSystemMsg === 'function'){
+      lvSystemMsg('🎁 ' + (p.display_name || 'Someone') + ' sent a gift!');
+    }
+  });
+  socket.on('live-join-approved', async function(p){
+    if (typeof lvSystemMsg === 'function') lvSystemMsg('🎉 Join request approved!');
+    if (typeof toast === 'function') toast('You are now a co-host!');
+    console.log('👑 approved to co-host:', p);
+    // GISTAPP_COHOST_TILES — reconnect with publisher permissions
+    try {
+      var roomName = (p && p.room) || (_lvStreamer && _lvStreamer.room);
+      var token = p && p.token;
+
+      // Show a small PiP preview of ourselves while we reconnect
+      try { lvSystemMsg('Connecting as co-host…'); } catch(_){}
+
+      // Disconnect old viewer room
+      if (typeof _lvRoom !== 'undefined' && _lvRoom){
+        try { await _lvRoom.disconnect(); } catch(_){}
+        _lvRoom = null;
+      }
+
+      var LK = (typeof LivekitClient !== 'undefined') ? LivekitClient : (typeof livekitClient !== 'undefined' ? livekitClient : null);
+      if (LK && LK.Room && token && roomName){
+        _lvRoom = new LK.Room({ adaptiveStream: true, dynacast: true });
+
+        // Attach room handlers (also gets video from other participants)
+        _lvRoom.on('participantConnected', function(pp){
+          console.log('👥 viewer sees participant:', pp.identity);
+          if (typeof lvAddGuestTile === 'function') lvAddGuestTile(pp);
+        });
+        _lvRoom.on('participantDisconnected', function(pp){
+          if (typeof lvRemoveGuestTile === 'function') lvRemoveGuestTile(pp.identity);
+        });
+        _lvRoom.on('trackSubscribed', function(track, pub, participant){
+          // Host's video → set as main video
+          if (track.kind === 'video'){
+            if (participant.identity === String(_lvStreamer.streamer_id)){
+              var el = document.getElementById('lv-remote');
+              if (el) el.srcObject = new MediaStream([track.mediaStreamTrack]);
+            } else {
+              // Another guest
+              var tile = document.getElementById('lv-guest-' + participant.identity);
+              if (!tile) { if (typeof lvAddGuestTile === 'function') lvAddGuestTile(participant); tile = document.getElementById('lv-guest-' + participant.identity); }
+              if (tile){
+                var v = tile.querySelector('video');
+                v.srcObject = new MediaStream([track.mediaStreamTrack]);
+              }
+            }
+          }
+          if (track.kind === 'audio'){
+            var a = new Audio();
+            a.srcObject = new MediaStream([track.mediaStreamTrack]);
+            a.play().catch(function(){});
+          }
+        });
+
+        await _lvRoom.connect(roomName, token);
+
+        // Publish our camera + mic
+        if (navigator.mediaDevices){
+          var s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: true });
+          _lvGuestLocalStream = s;
+          await _lvRoom.localParticipant.publishTrack(s.getVideoTracks()[0]);
+          await _lvRoom.localParticipant.publishTrack(s.getAudioTracks()[0]);
+        }
+        console.log('✅ Now co-hosting');
+        if (typeof lvSystemMsg === 'function') lvSystemMsg('🎬 You are live as co-host');
+      }
+    } catch(e){
+      console.error('co-host connect failed:', e);
+      if (typeof toast === 'function') toast('Could not connect as co-host');
+    }
+  });
+  socket.on('live-join-rejected', function(){ if (typeof toast === 'function') toast('Join request declined'); });
+  socket.on('live-kicked', function(){ if (typeof toast === 'function') toast('You were removed'); if (typeof closeLiveViewer === 'function') closeLiveViewer(); });
+}
+
+/* GISTAPP_LIVE_HOST_FIX */
+/* GISTAPP_LIVE_VIEWER_V1 */
+let _lvRoom = null;
+let _lvStreamId = null;
+let _lvStreamer = null;
+let _lvViewerPoll = null;
+let _lvIsGuest = false;
+let _lvGuestLocalStream = null;
+let _lvPublishedTracks = [];
+
+async function openLiveViewer(streamId){
+  // GISTAPP_LIVE_BTN_ALL — check if this is MY stream
+  try {
+    var streams = await api('/api/live/streams');
+    var mine = (streams || []).find(function(s){ return Number(s.id) === Number(streamId); });
+    if (mine && me && Number(mine.streamer_id) === Number(me.id)){
+      // It's my own stream — resume broadcast instead
+      _ssStreamId = mine.id;
+      await openBroadcastResume();
+      return;
+    }
+  } catch(e){ console.warn('openLiveViewer own-check:', e.message); }
+
+  // GISTAPP_LV_BULLETPROOF — every element access null-safe
+  var b = document.getElementById('live-viewer');
+  if (!b){ console.warn('live-viewer div missing'); return; }
+  _lvStreamId = streamId;
+  _lvIsGuest = false;
+  b.classList.add('show');
+  _lvHTML('lv-chat', '');
+  try {
+    var r = await api('/api/live/join/' + streamId);
+    if (!r || !r.ok) throw new Error((r && r.error) || 'Could not join');
+    _lvStreamer = r.stream;
+
+    var name = (r.stream && r.stream.streamer_name) || 'Streamer';
+    _lvText('lv-host-name', name);
+    _lvText('lv-host-followers', 'Live now');
+    var av = document.getElementById('lv-host-av');
+    if (av){
+      if (r.stream.streamer_avatar_url){
+        av.textContent = '';
+        av.style.backgroundImage = 'url(' + r.stream.streamer_avatar_url + ')';
+      } else {
+        av.textContent = initials(name);
+        av.style.background = r.stream.streamer_avatar_color || colorFor(name);
+      }
+    }
+
+    // Show request button if not me
+    var reqBtn = document.getElementById('lv-request-btn');
+    if (reqBtn && (!me || me.id !== r.stream.streamer_id)){
+      reqBtn.style.display = 'block';
+      try {
+        var myReq = await api('/api/live/' + streamId + '/my-request');
+        if (myReq && myReq.status === 'pending'){ reqBtn.textContent = 'Requested'; reqBtn.classList.add('pending'); }
+        else if (myReq && myReq.status === 'approved'){ reqBtn.textContent = '✓ Co-host'; reqBtn.classList.add('approved'); }
+      } catch(_){}
+    }
+
+    // Connect to LiveKit
+    try { await lvConnect(r.url, r.token); } catch(e){ console.warn('lvConnect:', e.message); }
+
+    // Start polling
+    try { lvStartPolling(); } catch(_){}
+    try { lvSystemMsg(name + ' is live! 🔴'); } catch(_){}
+
+    // Load chat history
+    try {
+      var msgs = await api('/api/live/' + streamId + '/chat');
+      var c = document.getElementById('lv-chat');
+      if (c) c.innerHTML = '';
+      (msgs || []).forEach(function(m){ lvChatMsgFull(m); });
+    } catch(_){}
+
+    // Follower count + follow button
+    try {
+      var info = await api('/api/users/' + r.stream.streamer_id + '/profile-card');
+      _lvText('lv-host-followers', (info.followers || 0) + ' followers');
+      var btn = document.getElementById('lv-follow-btn');
+      if (btn && me && r.stream.streamer_id !== me.id){
+        btn.style.display = 'inline-block';
+        btn.textContent = info.is_following ? '✓ Following' : 'Follow';
+        btn.classList.toggle('on', !!info.is_following);
+      }
+    } catch(_){}
+
+    // Join socket room for this stream
+    try { if (socket) socket.emit('live-join-room', streamId); } catch(_){}
+  } catch(e){
+    console.error('openLiveViewer:', e);
+    if (typeof toast === 'function') toast(e.message || 'Could not join');
+    try { closeLiveViewer(); } catch(_){}
+  }
+}
+
+async function lvConnect(url, token){
+  if (typeof LivekitClient === 'undefined' && typeof livekitClient === 'undefined'){
+    console.warn('LiveKit client not loaded');
+    return;
+  }
+  var LK = (typeof LivekitClient !== 'undefined') ? LivekitClient : (typeof livekitClient !== 'undefined' ? livekitClient : null);
+  if (!LK || !LK.Room){ console.warn('Room class missing'); return; }
+  try {
+    _lvRoom = new LK.Room({ adaptiveStream: true, dynacast: true });
+    var el = document.getElementById('lv-remote');
+    _lvRoom.on('trackSubscribed', function(track, pub, participant){
+      if (track.kind === 'video' && el){
+        el.srcObject = new MediaStream([track.mediaStreamTrack]);
+      } else if (track.kind === 'audio'){
+        var a = new Audio();
+        a.srcObject = new MediaStream([track.mediaStreamTrack]);
+        a.play().catch(function(){});
+      }
+    });
+    // Guests who join later
+    _lvRoom.on('participantConnected', function(p){
+      if (p.identity !== (_lvStreamer && _lvStreamer.streamer_id)){
+        lvAddGuestTile(p);
+      }
+    });
+    _lvRoom.on('participantDisconnected', function(p){
+      lvRemoveGuestTile(p.identity);
+    });
+    _lvRoom.on('participantConnected', function(pp){
+      console.log('👥 viewer sees participant:', pp.identity);
+      // Skip host — they're the main video
+      if (_lvStreamer && String(pp.identity) === String(_lvStreamer.streamer_id)) return;
+      if (typeof lvAddGuestTile === 'function') lvAddGuestTile(pp);
+    });
+    _lvRoom.on('participantDisconnected', function(pp){
+      if (typeof lvRemoveGuestTile === 'function') lvRemoveGuestTile(pp.identity);
+    });
+    await _lvRoom.connect(url, token);
+    console.log('✅ Viewer connected to LiveKit');
+  } catch(e){
+    console.error('LiveKit viewer connect:', e);
+  }
+}
+
+function lvSystemMsg(text){
+  var c = document.getElementById('lv-chat');
+  if (!c){ console.warn('lv-chat missing'); return; }
+  try {
+    var d = document.createElement('div');
+    d.className = 'lv-chat-msg system';
+    d.textContent = text;
+    c.appendChild(d);
+    c.scrollTop = c.scrollHeight;
+  } catch(e){ console.warn('lvSystemMsg:', e.message); }
+}
+
+function lvChatMsg(name, text){
+  var c = document.getElementById('lv-chat');
+  if (!c) return;
+  try {
+    var d = document.createElement('div');
+    d.className = 'lv-chat-msg';
+    d.innerHTML = '<b>' + esc(name) + ':</b> ' + esc(text);
+    c.appendChild(d);
+    c.scrollTop = c.scrollHeight;
+    while (c.children.length > 50) c.removeChild(c.firstChild);
+  } catch(e){ console.warn('lvChatMsg:', e.message); }
+}
+
+function lvStartPolling(){
+  lvStopPolling();
+  _lvViewerPoll = setInterval(async function(){
+    if (!_lvStreamId) return;
+    try {
+      var r = await api('/api/live/streams');
+      var s = (r || []).find(function(x){ return Number(x.id) === Number(_lvStreamId); });
+      var el = document.getElementById('lv-viewer-count');
+      if (el && s) el.textContent = s.viewer_count || 0;
+      // If stream ended
+      if (!s){
+        lvSystemMsg('Stream ended');
+        setTimeout(closeLiveViewer, 2000);
+      }
+    } catch(_){}
+  }, 5000);
+}
+
+function lvStopPolling(){
+  if (_lvViewerPoll){ clearInterval(_lvViewerPoll); _lvViewerPoll = null; }
+}
+
+async function sendLiveChat(){
+  var inp = document.getElementById('lv-chat-input');
+  if (!inp) return;
+  var text = (inp.value || '').trim();
+  if (!text) return;
+  inp.value = '';
+  document.getElementById('lv-send-btn').disabled = true;
+
+  // Broadcast via socket for now (simplest — no new endpoint)
+  try {
+    if (socket && _lvStreamer){
+      socket.emit('live-chat', { stream_id: _lvStreamId, text: text });
+    }
+    lvChatMsg((me && me.display_name) || 'You', text);
+  } catch(_){}
+}
+
+function sendLiveHeart(){
+  var v = document.getElementById('live-viewer');
+  if (!v) return;
+  for (var i = 0; i < 3; i++){
+    setTimeout(function(){
+      var h = document.createElement('div');
+      h.className = 'lv-heart';
+      h.textContent = ['❤️','💖','💕','🔥'][Math.floor(Math.random()*4)];
+      h.style.right = (30 + Math.random() * 40) + 'px';
+      h.style.bottom = '90px';
+      v.appendChild(h);
+      setTimeout(function(){ try { v.removeChild(h); } catch(_){} }, 2100);
+    }, i * 120);
+  }
+}
+
+async function requestToJoin(){
+  if (!_lvStreamId) return;
+  var btn = document.getElementById('lv-request-btn');
+  if (btn){ btn.disabled = true; btn.textContent = 'Sending…'; }
+  try {
+    var r = await api('/api/live/' + _lvStreamId + '/request', { method: 'POST' });
+    if (r.status === 'approved'){
+      if (btn){ btn.textContent = '✓ Co-host'; btn.classList.add('approved'); }
+      lvSystemMsg('You are already a co-host');
+    } else {
+      if (btn){ btn.textContent = 'Requested'; btn.classList.add('pending'); }
+      lvSystemMsg('Request sent — waiting for host');
+    }
+  } catch(e){
+    if (btn){ btn.disabled = false; btn.textContent = 'Request'; }
+    toast(e.message || 'Could not send request');
+  }
+}
+
+function lvAddGuestTile(participant){
+  // GISTAPP_LV_C — TikTok-style guest tile
+  var wrap = document.getElementById('lv-guests');
+  if (!wrap || !participant) return;
+  var id = participant.identity;
+  if (document.getElementById('lv-guest-' + id)) return;
+  var tile = document.createElement('div');
+  tile.className = 'lv-guest-tile';
+  tile.id = 'lv-guest-' + id;
+  var name = participant.name || 'Guest';
+  tile.innerHTML = '<video autoplay playsinline></video>' +
+    '<div class="name">' + esc(name) + ' <span style="opacity:.7">· 👑</span></div>';
+  wrap.appendChild(tile);
+  participant.on('trackSubscribed', function(track){
+    if (track.kind === 'video'){
+      var v = tile.querySelector('video');
+      v.srcObject = new MediaStream([track.mediaStreamTrack]);
+    }
+  });
+  participant.trackPublications.forEach(function(pub){
+    if (pub.track && pub.track.kind === 'video'){
+      var v = tile.querySelector('video');
+      v.srcObject = new MediaStream([pub.track.mediaStreamTrack]);
+    }
+  });
+}
+
+function lvRemoveGuestTile(identity){
+  var el = document.getElementById('lv-guest-' + identity);
+  if (el) el.remove();
+}
+
+async function closeLiveViewer(){
+  var b = document.getElementById('live-viewer');
+  if (!b) return;
+  lvStopPolling();
+  try { if (_lvRoom){ _lvRoom.disconnect(); _lvRoom = null; } } catch(_){}
+  try {
+    if (_lvStreamId) await api('/api/live/leave', { method: 'POST', body: JSON.stringify({ id: _lvStreamId }) });
+  } catch(_){}
+  _lvStreamId = null;
+  _lvStreamer = null;
+  _lvIsGuest = false;
+  b.classList.remove('show');
+  var v = document.getElementById('lv-remote');
+  if (v) v.srcObject = null;
+  var wrap = document.getElementById('lv-guests');
+  if (wrap) wrap.innerHTML = '';
+  var chat = document.getElementById('lv-chat');
+  if (chat) chat.innerHTML = '';
+  var req = document.getElementById('lv-request-btn');
+  if (req){ req.classList.remove('pending','approved'); req.style.display = 'none'; req.disabled = false; req.textContent = 'Request'; }
+}
+
+// Enable send button when typing
+document.addEventListener('input', function(e){
+  if (e.target && e.target.id === 'lv-chat-input'){
+    var b = document.getElementById('lv-send-btn');
+    if (b) b.disabled = !e.target.value.trim();
+  }
+});
+
+// Enter key to send
+document.addEventListener('keydown', function(e){
+  if (e.target && e.target.id === 'lv-chat-input' && e.key === 'Enter'){
+    e.preventDefault();
+    sendLiveChat();
+  }
+});
+
+// Host approval panel — for the streamer
+async function lvRefreshRequestPanel(){
+  var panel = document.getElementById('lv-req-panel');
+  var list = document.getElementById('lv-req-list');
+  if (!panel || !list || !_ssStreamId) return;
+  try {
+    var r = await api('/api/live/' + _ssStreamId + '/requests');
+    if (!r.length){ panel.classList.remove('show'); return; }
+    panel.classList.add('show');
+    list.innerHTML = r.map(function(q){
+      var nm = q.display_name || 'User';
+      var avStyle = q.avatar_url ? 'background-image:url(' + esc(q.avatar_url) + ')' : 'background:' + (q.avatar_color || '#7b8cff');
+      return '<div class="lv-req-row">' +
+        '<div class="lv-req-av" style="' + avStyle + '">' + (q.avatar_url ? '' : esc(initials(nm))) + '</div>' +
+        '<div class="lv-req-name">' + esc(nm) + '</div>' +
+        (q.status === 'approved'
+          ? '<span style="color:#22c55e;font-size:12px;font-weight:800">✓ Approved</span>'
+          : '<button class="lv-req-btn approve" onclick="lvApproveReq(' + q.id + ')">Approve</button>' +
+            '<button class="lv-req-btn reject" onclick="lvRejectReq(' + q.id + ')">✕</button>'
+        ) +
+        '</div>';
+    }).join('');
+  } catch(_){}
+}
+
+async function lvApproveReq(rid){
+  try {
+    await api('/api/live/' + _ssStreamId + '/approve/' + rid, { method: 'POST' });
+    toast('Guest added');
+    lvRefreshRequestPanel();
+  } catch(e){ alert(e.message || 'Failed'); }
+}
+
+async function lvRejectReq(rid){
+  try {
+    await api('/api/live/' + _ssStreamId + '/reject/' + rid, { method: 'POST' });
+    lvRefreshRequestPanel();
+  } catch(_){}
+}
+
+// Start request polling when hosting
+var _ssOrigGoLive = typeof ssGoLive === 'function' ? ssGoLive : null;
+
+/* GISTAPP_LIVE_VIEWER_V1 */
+
+/* GISTAPP_LIVE_STRIP */
+async function refreshLiveStrip(){
+  var strip = document.getElementById('live-strip');
+  if (!strip) return;
+  try {
+    var r = await api('/api/live/streams');
+    if (!r || !r.length){ strip.style.display = 'none'; return; }
+    strip.style.display = 'flex';
+    strip.innerHTML = r.map(function(s){
+      var nm = s.display_name || 'Streamer';
+      var av = s.avatar_url
+        ? '<div style="width:48px;height:48px;border-radius:50%;background-image:url(' + esc(s.avatar_url) + ');background-size:cover;background-position:center;border:3px solid #ff3b30;flex-shrink:0;position:relative"></div>'
+        : '<div style="width:48px;height:48px;border-radius:50%;background:' + (s.avatar_color||'#7b8cff') + ';display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:16px;border:3px solid #ff3b30;flex-shrink:0">' + esc(initials(nm)) + '</div>';
+      return '<div onclick="openLiveViewer(' + s.id + ')" style="display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;position:relative;min-width:64px">' +
+        av +
+        '<div style="position:absolute;top:-2px;left:50%;transform:translateX(-50%);background:#ff3b30;color:#fff;font-size:9px;font-weight:800;padding:2px 6px;border-radius:8px;letter-spacing:.5px">LIVE</div>' +
+        '<div style="font-size:10.5px;color:var(--sub);max-width:60px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(nm) + '</div>' +
+      '</div>';
+    }).join('');
+  } catch(_){ strip.style.display = 'none'; }
+}
+
+// Refresh live strip on feed load + every 30s while on feed
+var _origLoadFeed = typeof loadFeed === 'function' ? loadFeed : null;
+setInterval(function(){
+  var f = document.getElementById('screen-feed');
+  if (f && f.classList.contains('active')) refreshLiveStrip();
+}, 30000);
+setTimeout(refreshLiveStrip, 1000);
+
+// Also refresh when feed opens
+var _origOpenFeedForStrip = window.openFeed;
+if (typeof openFeed === 'function'){
+  var _of = openFeed;
+  window.openFeed = function(){
+    var r = _of.apply(this, arguments);
+    try { setTimeout(refreshLiveStrip, 300); } catch(_){}
+    return r;
+  };
+}
+
+/* GISTAPP_STREAMER_UI_V1 */
+let _ssStream = null;
+let _ssFacing = 'user';
+let _ssRoom = null;
+let _ssStreamId = null;
+let _ssMuted = false;
+let _ssCamOff = false;
+let _ssViewerPoll = null;
+
+function streamerIsPremium(){
+  return me && me.subscription_tier && me.subscription_tier !== 'free';
+}
+
+// Show Go Live button on feed if premium
+function refreshGoLiveBtn(){
+  // GISTAPP_GOLIVE_SHOW — always show on feed
+  var btn = document.getElementById('go-live-fab');
+  if (!btn) return;
+  var onFeed = document.getElementById('screen-feed');
+  if (!onFeed || !onFeed.classList.contains('active')){
+    btn.style.display = 'none';
+    return;
+  }
+  btn.style.display = 'flex';
+  var isPremium = streamerIsPremium();
+  var svg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px"><circle cx="12" cy="12" r="3" fill="currentColor"/><path d="M12 1v3M12 20v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M1 12h3M20 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>';
+  if (isPremium){
+    btn.innerHTML = svg + ' Go Live';
+    btn.style.background = 'linear-gradient(135deg,#ff3b30,#ff5e3a)';
+  } else {
+    btn.innerHTML = svg + ' Go Live 👑';
+    btn.style.background = 'linear-gradient(135deg,#7b8cff,#a86bff)';
+  }
+}
+
+async function openStreamSetup(){
+  if (!streamerIsPremium()){
+    if (confirm('Live streaming is a Premium feature.\n\nUpgrade to Pro or Business to go live?')){
+      openPremiumScreen();
+    }
+    return;
+  }
+  var s = document.getElementById('stream-setup');
+  var v = document.getElementById('ss-preview');
+  if (!s || !v) return;
+  document.getElementById('ss-title').value = '';
+  s.classList.add('show');
+  try {
+    _ssStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: _ssFacing, width: { ideal: 720 }, height: { ideal: 1280 } },
+      audio: true
+    });
+    v.srcObject = _ssStream;
+  } catch(e){
+    toast('Camera/mic denied');
+    closeStreamSetup();
+  }
+}
+
+function closeStreamSetup(){
+  var s = document.getElementById('stream-setup');
+  if (s) s.classList.remove('show');
+  if (_ssStream){
+    try { _ssStream.getTracks().forEach(function(t){ t.stop(); }); } catch(_){}
+    _ssStream = null;
+  }
+}
+
+async function ssFlipCamera(){
+  _ssFacing = _ssFacing === 'user' ? 'environment' : 'user';
+  try {
+    if (_ssStream) _ssStream.getTracks().forEach(function(t){ t.stop(); });
+    _ssStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: _ssFacing, width: { ideal: 720 }, height: { ideal: 1280 } },
+      audio: true
+    });
+    document.getElementById('ss-preview').srcObject = _ssStream;
+  } catch(e){ toast('Camera error'); }
+}
+
+function ssEndStream(){
+  // End any active stream from setup screen
+  try {
+    if (_ssStreamId){
+      api('/api/live/end', { method: 'POST', body: JSON.stringify({ id: _ssStreamId }) }).catch(function(){});
+      _ssStreamId = null;
+    }
+  } catch(_){}
+  try { sbCleanup(); } catch(_){}
+  try { closeStreamSetup(); } catch(_){}
+  try { toast('Stream ended'); } catch(_){}
+}
+
+/* GISTAPP_LIVE_BTN_ALL — resume broadcast + viewer preview */
+async function openBroadcastResume(){
+  var b = document.getElementById('stream-broadcast');
+  var v = document.getElementById('sb-preview');
+  if (!b || !v){ toast('Broadcast UI missing'); return; }
+
+  try {
+    // Re-acquire camera if stopped
+    if (!_ssStream){
+      _ssStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: _ssFacing, width: { ideal: 720 }, height: { ideal: 1280 } },
+        audio: true
+      });
+    }
+    v.srcObject = _ssStream;
+    b.classList.add('show');
+
+    // Reconnect to LiveKit if not connected
+    if (!_ssRoom){
+      try {
+        // Get fresh publisher token
+        var tokenResp = await api('/api/live/resume-token', { method: 'POST', body: JSON.stringify({ id: _ssStreamId }) }).catch(function(){ return null; });
+        if (tokenResp && tokenResp.url && tokenResp.token){
+          await ssConnectToRoom(tokenResp.url, tokenResp.token);
+        }
+      } catch(e){ console.warn('resume connect:', e.message); }
+    }
+
+    // Start viewer count polling
+    ssStartViewerPoll();
+    toast('Resumed broadcast');
+  } catch(e){
+    console.error('openBroadcastResume:', e);
+    toast(e.message || 'Could not resume broadcast');
+  }
+}
+
+// Preview mode — streamer sees what viewers see
+function sbTogglePreview(){
+  var b = document.getElementById('stream-broadcast');
+  if (!b) return;
+  var preview = document.getElementById('sb-previewer-view');
+  if (preview){
+    var showing = preview.style.display !== 'none';
+    preview.style.display = showing ? 'none' : 'block';
+    var btn = document.getElementById('sb-preview-btn');
+    if (btn) btn.classList.toggle('on', !showing);
+    if (!showing){
+      // Show a mini "viewer view" of current state
+      var pf = document.getElementById('sb-viewer-preview-frame');
+      if (pf && _ssRoom){
+        // Populate with room state snapshot
+      }
+    }
+  }
+}
+
+async function ssGoLive(){
+  var title = (document.getElementById('ss-title').value || '').trim() || 'Live stream';
+  var btn = document.getElementById('ss-go-btn');
+  if (btn){ btn.disabled = true; btn.textContent = 'Starting…'; }
+  try {
+    // Call backend to create LiveKit room + get host token
+    var r = await api('/api/live/start', {
+      method: 'POST',
+      body: JSON.stringify({ title: title })
+    });
+    if (!r.ok) throw new Error(r.error || 'Could not start');
+    _ssStreamId = r.stream.id;
+
+    // Move from setup → broadcast
+    closeStreamSetup();
+    var b = document.getElementById('stream-broadcast');
+    var v = document.getElementById('sb-preview');
+    if (!b || !v) throw new Error('Broadcast UI missing');
+
+    // Re-acquire camera if closed (setup closed it)
+    if (!_ssStream){
+      _ssStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: _ssFacing, width: { ideal: 720 }, height: { ideal: 1280 } },
+        audio: true
+      });
+    }
+    v.srcObject = _ssStream;
+    b.classList.add('show');
+
+    // Connect to LiveKit room
+    await ssConnectToRoom(r.url, r.token);
+
+    // Start viewer count polling
+    ssStartViewerPoll();
+
+    // GISTAPP_LIVE_HOST_FIX — host joins the live room to receive gifts/chat/requests
+    try {
+      if (socket && _ssStreamId){
+        socket.emit('live-join-room', _ssStreamId);
+        console.log('👑 host joined live room:', _ssStreamId);
+      }
+    } catch(_){}
+
+    // Show host chat overlay so host sees viewer messages
+    try { sbAttachHostChat(); } catch(_){}
+
+    // Poll for join requests every 3s
+    try { sbStartRequestPoll(); } catch(_){}
+
+    toast('You are live!');
+    if (btn){ btn.disabled = false; btn.textContent = '🔴 Go Live'; }
+  } catch(e){
+    console.error('ssGoLive:', e);
+    toast(e.message || 'Could not go live');
+    if (btn){ btn.disabled = false; btn.textContent = '🔴 Go Live'; }
+    // Clean up stream record if we created one
+    if (_ssStreamId){
+      try { await api('/api/live/end', { method: 'POST', body: JSON.stringify({ id: _ssStreamId }) }); } catch(_){}
+      _ssStreamId = null;
+    }
+  }
+}
+
+async function ssConnectToRoom(url, token){
+  if (typeof LivekitClient === 'undefined' && typeof livekitClient === 'undefined'){
+    console.warn('LiveKit client SDK not loaded — running in preview-only mode');
+    return;
+  }
+  var LK = (typeof LivekitClient !== 'undefined') ? LivekitClient : (typeof livekitClient !== 'undefined' ? livekitClient : null);
+  if (!LK || !LK.Room){ console.warn('LiveKit Room class missing'); return; }
+  try {
+    _ssRoom = new LK.Room({
+      adaptiveStream: true,
+      dynacast: true
+    });
+    await _ssRoom.connect(url, token);
+    // Publish camera + mic
+    if (_ssStream){
+      await _ssRoom.localParticipant.publishTrack(_ssStream.getVideoTracks()[0]);
+      await _ssRoom.localParticipant.publishTrack(_ssStream.getAudioTracks()[0]);
+    }
+    // GISTAPP_COHOST_TILES — attach handlers
+    ssAttachRoomHandlers();
+    console.log('✅ Connected to LiveKit room as host');
+  } catch(e){
+    console.error('LiveKit connect error:', e);
+    throw new Error('Could not connect to stream server');
+  }
+}
+
+function ssStartViewerPoll(){
+  ssStopViewerPoll();
+  // Immediate first fetch
+  ssFetchViewerCount();
+  // Then every 2 seconds
+  _ssViewerPoll = setInterval(ssFetchViewerCount, 2000);
+}
+async function ssFetchViewerCount(){
+  if (!_ssStreamId) return;
+  try {
+    var r = await api('/api/live/streams');
+    var s = (r || []).find(function(x){ return Number(x.id) === Number(_ssStreamId); });
+    var el = document.getElementById('sb-viewer-count');
+    if (el) el.textContent = s ? (s.viewer_count || 0) : 0;
+  } catch(_){}
+}
+
+function ssStopViewerPoll(){
+  if (_ssViewerPoll){ clearInterval(_ssViewerPoll); _ssViewerPoll = null; }
+}
+
+async function sbToggleMute(){
+  if (!_ssStream) return;
+  _ssMuted = !_ssMuted;
+  _ssStream.getAudioTracks().forEach(function(t){ t.enabled = !_ssMuted; });
+  var b = document.getElementById('sb-mute-btn');
+  if (b) b.classList.toggle('on', _ssMuted);
+  try {
+    if (_ssRoom && _ssRoom.localParticipant){
+      _ssRoom.localParticipant.setMicrophoneEnabled(!_ssMuted);
+    }
+  } catch(_){}
+}
+
+async function sbToggleCamera(){
+  if (!_ssStream) return;
+  _ssCamOff = !_ssCamOff;
+  _ssStream.getVideoTracks().forEach(function(t){ t.enabled = !_ssCamOff; });
+  var b = document.getElementById('sb-cam-btn');
+  if (b) b.classList.toggle('on', _ssCamOff);
+  try {
+    if (_ssRoom && _ssRoom.localParticipant){
+      _ssRoom.localParticipant.setCameraEnabled(!_ssCamOff);
+    }
+  } catch(_){}
+}
+
+async function sbEndStream(){
+  if (!_ssStreamId) return;
+  if (!confirm('End this live stream?')) return;
+  try {
+    await api('/api/live/end', { method: 'POST', body: JSON.stringify({ id: _ssStreamId }) });
+  } catch(_){}
+  sbCleanup();
+  toast('Stream ended');
+}
+
+function sbCleanup(){
+  ssStopViewerPoll();
+  // GISTAPP_LIVE_HOST_FIX — cleanup host hooks
+  try { sbStopRequestPoll(); } catch(_){}
+  try {
+    if (socket && _ssStreamId) socket.emit('live-leave-room', _ssStreamId);
+  } catch(_){}
+  var ov = document.getElementById('sb-chat-overlay');
+  if (ov) ov.innerHTML = '';
+  var rb = document.getElementById('sb-req-badge');
+  if (rb) rb.style.display = 'none';
+  var rp = document.getElementById('sb-req-panel');
+  if (rp) rp.style.display = 'none';
+  try { if (_ssRoom){ _ssRoom.disconnect(); _ssRoom = null; } } catch(_){}
+  if (_ssStream){
+    try { _ssStream.getTracks().forEach(function(t){ t.stop(); }); } catch(_){}
+    _ssStream = null;
+  }
+  _ssStreamId = null;
+  _ssMuted = false;
+  _ssCamOff = false;
+  var b = document.getElementById('stream-broadcast');
+  if (b) b.classList.remove('show');
+  var v = document.getElementById('sb-preview');
+  if (v) v.srcObject = null;
+}
+
+// Refresh Go Live button when screens change
+(function(){
+  if (typeof show !== 'function') return;
+  if (window._showWrapped) return;
+  window._showWrapped = true;
+  var _origShow = window.show;
+  window.show = function(id){
+    try {
+      var r = _origShow.apply(this, arguments);
+      setTimeout(refreshGoLiveBtn, 60);
+      return r;
+    } catch(e){ console.warn('show wrapper:', e.message); return null; }
+  };
+  // Also handle lexical rebind via eval — covers references inside other functions
+  try { show = window.show; } catch(_){}
+})();
+
+/* GISTAPP_STREAMER_UI_V1 */
 /* GISTAPP_OPAY_ADMIN_V1 */
 async function openOpayAdmin(){
   if (!me || !me.is_admin){ toast('Admin only'); return; }
@@ -5870,7 +7283,12 @@ async function boot(){
   }
   if (!token){ show('screen-welcome'); return; }
   try {
-    me = await api('/api/me');
+    try {
+      me = await api('/api/me');
+    } catch(meErr){
+      if (meErr && meErr.message && meErr.message.indexOf('Session replaced') !== -1) return;
+      throw meErr;
+    }
     // GISTAPP_BOOT_ONBOARDING_FIX: if onboarding not finished, route there instead
     if (me && me.onboarded === false){
       document.body.classList.add('hide-nav');
@@ -7974,5 +9392,316 @@ boot();
     <button id="ce-submit" onclick="submitChangeEmail()" style="width:100%;height:52px;background:var(--accent,#7b8cff);color:#fff;border:none;border-radius:14px;font-size:15px;font-weight:800;font-family:inherit;cursor:pointer;margin-top:4px">Send verification</button>
   </div>
 </div>
+
+<!-- GISTAPP_STREAMER_UI_V1 -->
+<style>
+#stream-setup{position:fixed;inset:0;background:#0a0a0d;z-index:9997;display:none;flex-direction:column}
+#stream-setup.show{display:flex}
+#ss-preview{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000}
+#ss-preview::-webkit-media-controls{display:none}
+.ss-top{position:absolute;top:calc(20px + env(safe-area-inset-top,0px));left:0;right:0;display:flex;justify-content:space-between;padding:0 18px;z-index:10}
+.ss-icon-btn{width:44px;height:44px;border-radius:50%;background:rgba(0,0,0,.5);color:#fff;border:none;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(8px)}
+.ss-bottom{position:absolute;bottom:0;left:0;right:0;padding:22px 18px calc(28px + env(safe-area-inset-bottom,0px));background:linear-gradient(180deg,transparent 0%,rgba(0,0,0,.85) 40%);z-index:10}
+.ss-title-input{width:100%;height:52px;background:rgba(255,255,255,.12);border:1.5px solid rgba(255,255,255,.2);border-radius:14px;padding:0 16px;font-size:15px;color:#fff;outline:none;font-family:inherit;box-sizing:border-box;margin-bottom:14px;backdrop-filter:blur(10px)}
+.ss-title-input::placeholder{color:rgba(255,255,255,.5)}
+.ss-title-input:focus{border-color:#7b8cff}
+.ss-btn{width:100%;height:56px;background:linear-gradient(135deg,#ff3b30,#ff5e3a);color:#fff;border:none;border-radius:16px;font-size:16px;font-weight:800;font-family:inherit;cursor:pointer;letter-spacing:.2px;box-shadow:0 8px 24px rgba(255,59,48,.4)}
+.ss-btn:disabled{opacity:.5}
+.ss-btn-pre{background:linear-gradient(135deg,#7b8cff,#a86bff);box-shadow:0 8px 24px rgba(123,140,255,.35)}
+.ss-flip{position:absolute;right:18px;bottom:calc(120px + env(safe-area-inset-bottom,0px));width:52px;height:52px;border-radius:50%;background:rgba(255,255,255,.18);color:#fff;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(8px);z-index:10}
+
+#stream-broadcast{position:fixed;inset:0;background:#000;z-index:9997;display:none;flex-direction:column}
+#stream-broadcast.show{display:flex}
+#sb-preview{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.sb-top{position:absolute;top:calc(18px + env(safe-area-inset-top,0px));left:0;right:0;display:flex;justify-content:space-between;align-items:center;padding:0 18px;z-index:10}
+.sb-badge{display:flex;align-items:center;gap:6px;background:#ff3b30;color:#fff;font-size:12px;font-weight:800;padding:7px 14px;border-radius:20px;letter-spacing:1px;box-shadow:0 4px 12px rgba(255,59,48,.5)}
+.sb-badge .dot{width:8px;height:8px;border-radius:50%;background:#fff;animation:sbPulse 1.4s ease-in-out infinite}
+@keyframes sbPulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(1.3)}}
+.sb-viewers{background:rgba(0,0,0,.6);color:#fff;font-size:13px;font-weight:700;padding:8px 14px;border-radius:20px;backdrop-filter:blur(8px);display:flex;align-items:center;gap:6px}
+.sb-viewers svg{width:16px;height:16px}
+.sb-bottom{position:absolute;bottom:0;left:0;right:0;padding:22px 18px calc(28px + env(safe-area-inset-bottom,0px));display:flex;justify-content:center;gap:14px;background:linear-gradient(180deg,transparent 0%,rgba(0,0,0,.8) 50%)}
+.sb-btn{width:60px;height:60px;border-radius:50%;background:rgba(255,255,255,.18);color:#fff;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;backdrop-filter:blur(8px);transition:transform .12s}
+.sb-btn:active{transform:scale(.92)}
+.sb-btn.end{background:#ff3b30;box-shadow:0 6px 20px rgba(255,59,48,.5);width:70px;height:70px}
+.sb-btn.on{background:rgba(255,59,48,.6)}
+.sb-btn svg{width:26px;height:26px}
+
+.go-live-btn{position:fixed;bottom:calc(180px + env(safe-area-inset-bottom,0px));right:18px;z-index:1200;background:linear-gradient(135deg,#ff3b30,#ff5e3a);color:#fff;border:none;width:auto;padding:14px 20px;border-radius:32px;font-size:14px;font-weight:800;font-family:inherit;cursor:pointer;box-shadow:0 10px 30px rgba(255,59,48,.5);display:flex;align-items:center;gap:8px}
+.go-live-btn svg{width:18px;height:18px}
+</style>
+
+<div id="stream-setup">
+  <video id="ss-preview" autoplay muted playsinline></video>
+  <div class="ss-top">
+    <button class="ss-icon-btn" onclick="closeStreamSetup()">✕</button>
+  </div>
+  <button class="ss-flip" onclick="ssFlipCamera()" title="Flip camera">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 0 1-14 5.5"/><path d="M4 12a8 8 0 0 1 14-5.5"/><path d="M17.5 3v4h-4"/><path d="M6.5 21v-4h4"/></svg>
+  </button>
+  <div class="ss-bottom">
+    <input type="text" class="ss-title-input" id="ss-title" placeholder="What's your stream about?" maxlength="80" autocomplete="off">
+    <button class="ss-btn ss-btn-pre" id="ss-go-btn" onclick="ssGoLive()">🔴 Go Live</button>
+  </div>
+</div>
+
+<div id="stream-broadcast">
+  <video id="sb-preview" autoplay muted playsinline></video>
+  <div id="sb-guests" class="sb-guests"></div>
+  <div class="sb-top">
+    <div class="sb-badge"><span class="dot"></span>LIVE</div>
+    <div class="sb-viewers">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
+      <span id="sb-viewer-count">0</span>
+    </div>
+  </div>
+  <div class="sb-bottom">
+    <button class="sb-btn" id="sb-preview-btn" onclick="sbTogglePreview()" title="Preview as viewer" style="background:rgba(123,140,255,.35)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
+    </button>
+    <button class="sb-btn" id="sb-mute-btn" onclick="sbToggleMute()" title="Mute">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3z"/><path d="M19 11a7 7 0 0 1-14 0M12 18v3"/></svg>
+    </button>
+    <button class="sb-btn" id="sb-cam-btn" onclick="sbToggleCamera()" title="Camera">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="13" height="12" rx="2.5"/><path d="M16 10.5l5-2.5v8l-5-2.5"/></svg>
+    </button>
+    <button class="sb-btn end" onclick="sbEndStream()" title="End">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 3.5h3l1.5 4-2 1.5a12 12 0 0 0 6 6l1.5-2 4 1.5v3a2 2 0 0 1-2.2 2A16.5 16.5 0 0 1 4.5 5.7a2 2 0 0 1 2-2.2z" transform="rotate(135 12 12)"/></svg>
+    </button>
+  </div>
+</div>
+
+<button class="go-live-btn" id="go-live-fab" onclick="openStreamSetup()" style="display:none">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3" fill="currentColor"/><path d="M12 1v3M12 20v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M1 12h3M20 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>
+  Go Live
+</button>
+
+<script>
+// STREAMER_AUTOSHOW — force refresh at intervals
+(function(){
+  var n = 0;
+  var iv = setInterval(function(){
+    n++;
+    try {
+      if (typeof refreshGoLiveBtn === 'function') refreshGoLiveBtn();
+    } catch(_){}
+    if (n > 20) clearInterval(iv);
+  }, 800);
+})();
+</script>
+
+<!-- GISTAPP_LIVE_VIEWER_V1 -->
+<style>
+#live-viewer{position:fixed;inset:0;background:#000;z-index:9996;display:none;flex-direction:column}
+#live-viewer.show{display:flex}
+#lv-remote{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000}
+.lv-top{position:absolute;top:calc(16px + env(safe-area-inset-top,0px));left:0;right:0;display:flex;justify-content:space-between;align-items:flex-start;padding:0 14px;z-index:10;gap:8px}
+.lv-host{display:flex;align-items:center;gap:10px;background:rgba(0,0,0,.55);padding:6px 12px 6px 6px;border-radius:30px;backdrop-filter:blur(10px);max-width:60%}
+.lv-host-av{width:34px;height:34px;border-radius:50%;background:#7b8cff;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;background-size:cover;background-position:center;flex-shrink:0}
+.lv-host-info{display:flex;flex-direction:column;line-height:1.2;min-width:0}
+.lv-host-name{color:#fff;font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lv-host-follow{color:#fff;font-size:10.5px;opacity:.8}
+.lv-actions{display:flex;gap:8px;align-items:center}
+.lv-live-badge{background:#ff3b30;color:#fff;font-size:11px;font-weight:800;padding:5px 10px;border-radius:20px;letter-spacing:.8px;display:flex;align-items:center;gap:4px}
+.lv-live-badge::before{content:'';width:6px;height:6px;border-radius:50%;background:#fff;animation:sbPulse 1.4s infinite}
+.lv-viewers{background:rgba(0,0,0,.55);color:#fff;font-size:12.5px;font-weight:700;padding:6px 12px;border-radius:20px;backdrop-filter:blur(10px);display:flex;align-items:center;gap:5px}
+.lv-viewers svg{width:14px;height:14px}
+.lv-close{background:rgba(0,0,0,.55);color:#fff;border:none;width:36px;height:36px;border-radius:50%;font-size:16px;cursor:pointer;backdrop-filter:blur(10px)}
+
+.lv-request-btn{position:absolute;right:14px;top:calc(64px + env(safe-area-inset-top,0px));background:linear-gradient(135deg,#7b8cff,#a86bff);color:#fff;border:none;padding:9px 16px;border-radius:20px;font-size:13px;font-weight:800;font-family:inherit;cursor:pointer;box-shadow:0 4px 14px rgba(123,140,255,.4);z-index:10}
+.lv-request-btn.pending{background:rgba(255,255,255,.2);color:#fff;box-shadow:none}
+.lv-request-btn.approved{background:#22c55e;color:#fff}
+
+.lv-chat{position:absolute;left:0;bottom:calc(80px + env(safe-area-inset-bottom,0px));width:min(72%,360px);max-height:40vh;overflow-y:auto;padding:0 12px;z-index:9;pointer-events:none}
+.lv-chat-msg{background:rgba(0,0,0,.4);padding:6px 10px;border-radius:14px;margin-bottom:6px;color:#fff;font-size:13px;line-height:1.4;backdrop-filter:blur(6px);word-wrap:break-word}
+.lv-chat-msg b{color:#7b8cff;font-weight:800}
+.lv-chat-msg.system{background:rgba(123,140,255,.3);font-style:italic;font-size:12px}
+
+.lv-bottom{position:absolute;left:0;right:0;bottom:0;padding:12px 14px calc(14px + env(safe-area-inset-bottom,0px));display:flex;gap:8px;align-items:center;background:linear-gradient(180deg,transparent 0%,rgba(0,0,0,.6) 40%);z-index:10}
+.lv-input{flex:1;height:44px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.15);border-radius:22px;padding:0 16px;font-size:14px;color:#fff;outline:none;font-family:inherit;backdrop-filter:blur(10px)}
+.lv-input::placeholder{color:rgba(255,255,255,.55)}
+.lv-send-btn{background:#7b8cff;color:#fff;border:none;width:44px;height:44px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.lv-send-btn:disabled{opacity:.4}
+.lv-gift-btn{background:rgba(255,255,255,.15);color:#fff;border:none;width:44px;height:44px;border-radius:50%;cursor:pointer;font-size:18px;backdrop-filter:blur(10px)}
+
+/* Heart animation */
+.lv-heart{position:absolute;font-size:26px;pointer-events:none;z-index:11;animation:lvFloat 2s ease-out forwards}
+@keyframes lvFloat{0%{opacity:0;transform:translateY(0) scale(.4)}20%{opacity:1;transform:translateY(-20px) scale(1.2)}100%{opacity:0;transform:translateY(-200px) scale(.8)}}
+
+/* Co-host tiles */
+.lv-guests{position:absolute;right:14px;bottom:calc(90px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:6px;z-index:11}
+.lv-guest-tile{width:96px;height:140px;background:#1a1a22;border-radius:14px;overflow:hidden;position:relative;border:2px solid rgba(255,255,255,.25);box-shadow:0 4px 16px rgba(0,0,0,.5)}
+.lv-guest-tile video{width:100%;height:100%;object-fit:cover}
+.lv-guest-tile .name{position:absolute;left:4px;bottom:4px;right:4px;font-size:10px;font-weight:700;color:#fff;background:rgba(0,0,0,.5);padding:2px 6px;border-radius:6px;text-align:center;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+
+/* Host-side requests panel */
+.lv-req-panel{position:absolute;left:14px;top:calc(120px + env(safe-area-inset-top,0px));width:min(320px,calc(100vw - 28px));max-height:50vh;background:rgba(20,20,28,.92);border-radius:16px;padding:12px;backdrop-filter:blur(14px);z-index:12;display:none;overflow-y:auto}
+.lv-req-panel.show{display:block}
+.lv-req-title{color:#fff;font-size:13px;font-weight:800;margin-bottom:8px;letter-spacing:.3px}
+.lv-req-row{display:flex;align-items:center;gap:10px;padding:8px;background:rgba(255,255,255,.05);border-radius:12px;margin-bottom:6px}
+.lv-req-av{width:34px;height:34px;border-radius:50%;background:#7b8cff;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;background-size:cover;background-position:center;flex-shrink:0}
+.lv-req-name{flex:1;color:#fff;font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lv-req-btn{border:none;padding:6px 12px;border-radius:10px;font-size:12px;font-weight:800;font-family:inherit;cursor:pointer;flex-shrink:0}
+.lv-req-btn.approve{background:#22c55e;color:#fff}
+.lv-req-btn.reject{background:rgba(255,255,255,.1);color:#fff}
+</style>
+
+<div id="live-viewer">
+  <video id="lv-remote" autoplay playsinline></video>
+
+  <div class="lv-top2">
+    <div class="lv-host-wrap">
+      <div class="lv-host-av2" id="lv-host-av">?</div>
+      <div class="lv-host-info2">
+        <span class="lv-host-name2" id="lv-host-name">Streamer</span>
+        <span class="lv-host-followers" id="lv-host-followers">Live now</span>
+      </div>
+      <button class="lv-follow-btn" id="lv-follow-btn" onclick="lvToggleFollow()" style="display:none">Follow</button>
+    </div>
+    <div class="lv-top2-actions">
+      <button class="lv-icon-round" onclick="lvShareStream()" title="Share">🔗</button>
+      <button class="lv-icon-round" onclick="closeLiveViewer()" title="Close">✕</button>
+    </div>
+  </div>
+
+  <div class="lv-viewers" style="position:absolute;top:calc(64px + env(safe-area-inset-top,0px));right:14px;z-index:10">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
+    <span id="lv-viewer-count">0</span>
+  </div>
+
+  <button class="lv-request-btn" id="lv-request-btn" onclick="requestToJoin()" style="display:none;top:calc(104px + env(safe-area-inset-top,0px))">Request</button>
+
+  <div class="lv-req-panel" id="lv-req-panel">
+    <div class="lv-req-title">Join requests</div>
+    <div id="lv-req-list"></div>
+  </div>
+
+  <div class="lv-emoji-bar">
+    <button class="lv-emoji-btn" onclick="lvQuickReact('❤️')">❤️</button>
+    <button class="lv-emoji-btn" onclick="lvQuickReact('🔥')">🔥</button>
+    <button class="lv-emoji-btn" onclick="lvQuickReact('😂')">😂</button>
+    <button class="lv-emoji-btn" onclick="lvQuickReact('👍')">👍</button>
+    <button class="lv-emoji-btn" onclick="lvOpenGiftTray()" style="background:linear-gradient(135deg,#ff3b30,#a86bff);font-size:22px">🎁</button>
+  </div>
+
+  <div class="lv-guests" id="lv-guests"></div>
+
+  <div class="lv-chat" id="lv-chat"></div>
+
+  
+<div id="lv-debug" style="position:absolute;bottom:2px;left:2px;right:2px;background:rgba(0,0,0,.75);color:#22c55e;font-family:monospace;font-size:10px;padding:3px 6px;border-radius:6px;display:none;z-index:99;pointer-events:none;white-space:pre-wrap;max-height:80px;overflow:hidden"></div>
+
+  <div class="lv-bottom">
+    <input type="text" class="lv-input" id="lv-chat-input" placeholder="Say something…" maxlength="200" autocomplete="off">
+    <button class="lv-send-btn" id="lv-send-btn" onclick="sendLiveChat()" disabled>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 3L10.5 13.5"/><path d="M21 3l-7 18-3.5-7.5L3 10z"/></svg>
+    </button>
+  </div>
+
+  <div class="lv-gift-tray" id="lv-gift-tray">
+    <div class="lv-gift-title">Send a gift</div>
+    <div class="lv-gift-grid" id="lv-gift-grid"></div>
+    <button class="lv-gift-close" onclick="lvCloseGiftTray()">Close</button>
+  </div>
+</div>
+
+<script>
+// GISTAPP_LV_NULLFIX — global guard for removed elements
+window.addEventListener('error', function(e){
+  var msg = e.message || '';
+  if (msg.indexOf('Cannot set properties of null') !== -1 || msg.indexOf('Cannot read properties of null') !== -1){
+    console.warn('⚠️ null element access:', msg, 'at', e.filename, ':', e.lineno);
+    e.preventDefault();
+    return true;
+  }
+});
+</script>
+
+<script>
+// GISTAPP_SHOW_REAL_ERROR — show full error to help debug
+window.addEventListener('error', function(e){
+  var msg = e.message || '';
+  if (msg.indexOf('Cannot set') !== -1 || msg.indexOf('Cannot read') !== -1){
+    var full = 'ERROR: ' + msg + '\n\nFile: ' + (e.filename || '?') + '\nLine: ' + (e.lineno || '?') + '\nCol: ' + (e.colno || '?');
+    console.error(full);
+    alert(full);
+  }
+});
+</script>
+
+<script>
+// GISTAPP_LIVE_TRACE — capture and display any error with full context
+(function(){
+  var lastError = null;
+  window.addEventListener('error', function(e){
+    var msg = e.message || '';
+    var full = 'ERROR: ' + msg +
+      '\n\nFile: ' + (e.filename || '?').split('/').pop() +
+      '\nLine: ' + (e.lineno || '?') +
+      '\nCol: ' + (e.colno || '?') +
+      '\n\nStack:\n' + ((e.error && e.error.stack) ? e.error.stack.split('\n').slice(0,4).join('\n') : 'no stack');
+    console.error(full);
+    // Only alert if related to live viewer
+    if (msg.indexOf('null') !== -1 || msg.indexOf('live') !== -1 || msg.indexOf('lv-') !== -1){
+      alert(full);
+    }
+  });
+  // Wrap openLiveViewer to catch + display
+  window.addEventListener('DOMContentLoaded', function(){
+    setTimeout(function(){
+      if (typeof window.openLiveViewer === 'function' && !window._lvWrapped){
+        var _orig = window.openLiveViewer;
+        window._lvWrapped = true;
+        window.openLiveViewer = async function(id){
+          try {
+            return await _orig.call(this, id);
+          } catch(e){
+            var msg = 'openLiveViewer THREW:\n\n' + (e.message || e) + '\n\nStack:\n' + (e.stack || 'no stack');
+            console.error(msg);
+            alert(msg);
+            throw e;
+          }
+        };
+      }
+    }, 1500);
+  });
+})();
+</script>
+<script>
+/* GISTAPP_LIVE_DEBUG — show errors on screen */
+window._lvDebug = function(msg){
+  try {
+    var el = document.getElementById('lv-debug');
+    if (!el) return;
+    el.style.display = 'block';
+    var time = new Date().toLocaleTimeString().slice(0,8);
+    el.textContent = '[' + time + '] ' + msg;
+    clearTimeout(el._t);
+    el._t = setTimeout(function(){ el.style.display = 'none'; }, 4000);
+  } catch(_){}
+};
+window.addEventListener('error', function(e){
+  if (e.message && (e.message.indexOf('null') !== -1 || e.message.indexOf('lv-') !== -1 || e.message.indexOf('live') !== -1)){
+    window._lvDebug('ERROR: ' + e.message + ' @ line ' + (e.lineno||'?'));
+  }
+});
+</script>
+
+<script>
+// LIVE_SOCK_FALLBACK — force-bind after socket connects
+(function(){
+  var tries = 0;
+  var iv = setInterval(function(){
+    tries++;
+    try {
+      if (typeof bindLiveSocketHandlers === 'function' && typeof socket !== 'undefined' && socket && socket.connected){
+        bindLiveSocketHandlers();
+        clearInterval(iv);
+        console.log('✅ live socket handlers bound via fallback');
+      }
+    } catch(_){}
+    if (tries > 60) clearInterval(iv);
+  }, 500);
+})();
+</script>
 </body>
 </html>

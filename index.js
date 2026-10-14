@@ -331,6 +331,26 @@ async function auth(req,res,next){
   try { payload = jwt.verify(token, JWT_SECRET); }
   catch { return res.status(401).json({error:'Invalid token'}); }
 
+
+  // GISTAPP_AUTH_SESSION — reject tokens from old sessions
+  try {
+    if (payload && payload.id){
+      let cached = _sessionCacheGet(payload.id);
+      if (cached === null){
+        const sr = await pool.query('SELECT session_id FROM users WHERE id=$1', [payload.id]);
+        if (!sr.rowCount) return res.status(401).json({ error: 'User not found' });
+        cached = sr.rows[0].session_id || null;
+        if (cached) _sessionCacheSet(payload.id, cached);
+      }
+      // If DB has a session_id and it doesn't match → user logged in elsewhere
+      if (cached && payload.session_id && String(cached) !== String(payload.session_id)){
+        return res.status(401).json({ error: 'Logged in on another device', code: 'SESSION_REPLACED' });
+      }
+    }
+  } catch(sessErr){
+    console.warn('session check error:', sessErr.message);
+  }
+
   // Trust the JWT fast path if it says verified or has google_id
   let isVerified = payload.verified === true || !!payload.google_id;
 
@@ -358,12 +378,33 @@ async function auth(req,res,next){
   next();
 }
 // GISTAPP_SIGNUP_HARDENING — carry verified + google_id in JWT
+/* GISTAPP_SINGLE_DEVICE — one active session per user */
+const _sessionCache = new Map(); // userId -> { sid, exp }
+function _sessionCacheSet(uid, sid){
+  _sessionCache.set(Number(uid), { sid: sid, exp: Date.now() + 15000 });
+}
+function _sessionCacheGet(uid){
+  const e = _sessionCache.get(Number(uid));
+  if (!e) return null;
+  if (Date.now() > e.exp){ _sessionCache.delete(Number(uid)); return null; }
+  return e.sid;
+}
+
+async function rotateUserSession(userId){
+  const crypto = require('crypto');
+  const sid = crypto.randomBytes(16).toString('hex');
+  await pool.query('UPDATE users SET session_id=$1, session_started_at=NOW() WHERE id=$2', [sid, userId]);
+  _sessionCacheSet(userId, sid);
+  return sid;
+}
+
 const sign = u => jwt.sign({
   id: u.id,
   email: u.email,
   verified: !!u.verified,
   google_id: u.google_id || null,
-  subscription_tier: u.subscription_tier || 'free'
+  subscription_tier: u.subscription_tier || 'free',
+  session_id: u.session_id || null
 }, JWT_SECRET, {expiresIn:'30d'});
 
 async function isMember(chatId,userId){ const r = await pool.query('SELECT status,is_admin,muted,archived,favorite FROM chat_members WHERE chat_id=$1 AND user_id=$2',[chatId,userId]); return r.rows[0]; }
@@ -391,10 +432,16 @@ app.post('/api/auth/google', async (req,res) => {
       await pool.query('UPDATE users SET google_id=$1, verified=true WHERE id=$2', [gid, user.id]);
     }
     await pool.query('UPDATE users SET last_seen_at=NOW() WHERE id=$1',[user.id]);
+    // GISTAPP_GOOGLE_SESSION — rotate session on Google login too
+    const sid = await rotateUserSession(user.id);
+    user.session_id = sid;
+    // GISTAPP_LOGIN_SESSION
+    // removed duplicate sid
     res.json({
       user: { id: user.id, email: user.email, display_name: user.display_name,
         avatar_color: user.avatar_color, dark_mode: user.dark_mode,
-        font_size: user.font_size, onboarded: user.onboarded },
+        font_size: user.font_size, onboarded: user.onboarded,
+        subscription_tier: user.subscription_tier || 'free' },
       token: sign(user),
       isNew: !user.onboarded
     });
@@ -470,13 +517,17 @@ app.post('/api/signup', signupLimiter, async (req,res)=>{
       [email.toLowerCase(), hash, name, vtoken, vexpires]
     );
     // Respond IMMEDIATELY — do not wait for SMTP
-    res.json({
-      user: r.rows[0],
-      token: sign(r.rows[0]),
-      needsVerification: true,
-      emailSent: true,
-      emailError: null
-    });
+    {
+      // removed duplicate sid
+      const userWithSid = Object.assign({}, r.rows[0], { session_id: sid });
+      res.json({
+        user: userWithSid,
+        token: sign(userWithSid),
+        needsVerification: true,
+        emailSent: true,
+        emailError: null
+      });
+    }
 
     // Send the email in the background (fire-and-forget)
     sendVerificationEmail(email.toLowerCase(), vtoken, name)
@@ -498,7 +549,10 @@ app.post('/api/login', loginLimiter, async (req,res)=>{
       });
     }
     await pool.query('UPDATE users SET last_seen_at=NOW() WHERE id=$1',[user.id]);
-    res.json({
+    // GISTAPP_SINGLE_DEVICE
+      const sid = await rotateUserSession(user.id);
+      user.session_id = sid;
+      res.json({
       user: {
         id: user.id, email: user.email, display_name: user.display_name,
         avatar_color: user.avatar_color, dark_mode: user.dark_mode, font_size: user.font_size
@@ -2838,6 +2892,8 @@ io.on('connection', socket=>{
   socket.emit('presence-list',[...onlineUsers.keys()]);
   socket.on('join',chatId=>socket.join('chat:'+chatId));
   socket.on('leave',chatId=>socket.leave('chat:'+chatId));
+    socket.on('live-join-room', (sid)=>{ if (sid) socket.join('live:' + sid); });
+    socket.on('live-leave-room', (sid)=>{ if (sid) socket.leave('live:' + sid); });
   socket.on('typing',({chatId,typing})=>socket.to('chat:'+chatId).emit('typing',{userId:uid,typing}));
     /* ========== CALL SIGNALING ========== */
   /* ========== GISTAPP_GROUP_CALLS_V1 ========== */
@@ -3361,6 +3417,471 @@ app.post('/api/billing/webhook', express.raw({ type: 'application/json' }), asyn
 app.get('/api/billing/paystack-public', (req, res) => {
   res.json({ public_key: PAYSTACK_PUBLIC, enabled: PAYSTACK_READY });
 });
+
+/* ---------- LiveKit live streaming ---------- GISTAPP_LIVEKIT_V1 */
+const LIVEKIT_URL = process.env.LIVEKIT_URL || '';
+const LIVEKIT_API_KEY = process.env.LIVEKIT_API_KEY || '';
+const LIVEKIT_API_SECRET = process.env.LIVEKIT_API_SECRET || '';
+const LIVEKIT_READY = !!(LIVEKIT_URL && LIVEKIT_API_KEY && LIVEKIT_API_SECRET);
+
+let _livekitSdk = null;
+function getLiveKitSdk(){
+  if (_livekitSdk) return _livekitSdk;
+  try {
+    _livekitSdk = require('livekit-server-sdk');
+  } catch(e){
+    console.warn('livekit-server-sdk not installed:', e.message);
+    _livekitSdk = null;
+  }
+  return _livekitSdk;
+}
+
+console.log(LIVEKIT_READY ? '✅ LiveKit ready' : 'ℹ️  LiveKit disabled (missing env vars)');
+
+async function livekitCreateRoom(roomName){
+  const sdk = getLiveKitSdk();
+  if (!sdk || !LIVEKIT_READY) throw new Error('LiveKit not configured');
+  const { RoomServiceClient } = sdk;
+  const svc = new RoomServiceClient(LIVEKIT_URL.replace('wss://', 'https://'), LIVEKIT_API_KEY, LIVEKIT_API_SECRET);
+  try {
+    const room = await svc.createRoom({
+      name: roomName,
+      emptyTimeout: 300,
+      maxParticipants: 500
+    });
+    return room;
+  } catch(e){
+    // Room may already exist
+    if (e.message && e.message.includes('already exists')) return { name: roomName };
+    throw e;
+  }
+}
+
+async function livekitGenerateToken(roomName, identity, name, isPublisher){
+  const sdk = getLiveKitSdk();
+  if (!sdk || !LIVEKIT_READY) throw new Error('LiveKit not configured');
+  const { AccessToken } = sdk;
+  const at = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, {
+    identity: String(identity),
+    name: name || 'User',
+    ttl: '6h'
+  });
+  at.addGrant({
+    roomJoin: true,
+    room: roomName,
+    canPublish: !!isPublisher,
+    canSubscribe: true,
+    canPublishData: true
+  });
+  return await at.toJwt();
+}
+
+async function livekitGetViewerCount(roomName){
+  const sdk = getLiveKitSdk();
+  if (!sdk || !LIVEKIT_READY) return null;
+  const { RoomServiceClient } = sdk;
+  const svc = new RoomServiceClient(LIVEKIT_URL.replace('wss://', 'https://'), LIVEKIT_API_KEY, LIVEKIT_API_SECRET);
+  try {
+    const parts = await svc.listParticipants(roomName);
+    // Subtract 1 for the host/streamer
+    return Math.max(0, (parts || []).length - 1);
+  } catch(e){
+    return null;
+  }
+}
+// GISTAPP_VIEWER_COUNT_FIX
+
+async function livekitDeleteRoom(roomName){
+  const sdk = getLiveKitSdk();
+  if (!sdk || !LIVEKIT_READY) return;
+  const { RoomServiceClient } = sdk;
+  const svc = new RoomServiceClient(LIVEKIT_URL.replace('wss://', 'https://'), LIVEKIT_API_KEY, LIVEKIT_API_SECRET);
+  try { await svc.deleteRoom(roomName); } catch(_){}
+}
+
+async function isPremiumUser(userId){
+  try {
+    const r = await pool.query('SELECT subscription_tier, subscription_status, subscription_ends_at FROM users WHERE id=$1', [userId]);
+    if (!r.rowCount) return false;
+    const u = r.rows[0];
+    if (!u.subscription_tier || u.subscription_tier === 'free') return false;
+    if (u.subscription_status !== 'active') return false;
+    if (u.subscription_ends_at && new Date(u.subscription_ends_at) < new Date()) return false;
+    return true;
+  } catch(_){ return false; }
+}
+
+// POST /api/live/start — streamer begins
+app.post('/api/live/start', auth, async (req, res) => {
+  try {
+    if (!LIVEKIT_READY) return res.status(503).json({ error: 'Live streaming not configured' });
+    const premium = await isPremiumUser(req.user.id);
+    if (!premium) return res.status(403).json({ error: 'Live streaming requires Premium', needs_premium: true });
+
+    // Kill any existing active stream by this user
+    await pool.query(
+      "UPDATE live_streams SET status='ended', ended_at=NOW() WHERE streamer_id=$1 AND status='live'",
+      [req.user.id]
+    );
+
+    const title = String((req.body && req.body.title) || '').trim().slice(0, 120) || 'Live stream';
+    const roomName = 'live_' + req.user.id + '_' + Date.now();
+    const sdk = getLiveKitSdk();
+    if (!sdk) return res.status(500).json({ error: 'LiveKit SDK not installed' });
+
+    // Create room
+    try {
+      await livekitCreateRoom(roomName);
+    } catch(e){
+      console.error('livekit createRoom:', e.message);
+      return res.status(500).json({ error: 'Could not create stream' });
+    }
+
+    // Save stream row
+    const ins = await pool.query(
+      "INSERT INTO live_streams (streamer_id, title, room_name, status) VALUES ($1,$2,$3,'live') RETURNING id, title, room_name, started_at",
+      [req.user.id, title, roomName]
+    );
+    const s = ins.rows[0];
+
+    // Generate host token
+    const me = await pool.query('SELECT display_name FROM users WHERE id=$1', [req.user.id]);
+    const hostName = (me.rows[0] && me.rows[0].display_name) || 'Streamer';
+    const token = await livekitGenerateToken(roomName, req.user.id, hostName, true);
+
+    // Notify followers via socket
+    try {
+      const followers = await pool.query('SELECT follower_id FROM user_follows WHERE following_id=$1', [req.user.id]);
+      followers.rows.forEach(function(f){
+        io.to('user:' + f.follower_id).emit('live-started', {
+          id: s.id, streamer_id: req.user.id, streamer_name: hostName, title: title
+        });
+      });
+    } catch(_){}
+
+    res.json({
+      ok: true,
+      stream: { id: s.id, title: s.title, room: roomName, started_at: s.started_at },
+      token: token,
+      url: LIVEKIT_URL
+    });
+    console.log('🎥 live stream started by user', req.user.id, 'room', roomName);
+  } catch(e){ console.error('live/start:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+// POST /api/live/end — streamer ends
+app.post('/api/live/end', auth, async (req, res) => {
+  try {
+    const id = Number((req.body && req.body.id) || 0);
+    const r = await pool.query('SELECT id, streamer_id, room_name FROM live_streams WHERE id=$1', [id]);
+    if (!r.rowCount) return res.status(404).json({ error: 'Stream not found' });
+    if (r.rows[0].streamer_id !== req.user.id) return res.status(403).json({ error: 'Not your stream' });
+
+    await pool.query("UPDATE live_streams SET status='ended', ended_at=NOW() WHERE id=$1", [id]);
+    await livekitDeleteRoom(r.rows[0].room_name);
+
+    io.emit('live-ended', { id: id, streamer_id: req.user.id });
+    res.json({ ok: true });
+    console.log('🎥 live stream ended:', id);
+  } catch(e){ console.error('live/end:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+// GET /api/live/streams — list active streams
+app.get('/api/live/streams', auth, async (req, res) => {
+  try {
+    const r = await pool.query(`
+      SELECT l.id, l.title, l.room_name, l.viewer_count, l.peak_viewers, l.started_at,
+             u.id AS streamer_id, u.display_name, u.avatar_color, u.avatar_url, u.subscription_tier
+      FROM live_streams l
+      JOIN users u ON u.id = l.streamer_id
+      WHERE l.status='live' AND l.started_at > NOW() - INTERVAL '4 hours'
+      ORDER BY l.viewer_count DESC, l.started_at DESC
+      LIMIT 30
+    `);
+
+    // GISTAPP_VIEWER_COUNT_FIX: for the requester's own stream, sync real count from LiveKit
+    const rows = r.rows;
+    if (LIVEKIT_READY){
+      const mine = rows.filter(function(x){ return Number(x.streamer_id) === Number(req.user.id); });
+      for (const m of mine){
+        const real = await livekitGetViewerCount(m.room_name);
+        if (real !== null && real !== m.viewer_count){
+          m.viewer_count = real;
+          if (real > (m.peak_viewers || 0)) m.peak_viewers = real;
+          try {
+            await pool.query(
+              'UPDATE live_streams SET viewer_count=$1, peak_viewers=GREATEST(peak_viewers, $1) WHERE id=$2',
+              [real, m.id]
+            );
+          } catch(_){}
+        }
+      }
+    }
+    // Strip room_name from response (internal only)
+    rows.forEach(function(x){ delete x.room_name; });
+    res.json(rows);
+  } catch(e){ console.error('live list:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+// GET /api/live/join/:id — viewer gets token
+app.get('/api/live/join/:id', auth, async (req, res) => {
+  try {
+    if (!LIVEKIT_READY) return res.status(503).json({ error: 'Live streaming not configured' });
+    const id = Number(req.params.id);
+    const r = await pool.query(`
+      SELECT l.id, l.title, l.room_name, l.status, l.viewer_count,
+             u.id AS streamer_id, u.display_name, u.avatar_color, u.avatar_url, u.subscription_tier
+      FROM live_streams l
+      JOIN users u ON u.id = l.streamer_id
+      WHERE l.id=$1
+    `, [id]);
+    if (!r.rowCount) return res.status(404).json({ error: 'Stream not found' });
+    const s = r.rows[0];
+    if (s.status !== 'live') return res.status(410).json({ error: 'Stream ended' });
+
+    const me = await pool.query('SELECT display_name FROM users WHERE id=$1', [req.user.id]);
+    const myName = (me.rows[0] && me.rows[0].display_name) || 'Viewer';
+    const token = await livekitGenerateToken(s.room_name, req.user.id, myName, false);
+
+    // Bump viewer count (best-effort)
+    await pool.query('UPDATE live_streams SET viewer_count = viewer_count + 1, peak_viewers = GREATEST(peak_viewers, viewer_count + 1) WHERE id=$1', [id]);
+
+    res.json({
+      ok: true,
+      stream: {
+        id: s.id, title: s.title, room: s.room_name,
+        streamer_id: s.streamer_id, streamer_name: s.display_name,
+        streamer_avatar_color: s.avatar_color, streamer_avatar_url: s.avatar_url,
+        streamer_tier: s.subscription_tier
+      },
+      token: token,
+      url: LIVEKIT_URL
+    });
+  } catch(e){ console.error('live/join:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+// POST /api/live/heartbeat — viewer keeps count alive
+app.post('/api/live/heartbeat', auth, async (req, res) => {
+  try {
+    const id = Number((req.body && req.body.id) || 0);
+    await pool.query('UPDATE live_streams SET viewer_count = GREATEST(0, viewer_count) WHERE id=$1', [id]);
+    res.json({ ok: true });
+  } catch(_){ res.json({ ok: false }); }
+});
+
+// POST /api/live/leave — viewer leaves
+app.post('/api/live/leave', auth, async (req, res) => {
+  try {
+    const id = Number((req.body && req.body.id) || 0);
+    await pool.query('UPDATE live_streams SET viewer_count = GREATEST(0, viewer_count - 1) WHERE id=$1', [id]);
+    res.json({ ok: true });
+  } catch(_){ res.json({ ok: false }); }
+});
+
+// Cleanup: auto-end streams older than 4 hours with no heartbeat
+async function cleanupLiveStreams(){
+  try {
+    const r = await pool.query(`
+      UPDATE live_streams
+      SET status='ended', ended_at=NOW()
+      WHERE status='live' AND started_at < NOW() - INTERVAL '4 hours'
+      RETURNING id, streamer_id, room_name
+    `);
+    for (const s of r.rows){
+      await livekitDeleteRoom(s.room_name);
+      io.emit('live-ended', { id: s.id, streamer_id: s.streamer_id });
+      console.log('🎥 auto-ended stale stream:', s.id);
+    }
+  } catch(e){ console.warn('cleanup live:', e.message); }
+}
+/* GISTAPP_VC_EMIT — push real viewer count via socket every 5s */
+async function livekitSyncViewerCounts(){
+  if (!LIVEKIT_READY) return;
+  try {
+    const r = await pool.query("SELECT id, room_name, streamer_id FROM live_streams WHERE status='live'");
+    for (const s of r.rows){
+      const real = await livekitGetViewerCount(s.room_name);
+      if (real === null) continue;
+      await pool.query(
+        'UPDATE live_streams SET viewer_count=$1, peak_viewers=GREATEST(peak_viewers, $1) WHERE id=$2',
+        [real, s.id]
+      );
+      io.to('user:' + s.streamer_id).emit('live-viewers-update', { stream_id: s.id, count: real });
+    }
+  } catch(e){ console.warn('vc sync:', e.message); }
+}
+setTimeout(livekitSyncViewerCounts, 3000);
+setInterval(livekitSyncViewerCounts, 5000);
+
+setTimeout(cleanupLiveStreams, 2 * 60 * 1000);
+setInterval(cleanupLiveStreams, 30 * 60 * 1000);
+
+/* ---------- live join requests + guests ---------- GISTAPP_LIVE_REQUESTS_V1 */
+
+// POST /api/live/:id/request — viewer requests to join as co-host
+app.post('/api/live/:id/request', auth, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const r = await pool.query(
+      "SELECT id, streamer_id, status FROM live_streams WHERE id=$1",
+      [id]
+    );
+    if (!r.rowCount) return res.status(404).json({ error: 'Stream not found' });
+    if (r.rows[0].status !== 'live') return res.status(410).json({ error: 'Stream ended' });
+    if (r.rows[0].streamer_id === req.user.id) return res.status(400).json({ error: 'You are the host' });
+
+    const existing = await pool.query(
+      "SELECT id, status FROM live_join_requests WHERE stream_id=$1 AND user_id=$2 AND status IN ('pending','approved')",
+      [id, req.user.id]
+    );
+    if (existing.rowCount){
+      return res.json({ ok: true, status: existing.rows[0].status, already: true });
+    }
+
+    const ins = await pool.query(
+      "INSERT INTO live_join_requests (stream_id, user_id, status) VALUES ($1,$2,'pending') RETURNING id",
+      [id, req.user.id]
+    );
+
+    const u = await pool.query('SELECT display_name, avatar_color, avatar_url FROM users WHERE id=$1', [req.user.id]);
+    // Notify host via socket
+    io.to('user:' + r.rows[0].streamer_id).emit('live-join-request', {
+      stream_id: id,
+      request_id: ins.rows[0].id,
+      user_id: req.user.id,
+      display_name: (u.rows[0] && u.rows[0].display_name) || 'User',
+      avatar_color: u.rows[0] && u.rows[0].avatar_color,
+      avatar_url: u.rows[0] && u.rows[0].avatar_url
+    });
+
+    res.json({ ok: true, status: 'pending', request_id: ins.rows[0].id });
+  } catch(e){ console.error('live/request:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+// GET /api/live/:id/requests — host fetches pending requests
+app.get('/api/live/:id/requests', auth, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const own = await pool.query('SELECT streamer_id FROM live_streams WHERE id=$1', [id]);
+    if (!own.rowCount) return res.status(404).json({ error: 'Stream not found' });
+    if (own.rows[0].streamer_id !== req.user.id) return res.status(403).json({ error: 'Not your stream' });
+
+    const r = await pool.query(`
+      SELECT r.id, r.status, r.created_at,
+             u.id AS user_id, u.display_name, u.avatar_color, u.avatar_url
+      FROM live_join_requests r
+      JOIN users u ON u.id = r.user_id
+      WHERE r.stream_id=$1 AND r.status IN ('pending','approved')
+      ORDER BY r.created_at ASC
+    `, [id]);
+    res.json(r.rows);
+  } catch(e){ console.error('live/requests:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+// GET /api/live/:id/my-request — viewer checks their own status
+app.get('/api/live/:id/my-request', auth, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const r = await pool.query(
+      "SELECT id, status FROM live_join_requests WHERE stream_id=$1 AND user_id=$2 ORDER BY id DESC LIMIT 1",
+      [id, req.user.id]
+    );
+    if (!r.rowCount) return res.json({ status: null });
+    res.json({ status: r.rows[0].status, request_id: r.rows[0].id });
+  } catch(e){ res.status(500).json({ error: 'Server error' }); }
+});
+
+// POST /api/live/:id/approve/:rid — host approves a request
+app.post('/api/live/:id/approve/:rid', auth, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const rid = Number(req.params.rid);
+    const own = await pool.query('SELECT streamer_id, room_name, status FROM live_streams WHERE id=$1', [id]);
+    if (!own.rowCount) return res.status(404).json({ error: 'Stream not found' });
+    if (own.rows[0].streamer_id !== req.user.id) return res.status(403).json({ error: 'Not your stream' });
+    if (own.rows[0].status !== 'live') return res.status(410).json({ error: 'Stream ended' });
+
+    const rq = await pool.query("SELECT id, user_id FROM live_join_requests WHERE id=$1 AND stream_id=$2 AND status='pending'", [rid, id]);
+    if (!rq.rowCount) return res.status(404).json({ error: 'Request not found' });
+
+    const guestId = rq.rows[0].user_id;
+    const u = await pool.query('SELECT display_name FROM users WHERE id=$1', [guestId]);
+    const guestName = (u.rows[0] && u.rows[0].display_name) || 'Guest';
+
+    // Upgrade their token to publisher
+    const pubToken = await livekitGenerateToken(own.rows[0].room_name, guestId, guestName, true);
+
+    await pool.query("UPDATE live_join_requests SET status='approved', updated_at=NOW() WHERE id=$1", [rid]);
+
+    // Notify guest with the new token
+    io.to('user:' + guestId).emit('live-join-approved', {
+      stream_id: id,
+      room: own.rows[0].room_name,
+      token: pubToken,
+      host_name: (await pool.query('SELECT display_name FROM users WHERE id=$1', [req.user.id])).rows[0].display_name
+    });
+
+    // Also tell other viewers someone joined
+    io.emit('live-guest-joined', { stream_id: id, user_id: guestId, name: guestName });
+
+    res.json({ ok: true, guest_id: guestId });
+  } catch(e){ console.error('live/approve:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+// POST /api/live/:id/reject/:rid — host rejects
+app.post('/api/live/:id/reject/:rid', auth, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const rid = Number(req.params.rid);
+    const own = await pool.query('SELECT streamer_id FROM live_streams WHERE id=$1', [id]);
+    if (!own.rowCount) return res.status(404).json({ error: 'Stream not found' });
+    if (own.rows[0].streamer_id !== req.user.id) return res.status(403).json({ error: 'Not your stream' });
+
+    const rq = await pool.query('SELECT user_id FROM live_join_requests WHERE id=$1 AND stream_id=$2', [rid, id]);
+    if (!rq.rowCount) return res.status(404).json({ error: 'Request not found' });
+
+    await pool.query("UPDATE live_join_requests SET status='rejected', updated_at=NOW() WHERE id=$1", [rid]);
+    io.to('user:' + rq.rows[0].user_id).emit('live-join-rejected', { stream_id: id });
+    res.json({ ok: true });
+  } catch(e){ console.error('live/reject:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+// POST /api/live/:id/leave-guest — guest leaves co-host position
+app.post('/api/live/:id/leave-guest', auth, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    await pool.query("UPDATE live_join_requests SET status='left', updated_at=NOW() WHERE stream_id=$1 AND user_id=$2 AND status='approved'", [id, req.user.id]);
+    const u = await pool.query('SELECT display_name FROM users WHERE id=$1', [req.user.id]);
+    io.emit('live-guest-left', { stream_id: id, user_id: req.user.id, name: (u.rows[0] && u.rows[0].display_name) });
+    res.json({ ok: true });
+  } catch(e){ res.status(500).json({ error: 'Server error' }); }
+});
+
+/* GISTAPP_RESUME_TOKEN — get fresh publisher token for an active stream */
+app.post('/api/live/resume-token', auth, async (req, res) => {
+  try {
+    if (!LIVEKIT_READY) return res.status(503).json({ error: 'LiveKit not configured' });
+    const id = Number(req.body && req.body.id);
+    if (!id) return res.status(400).json({ error: 'Missing id' });
+    const r = await pool.query('SELECT id, streamer_id, room_name, status FROM live_streams WHERE id=$1', [id]);
+    if (!r.rowCount) return res.status(404).json({ error: 'Stream not found' });
+    if (r.rows[0].streamer_id !== req.user.id) return res.status(403).json({ error: 'Not your stream' });
+    if (r.rows[0].status !== 'live') return res.status(410).json({ error: 'Stream ended' });
+
+    const me = await pool.query('SELECT display_name FROM users WHERE id=$1', [req.user.id]);
+    const name = (me.rows[0] && me.rows[0].display_name) || 'Streamer';
+    const token = await livekitGenerateToken(r.rows[0].room_name, req.user.id, name, true);
+    res.json({ ok: true, url: LIVEKIT_URL, token: token, room: r.rows[0].room_name });
+  } catch(e){ console.error('resume-token:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+/* GISTAPP_LIVE_BATCH_BE */
+app.get('/api/live/:id/chat', auth, async (req, res) => { try { const id = Number(req.params.id); const r = await pool.query('SELECT m.id, m.text, m.kind, m.created_at, u.id AS user_id, u.display_name, u.avatar_color, u.avatar_url, u.subscription_tier FROM live_chat_messages m JOIN users u ON u.id=m.user_id WHERE m.stream_id=$1 ORDER BY m.created_at DESC LIMIT 100', [id]); res.json(r.rows.reverse()); } catch(e){ console.error('live chat list:', e.message); res.status(500).json({ error: 'Server error' }); } });
+app.post('/api/live/:id/chat', auth, async (req, res) => { try { const id = Number(req.params.id); const text = String((req.body && req.body.text) || '').trim().slice(0,300); if (!text) return res.status(400).json({ error: 'Empty message' }); const s = await pool.query('SELECT id, streamer_id, status FROM live_streams WHERE id=$1', [id]); if (!s.rowCount || s.rows[0].status !== 'live') return res.status(410).json({ error: 'Stream ended' }); const ins = await pool.query("INSERT INTO live_chat_messages (stream_id, user_id, text, kind) VALUES ($1,$2,$3,'chat') RETURNING id, created_at", [id, req.user.id, text]); const u = await pool.query('SELECT display_name, avatar_color, avatar_url, subscription_tier FROM users WHERE id=$1', [req.user.id]); const full = { id: ins.rows[0].id, text, kind: 'chat', created_at: ins.rows[0].created_at, user_id: req.user.id, display_name: u.rows[0].display_name, avatar_color: u.rows[0].avatar_color, avatar_url: u.rows[0].avatar_url, subscription_tier: u.rows[0].subscription_tier }; io.to('live:'+id).emit('live-chat', full); res.json(full); } catch(e){ console.error('live chat post:', e.message); res.status(500).json({ error: 'Server error' }); } });
+app.post('/api/live/:id/gift', auth, async (req, res) => { try { const id = Number(req.params.id); const giftType = String((req.body && req.body.gift) || 'heart').slice(0,40); const s = await pool.query('SELECT id, streamer_id, status FROM live_streams WHERE id=$1', [id]); if (!s.rowCount || s.rows[0].status !== 'live') return res.status(410).json({ error: 'Stream ended' }); await pool.query('UPDATE live_streams SET gift_count = gift_count + 1 WHERE id=$1', [id]); const u = await pool.query('SELECT display_name, avatar_url, avatar_color FROM users WHERE id=$1', [req.user.id]); io.to('live:'+id).emit('live-gift', { stream_id: id, gift: giftType, user_id: req.user.id, display_name: u.rows[0].display_name, avatar_color: u.rows[0].avatar_color, avatar_url: u.rows[0].avatar_url, ts: Date.now() }); res.json({ ok: true }); } catch(e){ console.error('live gift:', e.message); res.status(500).json({ error: 'Server error' }); } });
+app.delete('/api/live/:id/chat/:mid', auth, async (req, res) => { try { const id = Number(req.params.id); const mid = Number(req.params.mid); const own = await pool.query('SELECT streamer_id FROM live_streams WHERE id=$1', [id]); if (!own.rowCount) return res.status(404).json({ error: 'Stream not found' }); if (own.rows[0].streamer_id !== req.user.id) return res.status(403).json({ error: 'Only host' }); await pool.query('DELETE FROM live_chat_messages WHERE id=$1 AND stream_id=$2', [mid, id]); io.to('live:'+id).emit('live-chat-delete', { id, message_id: mid }); res.json({ ok: true }); } catch(e){ console.error('live del chat:', e.message); res.status(500).json({ error: 'Server error' }); } });
+app.post('/api/live/:id/ban/:uid', auth, async (req, res) => { try { const id = Number(req.params.id); const uid = Number(req.params.uid); const own = await pool.query('SELECT streamer_id FROM live_streams WHERE id=$1', [id]); if (!own.rowCount) return res.status(404).json({ error: 'Stream not found' }); if (own.rows[0].streamer_id !== req.user.id) return res.status(403).json({ error: 'Only host' }); await pool.query("INSERT INTO live_chat_messages (stream_id, user_id, text, kind) VALUES ($1,$2,'','ban')", [id, uid]); await pool.query("UPDATE live_join_requests SET status='kicked' WHERE stream_id=$1 AND user_id=$2", [id, uid]); io.to('user:'+uid).emit('live-kicked', { stream_id: id }); res.json({ ok: true }); } catch(e){ console.error('live ban:', e.message); res.status(500).json({ error: 'Server error' }); } });
+app.post('/api/live/:id/kick-guest/:uid', auth, async (req, res) => { try { const id = Number(req.params.id); const uid = Number(req.params.uid); const own = await pool.query('SELECT streamer_id, room_name FROM live_streams WHERE id=$1', [id]); if (!own.rowCount) return res.status(404).json({ error: 'Stream not found' }); if (own.rows[0].streamer_id !== req.user.id) return res.status(403).json({ error: 'Only host' }); await pool.query("UPDATE live_join_requests SET status='kicked' WHERE stream_id=$1 AND user_id=$2", [id, uid]); io.to('user:'+uid).emit('live-kicked', { stream_id: id, reason: 'Removed by host' }); io.to('live:'+id).emit('live-guest-left', { stream_id: id, user_id: uid }); res.json({ ok: true }); } catch(e){ console.error('live kick:', e.message); res.status(500).json({ error: 'Server error' }); } });
 
 /* ---------- OPay bank transfer ---------- GISTAPP_OPAY_V1 */
 const OPAY_ACCOUNT = {
