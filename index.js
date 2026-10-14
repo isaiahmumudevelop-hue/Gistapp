@@ -3899,10 +3899,194 @@ app.post('/api/live/resume-token', auth, async (req, res) => {
   } catch(e){ console.error('resume-token:', e.message); res.status(500).json({ error: 'Server error' }); }
 });
 
+/* GISTAPP_STREAM_SUMMARY — end-of-stream stats */
+app.get('/api/live/:id/summary', auth, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const s = await pool.query(
+      'SELECT id, streamer_id, title, status, viewer_count, peak_viewers, gift_count, started_at, ended_at, follower_gain FROM live_streams WHERE id=$1',
+      [id]
+    );
+    if (!s.rowCount) return res.status(404).json({ error: 'Not found' });
+    const stream = s.rows[0];
+    if (stream.streamer_id !== req.user.id) return res.status(403).json({ error: 'Not your stream' });
+
+    // Duration
+    const ended = stream.ended_at ? new Date(stream.ended_at) : new Date();
+    const durationSec = Math.max(0, Math.floor((ended - new Date(stream.started_at)) / 1000));
+
+    // Coins earned from this stream
+    const earnR = await pool.query(
+      'SELECT COALESCE(SUM(coins),0)::int AS total FROM live_gifts WHERE stream_id=$1',
+      [id]
+    );
+    const grossCoins = earnR.rows[0].total;
+    const creatorCoins = Math.floor(grossCoins * 0.7);
+
+    // Top gifter
+    const tg = await pool.query(
+      'SELECT g.user_id, SUM(g.coins)::int AS total, u.display_name, u.avatar_color, u.avatar_url FROM live_gifts g JOIN users u ON u.id=g.user_id WHERE g.stream_id=$1 GROUP BY g.user_id, u.display_name, u.avatar_color, u.avatar_url ORDER BY total DESC LIMIT 1',
+      [id]
+    );
+    const topGifter = tg.rows[0] || null;
+
+    // Chat message count
+    const cc = await pool.query("SELECT COUNT(*)::int AS n FROM live_chat_messages WHERE stream_id=$1 AND kind='chat'", [id]);
+
+    // Join requests received
+    const jr = await pool.query('SELECT COUNT(*)::int AS n FROM live_join_requests WHERE stream_id=$1', [id]);
+
+    res.json({
+      id: stream.id,
+      title: stream.title,
+      started_at: stream.started_at,
+      ended_at: stream.ended_at,
+      duration_sec: durationSec,
+      peak_viewers: stream.peak_viewers || 0,
+      final_viewers: stream.viewer_count || 0,
+      gross_coins: grossCoins,
+      creator_coins: creatorCoins,
+      creator_ngn: Math.floor(creatorCoins / 10),
+      gift_count: stream.gift_count || 0,
+      top_gifter: topGifter,
+      chat_messages: cc.rows[0].n,
+      join_requests: jr.rows[0].n
+    });
+  } catch(e){ console.error('summary:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+/* GISTAPP_EARNINGS_V1 — leaderboard + wallet + withdrawals */
+
+const GIFT_COINS = { rose: 1, heart: 5, fire: 10, star: 25, cake: 50, crown: 100, gem: 500, rocket: 1000 };
+const CREATOR_SHARE = 0.7; // 70% to streamer, 30% platform
+const COINS_PER_NGN = 10;   // 10 coins = ₦1
+const MIN_PAYOUT_BY_REGION = { NG: 20000, US: 50000, GB: 50000, default: 50000 }; // 20k coins = ₦2000
+
+// GET /api/live/:id/top-gifters — leaderboard
+app.get('/api/live/:id/top-gifters', auth, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const r = await pool.query(
+      'SELECT g.user_id, SUM(g.coins)::int AS total_coins, COUNT(*)::int AS gift_count, u.display_name, u.avatar_color, u.avatar_url, u.subscription_tier FROM live_gifts g JOIN users u ON u.id=g.user_id WHERE g.stream_id=$1 GROUP BY g.user_id, u.display_name, u.avatar_color, u.avatar_url, u.subscription_tier ORDER BY total_coins DESC LIMIT 10',
+      [id]
+    );
+    res.json(r.rows);
+  } catch(e){ console.error('top-gifters:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+// GET /api/wallet — current balance + recent transactions
+app.get('/api/wallet', auth, async (req, res) => {
+  try {
+    const me = await pool.query('SELECT wallet_balance_coins, lifetime_earned_coins, country, payout_method, payout_account, payout_name FROM users WHERE id=$1', [req.user.id]);
+    const tx = await pool.query('SELECT id, kind, coins, meta, created_at FROM wallet_transactions WHERE user_id=$1 ORDER BY created_at DESC LIMIT 30', [req.user.id]);
+    const pending = await pool.query("SELECT COALESCE(SUM(coins),0)::int AS n FROM withdrawal_requests WHERE user_id=$1 AND status='pending'", [req.user.id]);
+    const u = me.rows[0] || {};
+    res.json({
+      balance_coins: u.wallet_balance_coins || 0,
+      lifetime_coins: u.lifetime_earned_coins || 0,
+      pending_coins: pending.rows[0].n || 0,
+      available_ngn: Math.floor(((u.wallet_balance_coins || 0) - (pending.rows[0].n || 0)) / COINS_PER_NGN),
+      coins_per_ngn: COINS_PER_NGN,
+      country: u.country || 'NG',
+      min_payout_coins: MIN_PAYOUT_BY_REGION[u.country] || MIN_PAYOUT_BY_REGION.default,
+      payout_method: u.payout_method,
+      payout_account: u.payout_account,
+      payout_name: u.payout_name,
+      transactions: tx.rows
+    });
+  } catch(e){ console.error('wallet:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+// POST /api/wallet/payout-info — save bank/momo details
+app.post('/api/wallet/payout-info', auth, async (req, res) => {
+  try {
+    const { method, account, name, country } = req.body || {};
+    if (!method || !account || !name) return res.status(400).json({ error: 'Method, account, and name required' });
+    await pool.query('UPDATE users SET payout_method=$1, payout_account=$2, payout_name=$3, country=COALESCE($4, country) WHERE id=$5',
+      [String(method).slice(0,20), String(account).slice(0,40), String(name).slice(0,80), country ? String(country).slice(0,3).toUpperCase() : null, req.user.id]);
+    res.json({ ok: true });
+  } catch(e){ console.error('payout-info:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+// POST /api/wallet/withdraw — request payout
+app.post('/api/wallet/withdraw', auth, async (req, res) => {
+  try {
+    const coins = Number((req.body && req.body.coins) || 0);
+    if (!coins || coins < 100) return res.status(400).json({ error: 'Minimum 100 coins' });
+    const me = await pool.query('SELECT wallet_balance_coins, payout_method, payout_account, payout_name, country FROM users WHERE id=$1', [req.user.id]);
+    const u = me.rows[0] || {};
+    const min = MIN_PAYOUT_BY_REGION[u.country] || MIN_PAYOUT_BY_REGION.default;
+    if (coins < min) return res.status(400).json({ error: 'Minimum ' + min + ' coins for your region' });
+    if (!u.payout_method || !u.payout_account || !u.payout_name) return res.status(400).json({ error: 'Add payout info first' });
+    const pending = await pool.query("SELECT COALESCE(SUM(coins),0)::int AS n FROM withdrawal_requests WHERE user_id=$1 AND status='pending'", [req.user.id]);
+    const available = (u.wallet_balance_coins || 0) - (pending.rows[0].n || 0);
+    if (coins > available) return res.status(400).json({ error: 'Insufficient available balance' });
+    const ngn = Math.floor(coins / COINS_PER_NGN);
+    const ins = await pool.query(
+      'INSERT INTO withdrawal_requests (user_id, coins, ngn_amount, method, account_number, account_name) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, coins, ngn_amount, status, created_at',
+      [req.user.id, coins, ngn, u.payout_method, u.payout_account, u.payout_name]
+    );
+    await pool.query('INSERT INTO wallet_transactions (user_id, kind, coins, meta) VALUES ($1,$2,$3,$4)',
+      [req.user.id, 'withdraw_request', -coins, JSON.stringify({ request_id: ins.rows[0].id, ngn }) ]);
+    console.log('💰 Withdrawal requested: user', req.user.id, coins, 'coins =', ngn, 'NGN');
+    res.json({ ok: true, request: ins.rows[0] });
+  } catch(e){ console.error('withdraw:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+// GET /api/admin/withdrawals — admin list
+app.get('/api/admin/withdrawals', auth, adminOnly, async (req, res) => {
+  try {
+    const r = await pool.query("SELECT w.id, w.user_id, w.coins, w.ngn_amount, w.method, w.account_number, w.account_name, w.status, w.created_at, u.email, u.display_name FROM withdrawal_requests w JOIN users u ON u.id=w.user_id WHERE w.status IN ('pending','processing') ORDER BY w.created_at ASC LIMIT 100");
+    res.json(r.rows);
+  } catch(e){ console.error('admin withdrawals:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+// POST /api/admin/withdrawals/:id/approve
+app.post('/api/admin/withdrawals/:id/approve', auth, adminOnly, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const note = (req.body && req.body.note || '').slice(0, 300);
+    const w = await pool.query("SELECT id, user_id, coins, status FROM withdrawal_requests WHERE id=$1", [id]);
+    if (!w.rowCount) return res.status(404).json({ error: 'Not found' });
+    if (w.rows[0].status === 'paid') return res.json({ ok: true, already: true });
+    // Deduct from balance and mark paid
+    await pool.query('UPDATE users SET wallet_balance_coins = GREATEST(0, wallet_balance_coins - $1) WHERE id=$2', [w.rows[0].coins, w.rows[0].user_id]);
+    await pool.query("UPDATE withdrawal_requests SET status='paid', admin_note=$1, processed_at=NOW() WHERE id=$2", [note, id]);
+    await pool.query('INSERT INTO wallet_transactions (user_id, kind, coins, meta) VALUES ($1,$2,$3,$4)',
+      [w.rows[0].user_id, 'withdraw_paid', 0, JSON.stringify({ request_id: id, note }) ]);
+    console.log('✅ Withdrawal paid: request', id, 'user', w.rows[0].user_id);
+    res.json({ ok: true });
+  } catch(e){ console.error('approve withdrawal:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+// POST /api/admin/withdrawals/:id/reject
+app.post('/api/admin/withdrawals/:id/reject', auth, adminOnly, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const note = (req.body && req.body.note || '').slice(0, 300);
+    const w = await pool.query("SELECT id, user_id, coins, status FROM withdrawal_requests WHERE id=$1", [id]);
+    if (!w.rowCount) return res.status(404).json({ error: 'Not found' });
+    await pool.query("UPDATE withdrawal_requests SET status='rejected', admin_note=$1, processed_at=NOW() WHERE id=$2", [note, id]);
+    await pool.query('INSERT INTO wallet_transactions (user_id, kind, coins, meta) VALUES ($1,$2,$3,$4)',
+      [w.rows[0].user_id, 'withdraw_rejected', w.rows[0].coins, JSON.stringify({ request_id: id, note }) ]);
+    res.json({ ok: true });
+  } catch(e){ console.error('reject withdrawal:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
 /* GISTAPP_LIVE_BATCH_BE */
+
 app.get('/api/live/:id/chat', auth, async (req, res) => { try { const id = Number(req.params.id); const r = await pool.query('SELECT m.id, m.text, m.kind, m.created_at, u.id AS user_id, u.display_name, u.avatar_color, u.avatar_url, u.subscription_tier FROM live_chat_messages m JOIN users u ON u.id=m.user_id WHERE m.stream_id=$1 ORDER BY m.created_at DESC LIMIT 100', [id]); res.json(r.rows.reverse()); } catch(e){ console.error('live chat list:', e.message); res.status(500).json({ error: 'Server error' }); } });
 app.post('/api/live/:id/chat', auth, async (req, res) => { try { const id = Number(req.params.id); const text = String((req.body && req.body.text) || '').trim().slice(0,300); if (!text) return res.status(400).json({ error: 'Empty message' }); const s = await pool.query('SELECT id, streamer_id, status FROM live_streams WHERE id=$1', [id]); if (!s.rowCount || s.rows[0].status !== 'live') return res.status(410).json({ error: 'Stream ended' }); const ins = await pool.query("INSERT INTO live_chat_messages (stream_id, user_id, text, kind) VALUES ($1,$2,$3,'chat') RETURNING id, created_at", [id, req.user.id, text]); const u = await pool.query('SELECT display_name, avatar_color, avatar_url, subscription_tier FROM users WHERE id=$1', [req.user.id]); const full = { id: ins.rows[0].id, text, kind: 'chat', created_at: ins.rows[0].created_at, user_id: req.user.id, display_name: u.rows[0].display_name, avatar_color: u.rows[0].avatar_color, avatar_url: u.rows[0].avatar_url, subscription_tier: u.rows[0].subscription_tier }; io.to('live:'+id).emit('live-chat', full); res.json(full); } catch(e){ console.error('live chat post:', e.message); res.status(500).json({ error: 'Server error' }); } });
-app.post('/api/live/:id/gift', auth, async (req, res) => { try { const id = Number(req.params.id); const giftType = String((req.body && req.body.gift) || 'heart').slice(0,40); const s = await pool.query('SELECT id, streamer_id, status FROM live_streams WHERE id=$1', [id]); if (!s.rowCount || s.rows[0].status !== 'live') return res.status(410).json({ error: 'Stream ended' }); await pool.query('UPDATE live_streams SET gift_count = gift_count + 1 WHERE id=$1', [id]); const u = await pool.query('SELECT display_name, avatar_url, avatar_color FROM users WHERE id=$1', [req.user.id]); io.to('live:'+id).emit('live-gift', { stream_id: id, gift: giftType, user_id: req.user.id, display_name: u.rows[0].display_name, avatar_color: u.rows[0].avatar_color, avatar_url: u.rows[0].avatar_url, ts: Date.now() }); res.json({ ok: true }); } catch(e){ console.error('live gift:', e.message); res.status(500).json({ error: 'Server error' }); } });
+app.post('/api/live/:id/gift', auth, async (req, res) => { try { const id = Number(req.params.id); const giftType = String((req.body && req.body.gift) || 'heart').slice(0,40); const s = await pool.query('SELECT id, streamer_id, status FROM live_streams WHERE id=$1', [id]); if (!s.rowCount || s.rows[0].status !== 'live') return res.status(410).json({ error: 'Stream ended' }); await pool.query('UPDATE live_streams SET gift_count = gift_count + 1 WHERE id=$1', [id]);
+    // GISTAPP_EARNINGS_V1 — record gift + credit streamer
+    const _coins = GIFT_COINS[giftType] || 1;
+    try {
+      await pool.query('INSERT INTO live_gifts (stream_id, user_id, gift_type, coins) VALUES ($1,$2,$3,$4)', [id, req.user.id, giftType, _coins]);
+      const _creatorShare = Math.floor(_coins * CREATOR_SHARE);
+      await pool.query('UPDATE users SET wallet_balance_coins = COALESCE(wallet_balance_coins,0) + $1, lifetime_earned_coins = COALESCE(lifetime_earned_coins,0) + $1 WHERE id=$2', [_creatorShare, s.rows[0].streamer_id]);
+      await pool.query('INSERT INTO wallet_transactions (user_id, kind, coins, meta) VALUES ($1,$2,$3,$4)',
+        [s.rows[0].streamer_id, 'gift_earn', _creatorShare, JSON.stringify({ from_user: req.user.id, gift: giftType, stream_id: id, gross: _coins }) ]);
+    } catch(_giftErr){ console.warn('gift record:', _giftErr.message); } const u = await pool.query('SELECT display_name, avatar_url, avatar_color FROM users WHERE id=$1', [req.user.id]); io.to('live:'+id).emit('live-gift', { stream_id: id, gift: giftType, user_id: req.user.id, display_name: u.rows[0].display_name, avatar_color: u.rows[0].avatar_color, avatar_url: u.rows[0].avatar_url, ts: Date.now() }); res.json({ ok: true }); } catch(e){ console.error('live gift:', e.message); res.status(500).json({ error: 'Server error' }); } });
 app.delete('/api/live/:id/chat/:mid', auth, async (req, res) => { try { const id = Number(req.params.id); const mid = Number(req.params.mid); const own = await pool.query('SELECT streamer_id FROM live_streams WHERE id=$1', [id]); if (!own.rowCount) return res.status(404).json({ error: 'Stream not found' }); if (own.rows[0].streamer_id !== req.user.id) return res.status(403).json({ error: 'Only host' }); await pool.query('DELETE FROM live_chat_messages WHERE id=$1 AND stream_id=$2', [mid, id]); io.to('live:'+id).emit('live-chat-delete', { id, message_id: mid }); res.json({ ok: true }); } catch(e){ console.error('live del chat:', e.message); res.status(500).json({ error: 'Server error' }); } });
 app.post('/api/live/:id/ban/:uid', auth, async (req, res) => { try { const id = Number(req.params.id); const uid = Number(req.params.uid); const own = await pool.query('SELECT streamer_id FROM live_streams WHERE id=$1', [id]); if (!own.rowCount) return res.status(404).json({ error: 'Stream not found' }); if (own.rows[0].streamer_id !== req.user.id) return res.status(403).json({ error: 'Only host' }); await pool.query("INSERT INTO live_chat_messages (stream_id, user_id, text, kind) VALUES ($1,$2,'','ban')", [id, uid]); await pool.query("UPDATE live_join_requests SET status='kicked' WHERE stream_id=$1 AND user_id=$2", [id, uid]); io.to('user:'+uid).emit('live-kicked', { stream_id: id }); res.json({ ok: true }); } catch(e){ console.error('live ban:', e.message); res.status(500).json({ error: 'Server error' }); } });
 app.post('/api/live/:id/kick-guest/:uid', auth, async (req, res) => { try { const id = Number(req.params.id); const uid = Number(req.params.uid); const own = await pool.query('SELECT streamer_id, room_name FROM live_streams WHERE id=$1', [id]); if (!own.rowCount) return res.status(404).json({ error: 'Stream not found' }); if (own.rows[0].streamer_id !== req.user.id) return res.status(403).json({ error: 'Only host' }); await pool.query("UPDATE live_join_requests SET status='kicked' WHERE stream_id=$1 AND user_id=$2", [id, uid]); io.to('user:'+uid).emit('live-kicked', { stream_id: id, reason: 'Removed by host' }); io.to('live:'+id).emit('live-guest-left', { stream_id: id, user_id: uid }); res.json({ ok: true }); } catch(e){ console.error('live kick:', e.message); res.status(500).json({ error: 'Server error' }); } });

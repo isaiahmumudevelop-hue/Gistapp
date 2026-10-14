@@ -1185,6 +1185,43 @@ body.dark .up-close:hover{background:#1e1e28}
 /* Chat msg in host overlay — tap affordance */
 #sb-chat-overlay > div{pointer-events:auto;cursor:pointer}
 #sb-chat-overlay > div:active{opacity:.7}
+
+/* GISTAPP_EARNINGS_UI — leaderboard + wallet */
+.tg-panel{position:absolute;left:14px;top:calc(140px + env(safe-area-inset-top,0px));background:rgba(0,0,0,.55);border-radius:14px;padding:8px 10px;backdrop-filter:blur(12px);z-index:10;min-width:150px;max-width:200px;border:1px solid rgba(255,255,255,.15)}
+.tg-title{color:#fff;font-size:11px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;opacity:.75;margin-bottom:6px}
+.tg-row{display:flex;align-items:center;gap:8px;padding:4px 0;cursor:default}
+.tg-rank{font-size:12px;width:16px;text-align:center;flex-shrink:0}
+.tg-av{width:20px;height:20px;border-radius:50%;background:#7b8cff;color:#fff;font-size:9px;font-weight:800;display:flex;align-items:center;justify-content:center;background-size:cover;background-position:center;flex-shrink:0}
+.tg-name{color:#fff;font-size:11px;font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tg-coins{color:#f5a623;font-size:11px;font-weight:800;flex-shrink:0}
+
+/* Wallet screen */
+#wallet-screen{position:fixed;inset:0;background:var(--bg);z-index:9995;display:none;flex-direction:column;overflow-y:auto}
+#wallet-screen.show{display:flex}
+.wallet-hero{background:linear-gradient(160deg,#f5a623 0%,#ff6b5a 60%,#7b8cff 100%);padding:calc(20px + env(safe-area-inset-top,0px)) 20px 32px;color:#fff;position:relative;overflow:hidden}
+.wallet-hero::before{content:'';position:absolute;width:200px;height:200px;border-radius:50%;background:rgba(255,255,255,.15);top:-80px;right:-60px;filter:blur(40px)}
+.wallet-close{position:absolute;top:calc(14px + env(safe-area-inset-top,0px));left:16px;background:rgba(255,255,255,.2);color:#fff;border:none;width:36px;height:36px;border-radius:50%;font-size:16px;cursor:pointer;z-index:2}
+.wallet-bal-lbl{font-size:12px;text-transform:uppercase;letter-spacing:.8px;opacity:.9;font-weight:700;position:relative;z-index:1}
+.wallet-bal-val{font-size:44px;font-weight:900;letter-spacing:-1.5px;margin:6px 0 4px;position:relative;z-index:1}
+.wallet-bal-ngn{font-size:15px;opacity:.9;font-weight:700;position:relative;z-index:1}
+.wallet-stats{display:flex;gap:8px;padding:16px 20px;background:var(--bg-2)}
+.wallet-stat{flex:1;text-align:center}
+.wallet-stat b{display:block;font-size:18px;font-weight:800;color:var(--ink)}
+.wallet-stat span{font-size:11px;color:var(--sub);text-transform:uppercase;letter-spacing:.4px}
+.wallet-section{padding:16px 20px}
+.wallet-section h3{font-size:13px;font-weight:800;color:var(--sub);text-transform:uppercase;letter-spacing:.5px;margin:0 0 10px}
+.wallet-input{width:100%;height:52px;background:var(--bg-2);border:1.5px solid var(--line);border-radius:14px;padding:0 16px;font-size:15px;color:var(--ink);outline:none;font-family:inherit;box-sizing:border-box;margin-bottom:10px}
+.wallet-input:focus{border-color:var(--accent,#7b8cff)}
+.wallet-btn{width:100%;height:54px;background:linear-gradient(135deg,#f5a623,#ff6b5a);color:#fff;border:none;border-radius:16px;font-size:15px;font-weight:800;font-family:inherit;cursor:pointer;margin-bottom:10px}
+.wallet-btn.secondary{background:var(--bg-2);color:var(--ink);box-shadow:none;font-weight:700;font-size:14px;height:48px}
+.wallet-tx{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--line);font-size:13px}
+.wallet-tx:last-child{border-bottom:none}
+.wallet-tx .label{color:var(--ink);font-weight:600}
+.wallet-tx .label small{display:block;color:var(--sub);font-size:11px;font-weight:400;margin-top:2px}
+.wallet-tx .amount{font-weight:800;font-variant-numeric:tabular-nums}
+.wallet-tx .amount.positive{color:#22c55e}
+.wallet-tx .amount.negative{color:#e5484d}
+.wallet-empty{text-align:center;padding:30px 20px;color:var(--sub);font-size:13px}
 </style>
 
   
@@ -3873,6 +3910,7 @@ const SETTINGS_SECTIONS = [
   { title:'Other', rows:[
     { icon:'translate', label:'App language', key:'language', options:['English','Español','Français','हिन्दी','Yorùbá'] },
     { icon:'star', label:'Premium', sub:'Unlock more features', key:'premium' },
+    { icon:'star', label:'Wallet & Earnings', sub:'Balance, payout, withdraw', key:'wallet' },
     { icon:'help', label:'Help & contact us', sub:'Help center and support', key:'help' },
     { icon:'folder', label:'Backups', sub:'Database snapshots (admin)', key:'backups', adminOnly:true },
     { icon:'star', label:'Pending payments', sub:'Approve OPay transfers', key:'opay_admin', adminOnly:true }
@@ -3978,6 +4016,8 @@ function handleSettingClick(key){
     case 'chat_lock_manage': toggleChatLockFeature(); break;
     case 'two_factor': open2FA(); break;
     case 'change_email': openChangeEmail(); break;
+    case 'wallet': openWallet(); break;
+    case 'admin_withdrawals': openAdminWithdrawals(); break;
     case 'delete_account': if (confirm('Delete your account permanently?')) api('/api/me', { method:'DELETE' }).then(function(){ logout(); }); break;
     case 'help': window.location.href = 'mailto:support@gistapp.app'; break;
     default: if (row.toggle) togglePref(key); else toast(row.label);
@@ -4916,6 +4956,7 @@ function sbGiftAnim(emo){
 }
 
 async function sbStartRequestPoll(){
+  setInterval(function(){ try { if (_ssStreamId) refreshTopGifters(_ssStreamId, 'sb-tg-panel'); } catch(_){} }, 5000);
   sbStopRequestPoll();
   await sbRefreshRequests();
   _sbReqPollTimer = setInterval(sbRefreshRequests, 3000);
@@ -5302,6 +5343,8 @@ function lvChatMsg(name, text){
 }
 
 function lvStartPolling(){
+  setInterval(function(){ try { if (_lvStreamId) refreshTopGifters(_lvStreamId, 'lv-tg-panel'); } catch(_){} }, 5000);
+  try { if (_lvStreamId) refreshTopGifters(_lvStreamId, 'lv-tg-panel'); } catch(_){}
   lvStopPolling();
   _lvViewerPoll = setInterval(async function(){
     if (!_lvStreamId) return;
@@ -5821,11 +5864,13 @@ async function sbToggleCamera(){
 async function sbEndStream(){
   if (!_ssStreamId) return;
   if (!confirm('End this live stream?')) return;
+  var endedId = _ssStreamId;
   try {
-    await api('/api/live/end', { method: 'POST', body: JSON.stringify({ id: _ssStreamId }) });
+    await api('/api/live/end', { method: 'POST', body: JSON.stringify({ id: endedId }) });
   } catch(_){}
   sbCleanup();
-  toast('Stream ended');
+  // GISTAPP_STREAM_SUMMARY_UI — show stats card
+  setTimeout(function(){ try { showStreamSummary(endedId); } catch(_){} }, 400);
 }
 
 function sbCleanup(){
@@ -7019,6 +7064,290 @@ function getTierFromUser(u){
 }
 
 
+
+/* GISTAPP_EARNINGS_UI */
+let _walletData = null;
+
+async function openWallet(){
+  var s = document.getElementById('wallet-screen');
+  if (!s) return;
+  s.classList.add('show');
+  await refreshWallet();
+}
+
+function closeWallet(){
+  var s = document.getElementById('wallet-screen');
+  if (s) s.classList.remove('show');
+}
+
+async function refreshWallet(){
+  try {
+    var r = await api('/api/wallet');
+    _walletData = r;
+    var bal = document.getElementById('wallet-bal');
+    var balNgn = document.getElementById('wallet-bal-ngn');
+    var life = document.getElementById('wallet-lifetime');
+    var pend = document.getElementById('wallet-pending');
+    var rate = document.getElementById('wallet-rate');
+    if (bal) bal.textContent = (r.balance_coins || 0).toLocaleString();
+    if (balNgn) balNgn.textContent = '≈ ₦' + (r.available_ngn || 0).toLocaleString();
+    if (life) life.textContent = (r.lifetime_coins || 0).toLocaleString();
+    if (pend) pend.textContent = (r.pending_coins || 0).toLocaleString();
+    if (rate) rate.textContent = r.coins_per_ngn || 10;
+    var hint = document.getElementById('wallet-withdraw-hint');
+    if (hint) hint.textContent = 'Minimum: ' + (r.min_payout_coins || 20000).toLocaleString() + ' coins (₦' + Math.floor((r.min_payout_coins||20000)/(r.coins_per_ngn||10)).toLocaleString() + ')';
+    // Payout summary
+    var sum = document.getElementById('wallet-payout-summary');
+    if (sum){
+      if (r.payout_method && r.payout_account){
+        sum.innerHTML = '<b>' + esc((r.payout_method||'').toUpperCase()) + '</b> · ' + esc(r.payout_account) + '<br><small style="color:var(--sub)">' + esc(r.payout_name || '') + ' · ' + esc(r.country||'NG') + '</small>';
+      } else {
+        sum.innerHTML = '<span style="color:var(--sub)">No payout method set. Add one to request withdrawals.</span>';
+      }
+    }
+    // Transactions
+    var list = document.getElementById('wallet-tx-list');
+    if (list){
+      if (!r.transactions || !r.transactions.length){
+        list.innerHTML = '<div class="wallet-empty">No activity yet</div>';
+      } else {
+        list.innerHTML = r.transactions.map(function(t){
+          var label = t.kind;
+          var sign = '';
+          var cls = '';
+          if (t.kind === 'gift_earn'){ label = 'Gift received'; sign = '+'; cls = 'positive'; }
+          else if (t.kind === 'withdraw_request'){ label = 'Withdrawal requested'; sign = ''; cls = 'negative'; }
+          else if (t.kind === 'withdraw_paid'){ label = 'Payout sent'; sign = ''; cls = ''; }
+          else if (t.kind === 'withdraw_rejected'){ label = 'Withdrawal rejected'; sign = '+'; cls = 'positive'; }
+          var when = new Date(t.created_at).toLocaleDateString();
+          return '<div class="wallet-tx"><div class="label">' + esc(label) + '<small>' + when + '</small></div>' +
+            '<div class="amount ' + cls + '">' + (sign || (t.coins >= 0 ? '+' : '')) + t.coins + ' 💰</div></div>';
+        }).join('');
+      }
+    }
+  } catch(e){
+    console.error('refreshWallet:', e);
+    if (typeof toast === 'function') toast('Could not load wallet');
+  }
+}
+
+function openPayoutEdit(){
+  var e = document.getElementById('wallet-payout-edit');
+  if (!e) return;
+  e.style.display = 'block';
+  if (_walletData){
+    var m = document.getElementById('wallet-payout-method');
+    var a = document.getElementById('wallet-payout-account');
+    var n = document.getElementById('wallet-payout-name');
+    var c = document.getElementById('wallet-payout-country');
+    if (m && _walletData.payout_method) m.value = _walletData.payout_method;
+    if (a && _walletData.payout_account) a.value = _walletData.payout_account;
+    if (n && _walletData.payout_name) n.value = _walletData.payout_name;
+    if (c && _walletData.country) c.value = _walletData.country;
+  }
+}
+
+function closePayoutEdit(){
+  var e = document.getElementById('wallet-payout-edit');
+  if (e) e.style.display = 'none';
+}
+
+async function savePayoutInfo(){
+  var m = (document.getElementById('wallet-payout-method') || {}).value;
+  var a = (document.getElementById('wallet-payout-account') || {}).value;
+  var n = (document.getElementById('wallet-payout-name') || {}).value;
+  var c = (document.getElementById('wallet-payout-country') || {}).value;
+  if (!a || !n) return toast('Account number and name required');
+  try {
+    await api('/api/wallet/payout-info', { method: 'POST', body: JSON.stringify({ method: m, account: a, name: n, country: c }) });
+    toast('Payout info saved');
+    closePayoutEdit();
+    refreshWallet();
+  } catch(e){ toast(e.message || 'Could not save'); }
+}
+
+async function requestWithdrawal(){
+  if (!_walletData) return refreshWallet();
+  var inp = document.getElementById('wallet-withdraw-coins');
+  var coins = Number((inp && inp.value) || 0);
+  var min = _walletData.min_payout_coins || 20000;
+  if (!coins || coins < min) return toast('Minimum ' + min + ' coins');
+  var available = (_walletData.balance_coins || 0) - (_walletData.pending_coins || 0);
+  if (coins > available) return toast('Insufficient available balance');
+  if (!_walletData.payout_method) return toast('Add payout method first');
+  if (!confirm('Request withdrawal of ' + coins + ' coins (₦' + Math.floor(coins / (_walletData.coins_per_ngn || 10)) + ')?')) return;
+  try {
+    await api('/api/wallet/withdraw', { method: 'POST', body: JSON.stringify({ coins: coins }) });
+    toast('Withdrawal requested');
+    if (inp) inp.value = '';
+    refreshWallet();
+  } catch(e){ toast(e.message || 'Could not withdraw'); }
+}
+
+// Admin withdrawal panel
+async function openAdminWithdrawals(){
+  if (!me || !me.is_admin){ toast('Admin only'); return; }
+  var m = document.getElementById('admin-withdrawals-modal');
+  var b = document.getElementById('admin-withdrawals-body');
+  if (!m || !b) return;
+  b.innerHTML = '<div style="padding:30px;text-align:center;color:var(--sub)">Loading…</div>';
+  m.style.display = 'flex';
+  try {
+    var list = await api('/api/admin/withdrawals');
+    if (!list.length){
+      b.innerHTML = '<div style="padding:40px;text-align:center;color:var(--sub)">No pending withdrawals</div>';
+      return;
+    }
+    b.innerHTML = list.map(function(w){
+      return '<div style="background:var(--bg-2);border-radius:14px;padding:14px;margin-bottom:10px">' +
+        '<div style="font-size:14px;font-weight:700;color:var(--ink);margin-bottom:4px">' + esc(w.display_name || 'User') + ' · ₦' + Number(w.ngn_amount).toLocaleString() + '</div>' +
+        '<div style="font-size:12px;color:var(--sub);margin-bottom:2px">' + esc(w.email) + '</div>' +
+        '<div style="font-size:12px;color:var(--sub);margin-bottom:2px">' + Number(w.coins).toLocaleString() + ' coins → ' + esc((w.method||'').toUpperCase()) + '</div>' +
+        '<div style="font-size:12px;color:var(--ink);font-weight:600;margin-top:4px">' + esc(w.account_number) + '</div>' +
+        '<div style="font-size:12px;color:var(--sub)">' + esc(w.account_name) + '</div>' +
+        '<div style="display:flex;gap:8px;margin-top:12px">' +
+          '<button onclick="adminApproveWithdraw(' + w.id + ')" style="flex:1;height:40px;background:#22c55e;color:#fff;border:none;border-radius:10px;font-family:inherit;font-size:13px;font-weight:800;cursor:pointer">Mark Paid</button>' +
+          '<button onclick="adminRejectWithdraw(' + w.id + ')" style="flex:1;height:40px;background:var(--bg-3);color:#e5484d;border:none;border-radius:10px;font-family:inherit;font-size:13px;font-weight:800;cursor:pointer">Reject</button>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+  } catch(e){
+    b.innerHTML = '<div style="padding:30px;text-align:center;color:#e5484d">' + esc(e.message) + '</div>';
+  }
+}
+
+function closeAdminWithdrawals(){
+  var m = document.getElementById('admin-withdrawals-modal');
+  if (m) m.style.display = 'none';
+}
+
+async function adminApproveWithdraw(id){
+  if (!confirm('Mark this withdrawal as paid? Coins will be deducted from user balance.')) return;
+  try {
+    await api('/api/admin/withdrawals/' + id + '/approve', { method: 'POST', body: JSON.stringify({ note: 'Paid' }) });
+    toast('Marked as paid');
+    openAdminWithdrawals();
+  } catch(e){ toast(e.message || 'Failed'); }
+}
+
+async function adminRejectWithdraw(id){
+  var note = prompt('Reason for rejection?', 'Not eligible') || 'Rejected';
+  try {
+    await api('/api/admin/withdrawals/' + id + '/reject', { method: 'POST', body: JSON.stringify({ note: note }) });
+    toast('Rejected');
+    openAdminWithdrawals();
+  } catch(e){ toast(e.message || 'Failed'); }
+}
+
+// Leaderboard (host + viewer)
+async function refreshTopGifters(streamId, containerId){
+  var el = document.getElementById(containerId);
+  if (!el) return;
+  try {
+    var r = await api('/api/live/' + streamId + '/top-gifters');
+    if (!r || !r.length){ el.style.display = 'none'; return; }
+    el.style.display = 'block';
+    var medals = ['🥇','🥈','🥉'];
+    el.innerHTML = '<div class="tg-title">Top gifters</div>' + r.slice(0, 5).map(function(g, i){
+      var av = g.avatar_url
+        ? '<div class="tg-av" style="background-image:url(' + esc(g.avatar_url) + ')"></div>'
+        : '<div class="tg-av" style="background:' + (g.avatar_color||'#7b8cff') + '">' + esc(initials(g.display_name || '?')) + '</div>';
+      return '<div class="tg-row">' +
+        '<span class="tg-rank">' + (medals[i] || (i+1)) + '</span>' + av +
+        '<span class="tg-name">' + esc(g.display_name || 'User') + '</span>' +
+        '<span class="tg-coins">' + Number(g.total_coins).toLocaleString() + '</span>' +
+      '</div>';
+    }).join('');
+  } catch(e){ el.style.display = 'none'; }
+}
+
+/* GISTAPP_EARNINGS_UI */
+
+// Wallet menu row in Settings
+
+
+/* GISTAPP_JOIN_NOTIF — viewer join/gift/reaction system messages */
+// Wraps existing LiveKit participant handlers to announce joins
+function announceJoin(name, isHost){
+  var prefix = isHost ? '👑 ' : '👋 ';
+  var suffix = isHost ? ' is hosting' : ' joined';
+  try { if (typeof lvSystemMsg === 'function') lvSystemMsg(prefix + (name || 'Someone') + suffix); } catch(_){}
+  try { if (typeof sbHostSystemMsg === 'function') sbHostSystemMsg(prefix + (name || 'Someone') + suffix); } catch(_){}
+}
+
+// Hook viewer-side: when a remote participant connects, add "X joined" to chat
+(function(){
+  if (typeof _lvRoom === 'undefined') return;
+  var _origLvConnect = window.lvConnect;
+  if (typeof _origLvConnect === 'function' && !_origLvConnect._notifWrapped) {
+    var wrapped = async function(url, token){
+      var ret = await _origLvConnect(url, token);
+      try {
+        if (_lvRoom){
+          _lvRoom.on('participantConnected', function(pp){
+            // skip host (already announced)
+            if (_lvStreamer && String(pp.identity) === String(_lvStreamer.streamer_id)) return;
+            announceJoin(pp.name || pp.identity, false);
+          });
+          _lvRoom.on('participantDisconnected', function(pp){
+            try { lvSystemMsg('👋 ' + (pp.name || pp.identity) + ' left'); } catch(_){}
+          });
+        }
+      } catch(_){}
+      return ret;
+    };
+    wrapped._notifWrapped = true;
+    window.lvConnect = wrapped;
+    try { lvConnect = wrapped; } catch(_){}
+  }
+})();
+
+// Hook host-side: announce guest joins to host overlay
+(function(){
+  // sbAttachRoomHandlers was added earlier; wrap it
+  var _orig = window.ssAttachRoomHandlers;
+  if (typeof _orig === 'function' && !_orig._notifWrapped) {
+    var wrapped = function(){
+      var ret = _orig.apply(this, arguments);
+      try {
+        if (_ssRoom){
+          _ssRoom.on('participantConnected', function(pp){
+            sbHostSystemMsg('👋 ' + (pp.name || pp.identity) + ' joined the stream');
+          });
+          _ssRoom.on('participantDisconnected', function(pp){
+            sbHostSystemMsg('👋 ' + (pp.name || pp.identity) + ' left');
+          });
+        }
+      } catch(_){}
+      return ret;
+    };
+    wrapped._notifWrapped = true;
+    window.ssAttachRoomHandlers = wrapped;
+    try { ssAttachRoomHandlers = wrapped; } catch(_){}
+  }
+})();
+
+// Gift notifications: already exists on host side. Add to viewer side too.
+(function(){
+  if (typeof socket === 'undefined' || !socket) return;
+  // Wait for socket to be ready
+  var tries = 0;
+  var iv = setInterval(function(){
+    tries++;
+    if (socket && socket.connected){
+      socket.on('live-gift', function(p){
+        var v = document.getElementById('live-viewer');
+        if (v && v.classList.contains('show')){
+          try { lvSystemMsg('🎁 ' + (p.display_name || 'Someone') + ' sent a gift'); } catch(_){}
+        }
+      });
+      clearInterval(iv);
+    }
+    if (tries > 40) clearInterval(iv);
+  }, 500);
+})();
+
+/* GISTAPP_JOIN_NOTIF */
 
 window.liveBadgeHTML = function(isLive, size){
   if (!isLive) return '';
@@ -9710,6 +10039,7 @@ boot();
 <div id="stream-broadcast">
   <video id="sb-preview" autoplay muted playsinline></video>
   <div id="sb-guests" class="sb-guests"></div>
+  <div class="tg-panel" id="sb-tg-panel" style="display:none"></div>
   <div class="sb-top">
     <div class="sb-badge"><span class="dot"></span>LIVE</div>
     <div class="sb-viewers">
@@ -9846,6 +10176,7 @@ boot();
     <button class="lv-emoji-btn" onclick="lvOpenGiftTray()" style="background:linear-gradient(135deg,#ff3b30,#a86bff);font-size:22px">🎁</button>
   </div>
 
+  <div class="tg-panel" id="lv-tg-panel" style="display:none"></div>
   <div class="lv-guests" id="lv-guests"></div>
 
   <div class="lv-chat" id="lv-chat"></div>
@@ -9968,5 +10299,78 @@ window.addEventListener('error', function(e){
 </script>
 
 <div id="sb-mod-menu"></div>
+
+<!-- GISTAPP_EARNINGS_UI — wallet + payout -->
+<div id="wallet-screen">
+  <div class="wallet-hero">
+    <button class="wallet-close" onclick="closeWallet()">✕</button>
+    <div class="wallet-bal-lbl">Available balance</div>
+    <div class="wallet-bal-val" id="wallet-bal">0</div>
+    <div class="wallet-bal-ngn" id="wallet-bal-ngn">≈ ₦0</div>
+  </div>
+  <div class="wallet-stats">
+    <div class="wallet-stat"><b id="wallet-lifetime">0</b><span>Lifetime</span></div>
+    <div class="wallet-stat"><b id="wallet-pending">0</b><span>Pending</span></div>
+    <div class="wallet-stat"><b id="wallet-rate">10</b><span>Coins/₦1</span></div>
+  </div>
+  <div class="wallet-section">
+    <h3>Withdraw</h3>
+    <input type="number" class="wallet-input" id="wallet-withdraw-coins" placeholder="Coins to withdraw" min="100" autocomplete="off">
+    <div id="wallet-withdraw-hint" style="font-size:12px;color:var(--sub);text-align:center;margin-bottom:10px">Minimum: 20,000 coins (₦2,000)</div>
+    <button class="wallet-btn" onclick="requestWithdrawal()">Request withdrawal</button>
+  </div>
+  <div class="wallet-section">
+    <h3>Payout method</h3>
+    <div id="wallet-payout-summary" style="background:var(--bg-2);border-radius:12px;padding:12px;margin-bottom:10px;font-size:13px;color:var(--ink);line-height:1.5">Loading…</div>
+    <button class="wallet-btn secondary" onclick="openPayoutEdit()">Edit payout info</button>
+  </div>
+  <div class="wallet-section" id="wallet-payout-edit" style="display:none">
+    <h3>Update payout info</h3>
+    <select class="wallet-input" id="wallet-payout-method">
+      <option value="opay">OPay</option>
+      <option value="palmpay">PalmPay</option>
+      <option value="moniepoint">Moniepoint</option>
+      <option value="gtbank">GTBank</option>
+      <option value="access">Access Bank</option>
+      <option value="firstbank">First Bank</option>
+      <option value="uba">UBA</option>
+      <option value="zenith">Zenith Bank</option>
+      <option value="other">Other bank</option>
+    </select>
+    <input type="text" class="wallet-input" id="wallet-payout-account" placeholder="Account number" inputmode="numeric" autocomplete="off">
+    <input type="text" class="wallet-input" id="wallet-payout-name" placeholder="Account name" autocomplete="name">
+    <input type="text" class="wallet-input" id="wallet-payout-country" placeholder="Country code (NG, US, GB)" value="NG" maxlength="2" style="text-transform:uppercase">
+    <button class="wallet-btn" onclick="savePayoutInfo()">Save</button>
+    <button class="wallet-btn secondary" onclick="closePayoutEdit()">Cancel</button>
+  </div>
+  <div class="wallet-section">
+    <h3>Recent activity</h3>
+    <div id="wallet-tx-list"><div class="wallet-empty">No activity yet</div></div>
+  </div>
+</div>
+
+<!-- GISTAPP_EARNINGS_UI — admin withdrawals -->
+<div id="admin-withdrawals-modal" style="position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:2901;display:none;align-items:flex-end;justify-content:center">
+  <div style="background:var(--bg);width:100%;max-width:520px;max-height:88vh;border-radius:24px 24px 0 0;display:flex;flex-direction:column;overflow:hidden" onclick="event.stopPropagation()">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 20px 8px">
+      <div style="font-size:18px;font-weight:800;color:var(--ink)">Withdrawal requests</div>
+      <button onclick="closeAdminWithdrawals()" style="background:transparent;border:none;font-size:18px;color:var(--sub);cursor:pointer;padding:6px 10px">✕</button>
+    </div>
+    <div id="admin-withdrawals-body" style="overflow-y:auto;padding:8px 20px calc(24px + env(safe-area-inset-bottom,0px))">
+      <div style="padding:30px;text-align:center;color:var(--sub)">Loading…</div>
+    </div>
+  </div>
+</div>
+
+<!-- GISTAPP_STREAM_SUMMARY_UI -->
+<div id="stream-summary" style="position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:99998;display:none;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(6px)">
+  <div style="background:var(--bg);border-radius:24px;padding:28px 22px;max-width:420px;width:100%;max-height:88vh;overflow-y:auto;text-align:center">
+    <div style="font-size:56px;margin-bottom:8px">🎬</div>
+    <div style="font-size:22px;font-weight:800;color:var(--ink);margin-bottom:4px">Stream ended</div>
+    <div style="font-size:13px;color:var(--sub);margin-bottom:20px" id="ss-summary-title">—</div>
+    <div id="ss-summary-body" style="text-align:left"></div>
+    <button onclick="closeStreamSummary()" style="width:100%;height:52px;background:var(--accent,#7b8cff);color:#fff;border:none;border-radius:14px;font-size:15px;font-weight:800;font-family:inherit;cursor:pointer;margin-top:16px">Done</button>
+  </div>
+</div>
 </body>
 </html>

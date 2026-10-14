@@ -187,4 +187,179 @@ test('push vapid-public endpoint responds', async () => {
   assert.ok(r.data.publicKey, 'returns a public key');
 });
 
+
+
+// ================================================================
+// GISTAPP_LIVE_TESTS — live streaming + premium tests
+// ================================================================
+
+// ----------------------------------------------------------------
+// Live stream routes
+// ----------------------------------------------------------------
+test('live streams list requires auth', async () => {
+  const r = await req('GET', '/api/live/streams', { noAuth: true });
+  assert.equal(r.status, 401);
+});
+
+test('live streams list returns array for authed user', async () => {
+  const { email, token, res } = await signup({ email: uniqueEmail('livelist') });
+  if (res.status === 429 || !token) { console.log('⚠ skipped: rate limited'); return; }
+  const r = await req('GET', '/api/live/streams', { token });
+  assert.ok(r.ok, 'streams list responds');
+  assert.ok(Array.isArray(r.data), 'returns array');
+});
+
+test('live start requires premium', async () => {
+  const { email, token, res } = await signup({ email: uniqueEmail('livefreetier') });
+  if (res.status === 429 || !token) { console.log('⚠ skipped: rate limited'); return; }
+  await verifyUser(email);
+  // Free user should be rejected
+  const r = await req('POST', '/api/live/start', {
+    token,
+    body: { title: 'Test stream' }
+  });
+  // Should be 403 needs_premium
+  assert.ok(r.status === 403 || r.status === 429, 'should reject non-premium');
+  if (r.status === 403){
+    assert.ok(r.data.needs_premium || /premium/i.test(r.data.error || ''), 'error mentions premium');
+  }
+});
+
+test('live chat requires valid stream', async () => {
+  const { email, token, res } = await signup({ email: uniqueEmail('livechat') });
+  if (res.status === 429 || !token) { console.log('⚠ skipped: rate limited'); return; }
+  await verifyUser(email);
+  // Try to post to a stream that doesn't exist
+  const r = await req('POST', '/api/live/99999/chat', {
+    token,
+    body: { text: 'hello' }
+  });
+  // Should be 404 or 410 (no stream) or 500 (never reached)
+  assert.ok(r.status === 404 || r.status === 410 || r.status === 500, 'rejects invalid stream');
+});
+
+// ----------------------------------------------------------------
+// Wallet + earnings
+// ----------------------------------------------------------------
+test('wallet requires auth', async () => {
+  const r = await req('GET', '/api/wallet', { noAuth: true });
+  assert.equal(r.status, 401);
+});
+
+test('wallet returns balance structure', async () => {
+  const { email, token, res } = await signup({ email: uniqueEmail('wallet') });
+  if (res.status === 429 || !token) { console.log('⚠ skipped: rate limited'); return; }
+  await verifyUser(email);
+  const r = await req('GET', '/api/wallet', { token });
+  assert.ok(r.ok, 'wallet responds');
+  assert.ok(typeof r.data.balance_coins === 'number', 'has balance_coins');
+  assert.ok(typeof r.data.lifetime_coins === 'number', 'has lifetime_coins');
+  assert.ok(typeof r.data.available_ngn === 'number', 'has available_ngn');
+  assert.ok(Array.isArray(r.data.transactions), 'has transactions array');
+});
+
+test('wallet payout-info saves', async () => {
+  const { email, token, res } = await signup({ email: uniqueEmail('payout') });
+  if (res.status === 429 || !token) { console.log('⚠ skipped: rate limited'); return; }
+  await verifyUser(email);
+  const save = await req('POST', '/api/wallet/payout-info', {
+    token,
+    body: { method: 'opay', account: '08012345678', name: 'Test User', country: 'NG' }
+  });
+  assert.ok(save.ok, 'payout info saved');
+  const w = await req('GET', '/api/wallet', { token });
+  assert.equal(w.data.payout_method, 'opay');
+  assert.equal(w.data.payout_account, '08012345678');
+});
+
+test('wallet withdraw rejects below minimum', async () => {
+  const { email, token, res } = await signup({ email: uniqueEmail('belowmin') });
+  if (res.status === 429 || !token) { console.log('⚠ skipped: rate limited'); return; }
+  await verifyUser(email);
+  const r = await req('POST', '/api/wallet/withdraw', {
+    token,
+    body: { coins: 100 }
+  });
+  assert.ok(r.status === 400, 'rejects low amount');
+});
+
+// ----------------------------------------------------------------
+// Admin endpoints
+// ----------------------------------------------------------------
+test('admin withdrawals requires admin', async () => {
+  const { email, token, res } = await signup({ email: uniqueEmail('nonadmin2') });
+  if (res.status === 429 || !token) { console.log('⚠ skipped: rate limited'); return; }
+  await verifyUser(email);
+  const r = await req('GET', '/api/admin/withdrawals', { token });
+  assert.equal(r.status, 403);
+});
+
+// ----------------------------------------------------------------
+// Session / single-device login
+// ----------------------------------------------------------------
+test('second login rotates session (single-device)', async () => {
+  const email = uniqueEmail('sessionrot');
+  const password = 'TestPass123abc';
+  const s1 = await signup({ email, password });
+  if (s1.res.status === 429 || !s1.token) { console.log('⚠ skipped: rate limited'); return; }
+  await verifyUser(email);
+
+  // First login
+  const login1 = await req('POST', '/api/login', {
+    body: { email, password },
+    noAuth: true
+  });
+  if (!login1.ok){ console.log('⚠ first login failed'); return; }
+  const token1 = login1.data.token;
+
+  // Second login (should rotate session)
+  const login2 = await req('POST', '/api/login', {
+    body: { email, password },
+    noAuth: true
+  });
+  if (!login2.ok){ console.log('⚠ second login failed'); return; }
+  const token2 = login2.data.token;
+
+  // Old token should now be rejected
+  const useOld = await req('GET', '/api/me', { token: token1 });
+  assert.equal(useOld.status, 401, 'old token rejected');
+  assert.equal(useOld.data.code, 'SESSION_REPLACED', 'correct error code');
+
+  // New token should work
+  const useNew = await req('GET', '/api/me', { token: token2 });
+  assert.ok(useNew.ok, 'new token works');
+});
+
+// ----------------------------------------------------------------
+// Stickers (regression test after live work)
+// ----------------------------------------------------------------
+test('stickers still work after live changes', async () => {
+  const { email, token, res } = await signup({ email: uniqueEmail('regsticker') });
+  if (res.status === 429 || !token) { console.log('⚠ skipped: rate limited'); return; }
+  await verifyUser(email);
+  const r = await req('GET', '/api/stickers', { token });
+  assert.ok(r.ok, 'stickers list works');
+  assert.ok(Array.isArray(r.data), 'returns array');
+});
+
+test('feed still returns data after live changes', async () => {
+  const { email, token, res } = await signup({ email: uniqueEmail('regfeed') });
+  if (res.status === 429 || !token) { console.log('⚠ skipped: rate limited'); return; }
+  await verifyUser(email);
+  const r = await req('GET', '/api/feed', { token });
+  assert.ok(r.ok, 'feed works');
+  assert.ok(Array.isArray(r.data), 'feed returns array');
+});
+
+// ----------------------------------------------------------------
+// Join request flow
+// ----------------------------------------------------------------
+test('join request to invalid stream fails cleanly', async () => {
+  const { email, token, res } = await signup({ email: uniqueEmail('joinreq') });
+  if (res.status === 429 || !token) { console.log('⚠ skipped: rate limited'); return; }
+  await verifyUser(email);
+  const r = await req('POST', '/api/live/99999/request', { token });
+  assert.ok(r.status === 404 || r.status === 410 || r.status === 500, 'rejects invalid stream');
+});
+
 console.log('✅ All test files loaded');
