@@ -806,7 +806,12 @@ app.get('/api/chats', auth, async (req,res)=>{
     }
     return c;
   }));
-  res.json(rows);
+  // GISTAPP_LIVE_BADGE_BE
+      try {
+        const liveIds = await getLiveUserIds();
+        r.rows.forEach(function(c){ c.other_is_live = liveIds.has(Number(c.other_id)); });
+      } catch(_){}
+      res.json(rows);
 });
 
 /* ---------- requests ---------- */
@@ -1741,6 +1746,11 @@ app.get('/api/feed', auth, async (req, res) => {
       LIMIT 60
     `, [uid]);
 
+    // GISTAPP_LIVE_BADGE_BE — mark live users
+    try {
+      const liveIds = await getLiveUserIds();
+      r.rows.forEach(function(p){ p.author_is_live = liveIds.has(Number(p.user_id)); });
+    } catch(_){}
     res.json(r.rows);
   } catch(e){ console.error('feed error', e); res.status(500).json({ error: 'Server error' }); }
 });
@@ -2719,7 +2729,9 @@ app.get('/api/users/:id/profile-card', auth, async (req, res) => {
       FROM users u WHERE u.id=$1
     `, [id, req.user.id]);
     if (!r.rowCount) return res.status(404).json({ error: 'Not found' });
-    res.json(r.rows[0]);
+    // GISTAPP_LIVE_BADGE_BE
+      try { const _li = await getLiveUserIds(); r.rows[0].is_live = _li.has(Number(r.rows[0].id)); } catch(_){ r.rows[0].is_live = false; }
+      res.json(r.rows[0]);
   } catch(e){ console.error(e); res.status(500).json({ error: 'Server error' }); }
 });
 
@@ -3417,6 +3429,18 @@ app.post('/api/billing/webhook', express.raw({ type: 'application/json' }), asyn
 app.get('/api/billing/paystack-public', (req, res) => {
   res.json({ public_key: PAYSTACK_PUBLIC, enabled: PAYSTACK_READY });
 });
+
+/* ---------- live badge helper ---------- GISTAPP_LIVE_BADGE_BE */
+let _liveUserCache = { ids: new Set(), exp: 0 };
+async function getLiveUserIds(){
+  if (Date.now() < _liveUserCache.exp) return _liveUserCache.ids;
+  try {
+    const r = await pool.query("SELECT DISTINCT streamer_id FROM live_streams WHERE status='live' AND started_at > NOW() - INTERVAL '4 hours'");
+    _liveUserCache.ids = new Set(r.rows.map(function(x){ return Number(x.streamer_id); }));
+    _liveUserCache.exp = Date.now() + 5000; // cache 5s
+  } catch(_){}
+  return _liveUserCache.ids;
+}
 
 /* ---------- LiveKit live streaming ---------- GISTAPP_LIVEKIT_V1 */
 const LIVEKIT_URL = process.env.LIVEKIT_URL || '';

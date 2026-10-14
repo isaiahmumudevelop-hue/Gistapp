@@ -1140,6 +1140,9 @@ body.dark .up-close:hover{background:#1e1e28}
 .lv-gift-title{color:#fff;font-size:14px;font-weight:800;text-align:center;margin-bottom:6px;letter-spacing:.3px}
 .lv-gift-item{position:relative}
 
+/* GISTAPP_LIVE_BADGE_FE */
+
+
 /* GISTAPP_COHOST_TILES — TikTok-style co-host tiles on host broadcast */
 .sb-guests{position:absolute;right:14px;top:calc(130px + env(safe-area-inset-top,0px));display:flex;flex-direction:column;gap:8px;z-index:11;max-height:calc(100vh - 300px);overflow-y:auto}
 .sb-guest-tile{width:100px;height:150px;background:#1a1a22;border-radius:14px;overflow:hidden;position:relative;border:2px solid rgba(255,255,255,.25);box-shadow:0 6px 20px rgba(0,0,0,.5);animation:sbGuestIn .35s cubic-bezier(.34,1.56,.64,1)}
@@ -1155,6 +1158,33 @@ body.dark .up-close:hover{background:#1e1e28}
 .lv-guest-tile{width:92px;height:138px;background:#1a1a22;border-radius:14px;overflow:hidden;position:relative;border:2px solid rgba(255,255,255,.25);box-shadow:0 4px 16px rgba(0,0,0,.5);animation:sbGuestIn .35s cubic-bezier(.34,1.56,.64,1)}
 .lv-guest-tile video{width:100%;height:100%;object-fit:cover;background:#000}
 .lv-guest-tile .name{position:absolute;left:4px;bottom:4px;right:4px;font-size:10px;font-weight:700;color:#fff;background:rgba(0,0,0,.55);padding:2px 6px;border-radius:8px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;backdrop-filter:blur(6px)}
+
+/* GISTAPP_LIVE_BADGE_FE — pulsing LIVE indicator */
+.live-badge{display:inline-flex;align-items:center;gap:3px;background:#ff3b30;color:#fff;font-size:9px;font-weight:800;padding:2px 6px;border-radius:8px;letter-spacing:.5px;margin-left:4px;vertical-align:middle;position:relative;top:-1px;box-shadow:0 2px 6px rgba(255,59,48,.35);flex-shrink:0}
+.live-badge::before{content:'';display:inline-block;width:5px;height:5px;border-radius:50%;background:#fff;animation:livePulse 1.4s ease-in-out infinite}
+@keyframes livePulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(1.4)}}
+.live-badge-lg{font-size:11px;padding:3px 9px;border-radius:10px}
+.live-badge-lg::before{width:6px;height:6px}
+
+/* GISTAPP_MOD_UI — moderation popups */
+#sb-mod-menu{position:fixed;z-index:99998;background:rgba(20,20,28,.98);border-radius:14px;padding:6px;min-width:180px;box-shadow:0 12px 40px rgba(0,0,0,.65);backdrop-filter:blur(20px);display:none;animation:modPopIn .16s ease-out}
+#sb-mod-menu.show{display:block}
+@keyframes modPopIn{from{opacity:0;transform:scale(.92) translateY(-6px)}to{opacity:1;transform:scale(1) translateY(0)}}
+.sb-mod-item{display:flex;align-items:center;gap:10px;width:100%;background:transparent;border:none;color:#fff;font-family:inherit;font-size:14px;font-weight:600;padding:11px 14px;border-radius:10px;cursor:pointer;text-align:left;transition:background .12s}
+.sb-mod-item:hover{background:rgba(255,255,255,.08)}
+.sb-mod-item.danger{color:#ff453a}
+.sb-mod-item.danger:hover{background:rgba(255,69,58,.14)}
+.sb-mod-item .ic{font-size:16px;width:20px;text-align:center}
+.sb-mod-item small{display:block;font-size:11.5px;font-weight:400;color:#9a9aa5;margin-top:2px}
+
+/* Co-host tile — tap affordance for host */
+.sb-guest-tile{cursor:pointer}
+.sb-guest-tile:active{transform:scale(.96)}
+.sb-guest-tile::after{content:'⋯';position:absolute;top:4px;right:4px;background:rgba(0,0,0,.6);color:#fff;width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;opacity:.85;pointer-events:none}
+
+/* Chat msg in host overlay — tap affordance */
+#sb-chat-overlay > div{pointer-events:auto;cursor:pointer}
+#sb-chat-overlay > div:active{opacity:.7}
 </style>
 
   
@@ -1176,7 +1206,7 @@ if ('serviceWorker' in navigator){
 }
 </script>  <script src="https://js.paystack.co/v1/inline.js"></script>
 <!-- GISTAPP_PAYSTACK_UI_V1 -->  <script src="/livekit-client.umd.min.js"></script>
-<!-- GISTAPP_STREAMER_UI_V1 --><!-- GISTAPP_LV_A --><!-- GISTAPP_LV_C --><!-- GISTAPP_LV_A2 --><!-- GISTAPP_LV_NULLFIX --><!-- GISTAPP_LV_BULLETPROOF --><!-- GISTAPP_SESSION_KICK --><!-- GISTAPP_LIVE_TRACE --><!-- GISTAPP_LIVE_HOST_FIX --><!-- GISTAPP_LIVE_SOCK_FIX --><!-- GISTAPP_GIFT_PRICES --><!-- GISTAPP_COHOST_TILES --></head>
+<!-- GISTAPP_STREAMER_UI_V1 --><!-- GISTAPP_LV_A --><!-- GISTAPP_LV_C --><!-- GISTAPP_LV_A2 --><!-- GISTAPP_LV_NULLFIX --><!-- GISTAPP_LV_BULLETPROOF --><!-- GISTAPP_SESSION_KICK --><!-- GISTAPP_LIVE_TRACE --><!-- GISTAPP_LIVE_HOST_FIX --><!-- GISTAPP_LIVE_SOCK_FIX --><!-- GISTAPP_GIFT_PRICES --><!-- GISTAPP_COHOST_TILES --><!-- GISTAPP_LIVE_BADGE_FE --><!-- GISTAPP_LIVE_BADGE_FINAL --><!-- GISTAPP_MOD_UI --></head>
 <body>
 
 <div class="app">
@@ -2681,7 +2711,7 @@ setTimeout(function(){ try { applyLanguage(); } catch(_){} }, 0);
       ? '<div class="avatar" style="background-image:url(' + c.other_url + ')"></div>'
       : '<div class="avatar" style="background:' + color + '">' + esc(initials(name)) + '</div>';
     const html = '<div class="chat-item" data-id="' + c.id + '"><div class="ava-wrap">' + av + dot + '</div>' +
-      '<div class="chat-meta"><div class="name">' + esc(name) + tag + lockBadge + muteIcon + pinIcon + '</div>' +
+      '<div class="chat-meta"><div class="name">' + esc(name) + tag + lockBadge + muteIcon + pinIcon + liveBadgeHTML(c && c.other_is_live) + '</div>' +
       '<div class="preview">' + esc(preview) + '</div></div>' +
       '<div class="chat-side"><time>' + timeAgo(c.last_at) + '</time>' + badge + '</div></div>';
     if (c.pinned) pinnedHtml += html;
@@ -2736,7 +2766,7 @@ function doOpenChat(summary){
   currentChat = summary;
   const name = displayName(summary);
   const color = summary.other_color || colorFor(name);
-  document.getElementById('dm-name').innerHTML = esc(name) + premBadgeHTML(summary);
+  document.getElementById('dm-name').innerHTML = esc(name) + premBadgeHTML(summary) + liveBadgeHTML(summary.other_is_live);
   const av = document.getElementById('dm-avatar');
   if (summary.other_url){ av.textContent=''; av.style.background = 'url(' + summary.other_url + ') center/cover'; }
   else { av.textContent = initials(name); av.style.background = color; }
@@ -3670,7 +3700,7 @@ async function openContactProfile(){
   const av = document.getElementById('cp-avatar');
   if (cpChat.other_url){ av.textContent = ''; av.style.background = 'url(' + cpChat.other_url + ') center/cover'; }
   else { av.textContent = initials(name); av.style.background = color; }
-  document.getElementById('cp-name').textContent = name;
+  document.getElementById('cp-name').innerHTML = esc(name) + liveBadgeHTML(cpChat.other_is_live, 'lg');
   document.getElementById('cp-email').textContent = email;
   const isOnline = cpChat.other_id && onlineIds.has(Number(cpChat.other_id));
   document.getElementById('cp-online-dot').style.display = isOnline ? 'block' : 'none';
@@ -4585,6 +4615,232 @@ function ssAttachRoomHandlers(){
 
   console.log('✅ host room handlers attached');
 }
+
+/* GISTAPP_MOD_UI */
+
+let _modMenuOpen = false;
+
+function closeModMenu(){
+  var m = document.getElementById('sb-mod-menu');
+  if (m) m.classList.remove('show');
+  _modMenuOpen = false;
+}
+
+function sbShowModMenu(items, x, y){
+  var m = document.getElementById('sb-mod-menu');
+  if (!m) return;
+  m.innerHTML = items.map(function(it, i){
+    return '<button class="sb-mod-item' + (it.danger ? ' danger' : '') + '" data-i="' + i + '">' +
+      '<span class="ic">' + (it.icon || '') + '</span>' +
+      '<span>' + esc(it.label) + (it.sub ? '<small>' + esc(it.sub) + '</small>' : '') + '</span>' +
+    '</button>';
+  }).join('');
+  // Position: adjust for screen edges
+  m.classList.add('show');
+  var rect = m.getBoundingClientRect();
+  var w = rect.width, h = rect.height;
+  var vw = window.innerWidth, vh = window.innerHeight;
+  var left = Math.min(Math.max(8, x - w / 2), vw - w - 8);
+  var top = Math.min(Math.max(8, y), vh - h - 8);
+  m.style.left = left + 'px';
+  m.style.top = top + 'px';
+  // Wire items
+  m.querySelectorAll('.sb-mod-item').forEach(function(btn){
+    btn.addEventListener('click', function(ev){
+      ev.stopPropagation();
+      var idx = Number(btn.dataset.i);
+      var item = items[idx];
+      closeModMenu();
+      setTimeout(function(){ item.onClick && item.onClick(); }, 10);
+    });
+  });
+  _modMenuOpen = true;
+}
+
+// Global click outside closes menu
+document.addEventListener('click', function(e){
+  if (!_modMenuOpen) return;
+  var m = document.getElementById('sb-mod-menu');
+  if (m && !m.contains(e.target)) closeModMenu();
+});
+document.addEventListener('scroll', function(){ if (_modMenuOpen) closeModMenu(); }, true);
+
+// Long-press helper (works on mobile + desktop)
+function attachLongPress(el, handler, ms){
+  ms = ms || 500;
+  var timer = null;
+  var moved = false;
+  var startX = 0, startY = 0;
+
+  var start = function(ev){
+    var t = ev.touches ? ev.touches[0] : ev;
+    startX = t.clientX; startY = t.clientY;
+    moved = false;
+    timer = setTimeout(function(){
+      if (!moved) handler(startX, startY);
+    }, ms);
+  };
+  var move = function(ev){
+    var t = ev.touches ? ev.touches[0] : ev;
+    if (Math.abs(t.clientX - startX) > 12 || Math.abs(t.clientY - startY) > 12){
+      moved = true;
+      clearTimeout(timer);
+    }
+  };
+  var end = function(){ clearTimeout(timer); };
+
+  el.addEventListener('touchstart', start, { passive: true });
+  el.addEventListener('touchmove',  move,  { passive: true });
+  el.addEventListener('touchend',   end);
+  el.addEventListener('mousedown',  start);
+  el.addEventListener('mousemove',  move);
+  el.addEventListener('mouseup',    end);
+  el.addEventListener('mouseleave', end);
+  // Right-click on desktop
+  el.addEventListener('contextmenu', function(ev){
+    ev.preventDefault();
+    handler(ev.clientX, ev.clientY);
+  });
+}
+
+// ============================================================
+// 4. Wire moderation into host chat message renderer
+// ============================================================
+// We'll override sbHostChatMsg to attach long-press + message metadata
+var _origSbHostChatMsg = window.sbHostChatMsg;
+window.sbHostChatMsg = function(m){
+  var c = document.getElementById('sb-chat-overlay');
+  if (!c || !m) return;
+  try {
+    var d = document.createElement('div');
+    d.style.cssText = 'background:rgba(0,0,0,.5);padding:5px 10px;border-radius:14px;margin-bottom:5px;color:#fff;font-size:12.5px;line-height:1.35;backdrop-filter:blur(6px)';
+    if (m.id) d.dataset.id = m.id;
+    if (m.user_id) d.dataset.uid = m.user_id;
+    var crown = (m.subscription_tier && m.subscription_tier !== 'free')
+      ? '<span style="display:inline-block;font-size:9px;background:linear-gradient(135deg,#f5a623,#ff9500);color:#fff;padding:1px 5px;border-radius:5px;font-weight:800;margin-right:4px">' + (m.subscription_tier === 'business' ? '💎' : '👑') + '</span>'
+      : '';
+    d.innerHTML = crown + '<b style="color:#7b8cff">' + esc(m.display_name || 'User') + ':</b> ' + esc(m.text);
+    c.appendChild(d);
+    c.scrollTop = c.scrollHeight;
+    while (c.children.length > 30) c.removeChild(c.firstChild);
+
+    // GISTAPP_MOD_UI — long-press menu (host-only)
+    if (m.user_id && Number(m.user_id) !== Number(me && me.id)){
+      attachLongPress(d, function(x, y){
+        sbShowModMenu([
+          { icon: '🗑️', label: 'Delete message', danger: true, sub: 'Remove from chat', onClick: function(){ sbModDeleteMsg(d, m); } },
+          { icon: '🚫', label: 'Ban from chat',   danger: true, sub: 'Cannot chat again', onClick: function(){ sbModBan(m.user_id, m.display_name); } }
+        ], x, y);
+      }, 550);
+    }
+  } catch(_){}
+};
+
+// ============================================================
+// 5. Delete message handler
+// ============================================================
+async function sbModDeleteMsg(el, m){
+  if (!_ssStreamId || !m.id) return;
+  try {
+    await api('/api/live/' + _ssStreamId + '/chat/' + m.id, { method: 'DELETE' });
+    // Remove from DOM immediately
+    try { el.remove(); } catch(_){}
+    toast('Message deleted');
+  } catch(e){
+    toast(e.message || 'Could not delete');
+  }
+}
+
+// ============================================================
+// 6. Ban user handler
+// ============================================================
+async function sbModBan(uid, name){
+  if (!_ssStreamId || !uid) return;
+  if (!confirm('Ban ' + (name || 'this user') + ' from chat?')) return;
+  try {
+    await api('/api/live/' + _ssStreamId + '/ban/' + uid, { method: 'POST' });
+    // Remove all their messages from DOM
+    try {
+      var overlay = document.getElementById('sb-chat-overlay');
+      if (overlay){
+        overlay.querySelectorAll('[data-uid="' + uid + '"]').forEach(function(el){ el.remove(); });
+      }
+    } catch(_){}
+    toast('Banned');
+    sbRefreshRequests();
+  } catch(e){
+    toast(e.message || 'Could not ban');
+  }
+}
+
+// ============================================================
+// 7. Co-host tile → tap → menu with Kick
+// ============================================================
+var _origSbAddGuestTile = window.sbAddGuestTile;
+window.sbAddGuestTile = function(participant){
+  if (!participant) return;
+  var wrap = document.getElementById('sb-guests');
+  var id = String(participant.identity);
+  var existed = document.getElementById('sb-guest-' + id);
+  if (typeof _origSbAddGuestTile === 'function'){
+    _origSbAddGuestTile(participant);
+  }
+  // After original creates the tile (or if it existed), attach tap handler
+  setTimeout(function(){
+    var tile = document.getElementById('sb-guest-' + id);
+    if (!tile || tile._modAttached) return;
+    tile._modAttached = true;
+    var name = participant.name || 'Guest';
+    var handler = function(x, y){
+      sbShowModMenu([
+        { icon: '🚫', label: 'Kick co-host', danger: true, sub: 'Remove ' + name, onClick: function(){ sbModKickGuest(id, name); } },
+        { icon: '🔇', label: 'Mute (local)', sub: 'Stop hearing them', onClick: function(){ sbModMuteGuestLocal(id); } },
+        { icon: '✕',  label: 'Cancel', sub: '', onClick: function(){} }
+      ], x, y);
+    };
+    attachLongPress(tile, handler, 450);
+    // Also tap on tile opens menu directly (single tap works too)
+    tile.addEventListener('click', function(ev){
+      ev.stopPropagation();
+      handler(ev.clientX, ev.clientY);
+    });
+  }, 40);
+};
+
+async function sbModKickGuest(uid, name){
+  if (!_ssStreamId) return;
+  if (!confirm('Remove ' + (name || 'this co-host') + ' from the stream?')) return;
+  try {
+    await api('/api/live/' + _ssStreamId + '/kick-guest/' + uid, { method: 'POST' });
+    try {
+      var tile = document.getElementById('sb-guest-' + uid);
+      if (tile) tile.remove();
+    } catch(_){}
+    toast('Co-host removed');
+    sbHostSystemMsg('🚪 ' + (name || 'Guest') + ' removed');
+  } catch(e){
+    toast(e.message || 'Could not kick');
+  }
+}
+
+// Locally mute a guest (host-side only)
+function sbModMuteGuestLocal(uid){
+  try {
+    if (_ssRoom && _ssRoom.remoteParticipants){
+      var p = _ssRoom.remoteParticipants.get(String(uid));
+      if (p){
+        p.audioTrackPublications.forEach(function(pub){
+          if (pub.audioTrack && pub.audioTrack.attach) pub.audioTrack.detach();
+        });
+        // track mute state
+        var tile = document.getElementById('sb-guest-' + uid);
+        if (tile) tile.classList.add('muted');
+        toast('Muted locally');
+      }
+    }
+  } catch(_){ toast('Could not mute'); }
+}
+
 
 /* GISTAPP_COHOST_TILES */
 /* GISTAPP_LIVE_HOST_FIX — host-side hooks */
@@ -6624,7 +6880,7 @@ async function openUserProfile(userId){
     const avInner = u.avatar_url ? '' : esc(initials(name));
     body.innerHTML =
       '<div class="up-av" style="' + avStyle + '">' + avInner + '</div>' +
-      '<h2 class="up-name">' + esc(name) + premBadgeHTML(u, 'big') + '</h2>' +
+      '<h2 class="up-name">' + esc(name) + premBadgeHTML(u, 'big') + liveBadgeHTML(u.is_live, 'lg') + '</h2>' +
       (u.username ? '<p class="up-username">@' + esc(u.username) + '</p>' : '<p class="up-username"></p>') +
       (u.bio ? '<p class="up-bio">' + esc(u.bio) + '</p>' : '') +
       '<div class="up-stats">' +
@@ -6762,6 +7018,13 @@ function getTierFromUser(u){
   return 'free';
 }
 
+
+
+window.liveBadgeHTML = function(isLive, size){
+  if (!isLive) return '';
+  return '<span class="live-badge' + (size === 'lg' ? ' live-badge-lg' : '') + '">LIVE</span>';
+};
+
 function premBadgeHTML(u, size){
   var t = getTierFromUser(u);
   if (t === 'free') return '';
@@ -6793,7 +7056,7 @@ function renderPostCard(p){
   const votes = (p.upvotes||0) - (p.downvotes||0);
   return '<article class="post" data-post-id="'+p.id+'"><div class="post-inner">' +
     '<div class="post-head">' +
-      '<div style="cursor:pointer;display:flex;align-items:center;gap:10px;flex:1;min-width:0" onclick="event.stopPropagation();openUserProfile(' + p.user_id + ')">' + av + '<div class="post-meta"><b>'+esc(p.display_name)+'</b>'+premBadgeHTML(p)+'<small>'+timeAgo(p.created_at)+'</small></div></div>' +
+      '<div style="cursor:pointer;display:flex;align-items:center;gap:10px;flex:1;min-width:0" onclick="event.stopPropagation();openUserProfile(' + p.user_id + ')">' + av + '<div class="post-meta"><b>'+esc(p.display_name)+'</b>'+premBadgeHTML(p)+liveBadgeHTML(p.author_is_live)+'<small>'+timeAgo(p.created_at)+'</small></div></div>' +
     (Number(p.user_id)===Number(me.id) ? '<button class="post-menu" onclick="openPostMenu(event,'+p.id+')">⋯</button>' : '<button class="post-menu" onclick="openPostMenu(event,'+p.id+')">⋯</button>') + '</div>' +
     body + media +
     '<div class="post-stats"><span>'+(p.like_count||0)+' likes</span><span>'+(p.comment_count||0)+' comments</span></div>' +
@@ -9703,5 +9966,7 @@ window.addEventListener('error', function(e){
   }, 500);
 })();
 </script>
+
+<div id="sb-mod-menu"></div>
 </body>
 </html>
