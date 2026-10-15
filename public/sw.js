@@ -1,5 +1,5 @@
 /* GistApp Service Worker */
-const CACHE_NAME = 'gistapp-v5';
+const CACHE_NAME = 'gistapp-v6';
 const ASSETS_TO_CACHE = [
   '/',
   '/manifest.json'
