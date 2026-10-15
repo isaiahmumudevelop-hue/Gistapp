@@ -4971,6 +4971,64 @@ function sbGiftAnim(emo){
   setTimeout(function(){ try { g.removeChild(h); } catch(_){} }, 2600);
 }
 
+/* GISTAPP_LIVE_MINIMIZE — minimize broadcast, keep stream alive */
+function sbMinimize(){
+  var b = document.getElementById('stream-broadcast');
+  if (b) b.classList.remove('show');
+  sbShowLivePill();
+}
+function sbRestoreLive(){
+  var b = document.getElementById('stream-broadcast');
+  if (b) b.classList.add('show');
+  sbHideLivePill();
+  try { if (typeof sbRefreshRequests === 'function') sbRefreshRequests(); } catch(_){}
+}
+function sbShowLivePill(){
+  if (document.getElementById('sb-live-pill')) return;
+  var pill = document.createElement('div');
+  pill.id = 'sb-live-pill';
+  pill.style.cssText = 'position:fixed;top:calc(14px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#ff3b30,#ff5e3a);color:#fff;padding:10px 16px;border-radius:24px;font-size:13px;font-weight:800;cursor:pointer;z-index:9995;display:flex;align-items:center;gap:8px;box-shadow:0 6px 20px rgba(255,59,48,.5);font-family:inherit';
+  pill.innerHTML = '<span style="width:8px;height:8px;border-radius:50%;background:#fff;animation:sbPulse 1.4s infinite"></span> LIVE — tap to return';
+  pill.onclick = sbRestoreLive;
+  document.body.appendChild(pill);
+}
+function sbHideLivePill(){
+  var p = document.getElementById('sb-live-pill');
+  if (p) p.remove();
+}
+function sbBumpPillBadge(){
+  var p = document.getElementById('sb-live-pill');
+  if (!p) return;
+  var badge = p.querySelector('#sb-live-pill-badge');
+  if (!badge){
+    badge = document.createElement('span');
+    badge.id = 'sb-live-pill-badge';
+    badge.style.cssText = 'background:#fff;color:#ff3b30;font-size:11px;font-weight:900;padding:2px 7px;border-radius:10px;margin-left:6px';
+    badge.textContent = '1';
+    p.appendChild(badge);
+  } else {
+    badge.textContent = String((parseInt(badge.textContent,10) || 0) + 1);
+  }
+  p.style.transform = 'translateX(-50%) scale(1.12)';
+  setTimeout(function(){ p.style.transform = 'translateX(-50%)'; }, 200);
+}
+/* GISTAPP_PRESENCE_KEEPALIVE — re-broadcast presence every 20s while live */
+(function(){
+  setInterval(function(){
+    try {
+      if (typeof _ssStreamId !== 'undefined' && _ssStreamId && typeof socket !== 'undefined' && socket && socket.connected){
+        socket.emit('live-presence-ping');
+      }
+    } catch(_){}
+  }, 20000);
+})();
+/* Refresh presence when tab regains focus (mobile tab-suspend recovery) */
+document.addEventListener('visibilitychange', function(){
+  if (document.visibilityState === 'visible'){
+    try { if (typeof socket !== 'undefined' && socket && socket.connected) socket.emit('request-presence'); } catch(_){}
+  }
+});
+
 async function sbStartRequestPoll(){
   setInterval(function(){ try { if (_ssStreamId) refreshTopGifters(_ssStreamId, 'sb-tg-panel'); } catch(_){} }, 5000);
   sbStopRequestPoll();
@@ -5053,32 +5111,50 @@ async function sbRejectReq(rid){
 }
 
 // GISTAPP_LIVE_SOCK_FIX — bind AFTER socket connects
+// GISTAPP_HOST_RECV_FIX_V2 — allow rebind on reconnect
 let _liveSockBound = false;
+let _liveSockRef = null;
 function bindLiveSocketHandlers(){
-  if (_liveSockBound) return;
   if (typeof socket === 'undefined' || !socket) return;
+  // if same socket object and already bound → skip; if NEW socket → rebind
+  if (_liveSockBound && _liveSockRef === socket) return;
   _liveSockBound = true;
-  console.log('🔗 binding live socket handlers');
+  _liveSockRef = socket;
+  console.log('🔗 binding live socket handlers (socket changed: ' + (_liveSockRef !== socket) + ')');
 
   // HOST side
   socket.on('live-chat', function(m){
     var b = document.getElementById('stream-broadcast');
     if (b && b.classList.contains('show')) sbHostChatMsg(m);
   });
+  // GISTAPP_HOST_RECV_FIX_V2 — process even when overlay is minimized
   socket.on('live-gift', function(p){
+    var hostSide = (typeof _ssStreamId !== 'undefined' && _ssStreamId);
+    if (!hostSide) return;
     var b = document.getElementById('stream-broadcast');
-    if (!b || !b.classList.contains('show')) return;
+    var visible = b && b.classList.contains('show');
     var emo = ['🌹','❤️','🔥','⭐','🎂','👑','💎','🚀'][Math.floor(Math.random()*8)];
-    sbGiftAnim(emo);
-    sbHostSystemMsg('🎁 ' + (p.display_name || 'Someone') + ' sent a gift!');
-    // Also show in host chat overlay
-    sbHostChatMsg({ display_name: p.display_name, text: '🎁 sent ' + (p.gift || 'gift'), subscription_tier: p.subscription_tier });
+    if (visible){
+      sbGiftAnim(emo);
+      sbHostSystemMsg('🎁 ' + (p.display_name || 'Someone') + ' sent a gift!');
+      sbHostChatMsg({ display_name: p.display_name, text: '🎁 sent ' + (p.gift || 'gift'), subscription_tier: p.subscription_tier });
+    } else {
+      try { toast('🎁 ' + (p.display_name || 'Someone') + ' sent ' + (p.gift || 'a gift') + '!'); } catch(_){}
+      sbBumpPillBadge();
+    }
   });
   socket.on('live-join-request', function(p){
+    var hostSide = (typeof _ssStreamId !== 'undefined' && _ssStreamId);
+    if (!hostSide) return;
     var b = document.getElementById('stream-broadcast');
-    if (!b || !b.classList.contains('show')) return;
-    sbHostSystemMsg('👋 ' + (p.display_name || 'Someone') + ' wants to join');
-    sbRefreshRequests();
+    var visible = b && b.classList.contains('show');
+    if (visible){
+      sbHostSystemMsg('👋 ' + (p.display_name || 'Someone') + ' wants to join');
+      sbRefreshRequests();
+    } else {
+      try { toast('👋 ' + (p.display_name || 'Someone') + ' wants to join'); } catch(_){}
+      sbBumpPillBadge();
+    }
   });
   socket.on('live-viewers-update', function(p){
     if (!p) return;
@@ -5973,6 +6049,7 @@ function closeStreamSummary(){
 })();
 
 function sbCleanup(){
+  try { sbHideLivePill(); } catch(_){}
   ssStopViewerPoll();
   // GISTAPP_LIVE_HOST_FIX — cleanup host hooks
   try { sbStopRequestPoll(); } catch(_){}
@@ -10196,6 +10273,10 @@ boot();
     </div>
   </div>
   <div class="sb-bottom">
+    <!-- GISTAPP_LIVE_MINIMIZE — minimize button -->
+    <button class="sb-btn" onclick="sbMinimize()" title="Minimize (chat stays available)" style="background:rgba(123,140,255,.35)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 12h14"/></svg>
+    </button>
     <button class="sb-btn" id="sb-preview-btn" onclick="sbTogglePreview()" title="Preview as viewer" style="background:rgba(123,140,255,.35)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
     </button>
