@@ -2907,6 +2907,10 @@ io.on('connection', socket=>{
     socket.on('request-presence', () => {
       try { socket.emit('presence-list', [...onlineUsers.keys()]); } catch(_){}
     });
+    // GISTAPP_PRESENCE_KEEPALIVE — host re-broadcasts own presence while live
+    socket.on('live-presence-ping', () => {
+      try { io.emit('presence', { userId: uid, online: true }); } catch(_){}
+    });
   socket.on('leave',chatId=>socket.leave('chat:'+chatId));
     socket.on('live-join-room', (sid)=>{ if (sid) socket.join('live:' + sid); });
     socket.on('live-leave-room', (sid)=>{ if (sid) socket.leave('live:' + sid); });
