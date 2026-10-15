@@ -205,6 +205,49 @@ async function sendVerificationEmail(toEmail, token, displayName){
 }
 
 
+/* GISTAPP_WELCOME_EMAIL — sent after email verification succeeds */
+async function sendWelcomeEmail(toEmail, displayName){
+  const baseUrl = process.env.APP_URL || 'http://localhost:3000';
+  const iconUrl = baseUrl + '/icon-192.png';
+  const name = displayName || 'there';
+  const info = await mailer.sendMail({
+    from: '"GistApp" <' + GMAIL_SENDER + '>',
+    to: toEmail,
+    replyTo: process.env.SMTP_USER,
+    subject: 'Welcome to GistApp, ' + name + ' 🎉',
+    headers: {
+      'X-Priority': '3',
+      'List-Unsubscribe': '<mailto:' + process.env.SMTP_USER + '>'
+    },
+    html: `
+      <div style="font-family:Inter,-apple-system,system-ui,sans-serif;max-width:520px;margin:0 auto;padding:0;background:#f7f5ff;border-radius:20px;overflow:hidden">
+        <div style="background:linear-gradient(135deg,#33344c,#7b8cff);padding:32px 32px 24px;text-align:center">
+          <img src="${iconUrl}" alt="GistApp" width="72" height="72" style="border-radius:18px;display:block;margin:0 auto 12px;box-shadow:0 8px 24px rgba(0,0,0,.25)">
+          <div style="color:#fff;font-size:22px;font-weight:800;letter-spacing:-.4px">Welcome to GistApp</div>
+        </div>
+        <div style="padding:28px 32px 32px">
+          <p style="color:#33344c;font-size:16px;line-height:1.6;margin:0 0 16px">Hey ${name} 👋</p>
+          <p style="color:#4a4568;font-size:15px;line-height:1.6;margin:0 0 20px">Your email is verified and your account is ready. Here's what you can do right now:</p>
+          <table style="width:100%;border-collapse:collapse;margin:0 0 24px">
+            <tr><td style="padding:10px 0;vertical-align:top;width:36px;font-size:20px">💬</td><td style="padding:10px 0;color:#33344c;font-size:14px;line-height:1.5"><b>Start a chat</b> — Message anyone by email, no phone number needed.</td></tr>
+            <tr><td style="padding:10px 0;vertical-align:top;font-size:20px">🔴</td><td style="padding:10px 0;color:#33344c;font-size:14px;line-height:1.5"><b>Go live</b> — Stream to your followers and earn coins from gifts.</td></tr>
+            <tr><td style="padding:10px 0;vertical-align:top;font-size:20px">🎨</td><td style="padding:10px 0;color:#33344c;font-size:14px;line-height:1.5"><b>Make it yours</b> — Pick a wallpaper, accent color, and profile look.</td></tr>
+            <tr><td style="padding:10px 0;vertical-align:top;font-size:20px">🔒</td><td style="padding:10px 0;color:#33344c;font-size:14px;line-height:1.5"><b>Stay safe</b> — Enable 2FA or biometric lock in Settings.</td></tr>
+          </table>
+          <div style="text-align:center;margin:28px 0 20px">
+            <a href="${baseUrl}" style="background:#33344c;color:#fff;text-decoration:none;padding:14px 36px;border-radius:14px;font-weight:700;display:inline-block;font-size:15px">Open GistApp</a>
+          </div>
+          <p style="color:#8e8e93;font-size:13px;line-height:1.6;margin:24px 0 0;text-align:center">Questions? Just reply to this email.<br>We're glad you're here.</p>
+        </div>
+        <div style="background:#ede9ff;padding:16px 32px;text-align:center">
+          <p style="color:#8e8e93;font-size:11px;margin:0;line-height:1.5">You're receiving this because you created a GistApp account.<br>&copy; GistApp</p>
+        </div>
+      </div>
+    `
+  });
+  return info;
+}
+
 const app    = express();
 
 /* ========== GISTAPP_RATE_LIMIT_V1 ========== */
@@ -2419,6 +2462,8 @@ app.get('/verify', async (req, res) => {
       return res.send('<html><body style="font-family:Inter,system-ui,sans-serif;background:#050505;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;text-align:center;padding:20px"><div style="background:#fff;color:#1c1c22;max-width:400px;padding:40px 30px;border-radius:24px;box-shadow:0 20px 60px rgba(0,0,0,.5)"><div style="font-size:56px;margin-bottom:10px">\u26A0\uFE0F</div><h2 style="margin:0 0 10px;color:#e5484d">Link expired</h2><p style="color:#8e8e96;font-size:14px;line-height:1.5">This verification link is invalid or has already been used.</p><a href="/" style="color:#7b8cff;font-weight:700;margin-top:20px;display:inline-block">Back to app</a></div></body></html>');
     }
     await pool.query('UPDATE users SET verified=true, verify_token=NULL, verify_expires=NULL WHERE id=$1', [r.rows[0].id]);
+    // GISTAPP_WELCOME_EMAIL — fire and forget, do not block the response
+    sendWelcomeEmail(r.rows[0].email, r.rows[0].display_name).catch(function(e){ console.warn('welcome email failed:', e && e.message); });
     res.send('<html><body style="font-family:Inter,system-ui,sans-serif;background:#050505;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;text-align:center;padding:20px"><div style="background:#fff;color:#1c1c22;max-width:400px;padding:40px 30px;border-radius:24px;box-shadow:0 20px 60px rgba(0,0,0,.5)"><div style="font-size:56px;margin-bottom:10px">\u2705</div><h2 style="margin:0 0 10px">Email verified!</h2><p style="color:#8e8e96;font-size:14px;line-height:1.5">Welcome, ' + (r.rows[0].display_name || '') + '. Your account is now active.</p><a href="/" style="display:inline-block;margin-top:20px;background:#33344c;color:#fff;text-decoration:none;padding:13px 28px;border-radius:14px;font-weight:700">Open GistApp</a></div></body></html>');
   } catch(e){ console.error(e); res.status(500).send('<h2>Verification failed</h2>'); }
 });
