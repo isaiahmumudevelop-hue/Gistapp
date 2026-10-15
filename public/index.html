@@ -2450,6 +2450,19 @@ async function enterApp(){
 function connectSocket(){
   if (socket) socket.disconnect();
   socket = io({ auth:{ token } });
+  // GISTAPP_PRESENCE_FIX — always ask for presence on connect + reconnect
+  socket.on('connect', function(){
+    try { socket.emit('request-presence'); } catch(_){}
+  });
+  socket.on('reconnect', function(){
+    try { socket.emit('request-presence'); } catch(_){}
+  });
+  // Also refresh when tab becomes visible again
+  document.addEventListener('visibilitychange', function(){
+    if (!document.hidden){
+      try { socket.emit('request-presence'); } catch(_){}
+    }
+  });
   setTimeout(function(){ try { if (typeof bindLiveSocketHandlers === 'function') bindLiveSocketHandlers(); } catch(_){} }, 200);
   socket.on('presence-list', function(ids){ onlineIds = new Set(ids.map(Number)); renderChats(); renderStories(); updateHeaderStatus(); });
   socket.on('presence', function(p){ if (p.online) onlineIds.add(Number(p.userId)); else onlineIds.delete(Number(p.userId)); renderChats(); renderStories(); updateHeaderStatus(); });
@@ -5873,6 +5886,89 @@ async function sbEndStream(){
   setTimeout(function(){ try { showStreamSummary(endedId); } catch(_){} }, 400);
 }
 
+// GISTAPP_STREAM_SUMMARY_UI — modal show/close + populate
+function _ssFmtDuration(sec){
+  sec = Math.max(0, Math.floor(sec||0));
+  var h = Math.floor(sec/3600), m = Math.floor((sec%3600)/60), s = sec%60;
+  if (h) return h+'h '+m+'m';
+  if (m) return m+'m '+s+'s';
+  return s+'s';
+}
+function _ssEsc(str){
+  return String(str==null?'':str).replace(/[&<>"']/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+function _ssStat(label, value){
+  return '<div style="background:var(--bg2,rgba(127,127,127,.08));border-radius:14px;padding:12px 14px">'
+    + '<div style="font-size:11px;font-weight:700;color:var(--sub);text-transform:uppercase;letter-spacing:.5px">'+label+'</div>'
+    + '<div style="font-size:20px;font-weight:800;color:var(--ink);margin-top:4px">'+value+'</div>'
+    + '</div>';
+}
+async function showStreamSummary(streamId){
+  var modal = document.getElementById('stream-summary');
+  if (!modal) return;
+  var title = document.getElementById('ss-summary-title');
+  var body  = document.getElementById('ss-summary-body');
+  if (title) title.textContent = 'Loading…';
+  if (body)  body.innerHTML = '<div style="text-align:center;color:var(--sub);padding:20px">Loading…</div>';
+  modal.style.display = 'flex';
+  try {
+    var s = await api('/api/live/' + encodeURIComponent(streamId) + '/summary');
+    if (!s || s.error) throw new Error((s && s.error) || 'Failed');
+    if (title) title.textContent = s.title ? _ssEsc(s.title) : 'Your stream';
+    var grid = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'
+      + _ssStat('Duration', _ssFmtDuration(s.duration_sec))
+      + _ssStat('Peak viewers', s.peak_viewers || 0)
+      + _ssStat('Gifts', s.gift_count || 0)
+      + _ssStat('Messages', s.chat_messages || 0)
+      + '</div>';
+    var earnings = '<div style="margin-top:14px;background:linear-gradient(135deg,rgba(123,140,255,.15),rgba(123,140,255,.05));border:1px solid rgba(123,140,255,.3);border-radius:16px;padding:14px">'
+      + '<div style="font-size:11px;font-weight:700;color:var(--sub);text-transform:uppercase;letter-spacing:.5px">You earned</div>'
+      + '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:6px">'
+      +   '<div style="font-size:24px;font-weight:800;color:var(--ink)">'+(s.creator_coins||0)+' 🪙</div>'
+      +   '<div style="font-size:16px;font-weight:700;color:var(--sub)">₦'+(s.creator_ngn||0)+'</div>'
+      + '</div>'
+      + '<div style="font-size:11px;color:var(--sub);margin-top:4px">70% of '+(s.gross_coins||0)+' coins gifted</div>'
+      + '</div>';
+    var gifter = '';
+    if (s.top_gifter){
+      var tg = s.top_gifter;
+      gifter = '<div style="margin-top:14px;background:var(--bg2,rgba(127,127,127,.08));border-radius:16px;padding:12px 14px;display:flex;align-items:center;gap:12px">'
+        + '<div style="font-size:24px">🏆</div>'
+        + '<div style="flex:1;min-width:0">'
+        +   '<div style="font-size:11px;font-weight:700;color:var(--sub);text-transform:uppercase;letter-spacing:.5px">Top gifter</div>'
+        +   '<div style="font-size:15px;font-weight:800;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+_ssEsc(tg.display_name||'Someone')+'</div>'
+        + '</div>'
+        + '<div style="font-size:16px;font-weight:800;color:var(--ink)">'+(tg.total||0)+' 🪙</div>'
+        + '</div>';
+    }
+    if (body) body.innerHTML = grid + earnings + gifter;
+  } catch(e){
+    if (body)  body.innerHTML = '<div style="text-align:center;color:var(--sub);padding:20px">Could not load summary.</div>';
+    if (title) title.textContent = '—';
+  }
+}
+function closeStreamSummary(){
+  var modal = document.getElementById('stream-summary');
+  if (modal) modal.style.display = 'none';
+}
+// GISTAPP_STREAM_SUMMARY_UI — ESC + click-outside
+(function(){
+  if (window._ssSummaryHooks) return;
+  window._ssSummaryHooks = true;
+  document.addEventListener('keydown', function(e){
+    if (e.key === 'Escape'){
+      var m = document.getElementById('stream-summary');
+      if (m && m.style.display === 'flex') closeStreamSummary();
+    }
+  });
+  document.addEventListener('click', function(e){
+    var m = document.getElementById('stream-summary');
+    if (m && e.target === m) closeStreamSummary();
+  });
+})();
+
 function sbCleanup(){
   ssStopViewerPoll();
   // GISTAPP_LIVE_HOST_FIX — cleanup host hooks
@@ -7348,6 +7444,55 @@ function announceJoin(name, isHost){
 })();
 
 /* GISTAPP_JOIN_NOTIF */
+
+
+/* GISTAPP_PRESENCE_FIX — manual refresh */
+window.refreshPresence = function(){
+  try { if (socket && socket.connected) socket.emit('request-presence'); } catch(_){}
+};
+
+
+/* GISTAPP_LIVE_PRESENCE — keep socket alive during live stream */
+// When host goes live, force a presence re-announce
+(function(){
+  var _origSsGoLive = window.ssGoLive;
+  if (typeof _origSsGoLive === 'function' && !_origSsGoLive._presenceWrapped) {
+    var wrapped = async function(){
+      var ret = await _origSsGoLive.apply(this, arguments);
+      // Re-announce presence so viewers see host as online
+      try {
+        if (socket && socket.connected) socket.emit('request-presence');
+      } catch(_){}
+      // Also ping every 20s during broadcast (keeps socket fresh)
+      try {
+        if (window._livePresencePing) clearInterval(window._livePresencePing);
+        window._livePresencePing = setInterval(function(){
+          try { if (socket && socket.connected) socket.emit('request-presence'); } catch(_){}
+        }, 20000);
+      } catch(_){}
+      return ret;
+    };
+    wrapped._presenceWrapped = true;
+    window.ssGoLive = wrapped;
+    try { ssGoLive = wrapped; } catch(_){}
+  }
+})();
+
+// When broadcast ends, clear the ping
+(function(){
+  var _origSbCleanup = window.sbCleanup;
+  if (typeof _origSbCleanup === 'function' && !_origSbCleanup._presenceWrapped) {
+    var wrapped = function(){
+      try {
+        if (window._livePresencePing){ clearInterval(window._livePresencePing); window._livePresencePing = null; }
+      } catch(_){}
+      return _origSbCleanup.apply(this, arguments);
+    };
+    wrapped._presenceWrapped = true;
+    window.sbCleanup = wrapped;
+    try { sbCleanup = wrapped; } catch(_){}
+  }
+})();
 
 window.liveBadgeHTML = function(isLive, size){
   if (!isLive) return '';
