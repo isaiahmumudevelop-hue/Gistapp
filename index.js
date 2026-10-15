@@ -2903,6 +2903,10 @@ io.on('connection', socket=>{
   io.emit('presence',{userId:uid,online:true});
   socket.emit('presence-list',[...onlineUsers.keys()]);
   socket.on('join',chatId=>socket.join('chat:'+chatId));
+    // GISTAPP_PRESENCE_FIX — explicit presence fetch
+    socket.on('request-presence', () => {
+      try { socket.emit('presence-list', [...onlineUsers.keys()]); } catch(_){}
+    });
   socket.on('leave',chatId=>socket.leave('chat:'+chatId));
     socket.on('live-join-room', (sid)=>{ if (sid) socket.join('live:' + sid); });
     socket.on('live-leave-room', (sid)=>{ if (sid) socket.leave('live:' + sid); });
@@ -3443,9 +3447,11 @@ async function getLiveUserIds(){
 }
 
 /* ---------- LiveKit live streaming ---------- GISTAPP_LIVEKIT_V1 */
-const LIVEKIT_URL = process.env.LIVEKIT_URL || '';
-const LIVEKIT_API_KEY = process.env.LIVEKIT_API_KEY || '';
-const LIVEKIT_API_SECRET = process.env.LIVEKIT_API_SECRET || '';
+// GISTAPP_LIVEKIT_SANITIZE — strip whitespace from env vars
+function _clean(v){ return String(v || '').trim().replace(/^["']|["']$/g, ''); }
+const LIVEKIT_URL = _clean(process.env.LIVEKIT_URL);
+const LIVEKIT_API_KEY = _clean(process.env.LIVEKIT_API_KEY);
+const LIVEKIT_API_SECRET = _clean(process.env.LIVEKIT_API_SECRET);
 const LIVEKIT_READY = !!(LIVEKIT_URL && LIVEKIT_API_KEY && LIVEKIT_API_SECRET);
 
 let _livekitSdk = null;
@@ -3460,6 +3466,17 @@ function getLiveKitSdk(){
   return _livekitSdk;
 }
 
+// GISTAPP_LIVEKIT_DEBUG — safe diagnostic (no secret leaked)
+console.log('🔍 LiveKit env check:');
+console.log('   URL:      ' + (LIVEKIT_URL ? JSON.stringify(LIVEKIT_URL) : 'MISSING'));
+console.log('   API Key:  ' + (LIVEKIT_API_KEY ? JSON.stringify(LIVEKIT_API_KEY) + ' (len ' + LIVEKIT_API_KEY.length + ')' : 'MISSING'));
+console.log('   API Secret: ' + (LIVEKIT_API_SECRET ? LIVEKIT_API_SECRET.length + ' chars, first4=' + LIVEKIT_API_SECRET.slice(0,4) + ', last4=' + LIVEKIT_API_SECRET.slice(-4) : 'MISSING'));
+if (LIVEKIT_API_SECRET && LIVEKIT_API_SECRET !== LIVEKIT_API_SECRET.trim()){
+  console.log('   ⚠️  API Secret has whitespace!');
+}
+if (LIVEKIT_API_KEY && LIVEKIT_API_KEY !== LIVEKIT_API_KEY.trim()){
+  console.log('   ⚠️  API Key has whitespace!');
+}
 console.log(LIVEKIT_READY ? '✅ LiveKit ready' : 'ℹ️  LiveKit disabled (missing env vars)');
 
 async function livekitCreateRoom(roomName){

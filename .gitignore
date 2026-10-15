@@ -330,3 +330,9 @@ add_live_tests.js
 add_live_routes.py
 pf_*.py
 pf_*.js
+
+*.baklvdebug.*
+*.baklvsanitize.*
+*.bakpresence.*
+*.bakpresencefe.*
+*.baklivepres.*
