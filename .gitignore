@@ -337,3 +337,17 @@ pf_*.js
 *.bakpresencefe.*
 *.baklivepres.*
 HANDOFF.md
+audit.sh
+doctor.sh
+full_audit.sh
+tables.js
+AUDIT_REPORT.txt
+diag.js
+find_live.sh
+dump_live.sh
+find_host_recv.sh
+find_listener_ctx.sh
+gen_icons.sh
+patch_*.py
+add_eruda.py
+fix_audit_env.py
