@@ -17,7 +17,7 @@ else
   echo "🚀 Starting fresh server for tests..."
   pkill -9 node 2>/dev/null || true
   sleep 2
-  node index.js > /tmp/gistapp-test-server.log 2>&1 &
+  node index.js > ~/gistapp-test-server.log 2>&1 &
   SERVER_PID=$!
   echo "   PID: $SERVER_PID"
   # Wait for ready
