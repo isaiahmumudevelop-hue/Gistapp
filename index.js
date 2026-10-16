@@ -4487,7 +4487,7 @@ app.post('/api/live/heartbeat', auth, async (req, res) => {
     );
     // Refresh viewer_count from active viewers
     const c = await pool.query(
-      "SELECT COUNT(*)::int AS n FROM live_viewers WHERE stream_id=$1 AND last_ping > NOW() - INTERVAL '30 seconds'",
+      "SELECT COUNT(*)::int AS n FROM live_viewers WHERE stream_id=$1 AND last_ping > NOW() - INTERVAL '60 seconds'  /* GISTAPP_LIVE_VIEWERS_V2 — 60s tolerance */",
       [id]
     );
     await pool.query('UPDATE live_streams SET viewer_count=$1 WHERE id=$2', [c.rows[0].n, id]);
@@ -4508,7 +4508,7 @@ app.get('/api/live/:id/viewers', auth, async (req, res) => {
               u.subscription_tier
        FROM live_viewers v
        JOIN users u ON u.id = v.user_id
-       WHERE v.stream_id=$1 AND v.last_ping > NOW() - INTERVAL '30 seconds'
+       WHERE v.stream_id=$1 AND v.last_ping > NOW() - INTERVAL '60 seconds'  /* GISTAPP_LIVE_VIEWERS_V2 */
        ORDER BY v.joined_at ASC`,
       [id]
     );

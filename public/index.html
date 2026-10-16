@@ -5335,6 +5335,33 @@ let _lvIsGuest = false;
 let _lvGuestLocalStream = null;
 let _lvPublishedTracks = [];
 
+/* GISTAPP_LIVE_HEARTBEAT_FE — viewer pings heartbeat every 20s while watching */
+let _lvHeartbeatTimer = null;
+// GISTAPP_LIVE_HEARTBEAT_V2 — ping every 15s, no hidden-tab skip, tolerates 60s staleness
+function lvStartHeartbeat(){
+  lvStopHeartbeat();
+  if (!_lvStreamId) return;
+  var sid = _lvStreamId;
+  function ping(){
+    if (!_lvStreamId) return;
+    try {
+      api('/api/live/heartbeat', { method: 'POST', body: JSON.stringify({ id: sid }) }).catch(function(){});
+    } catch(_){}
+  }
+  ping(); // immediate
+  _lvHeartbeatTimer = setInterval(ping, 15000);
+  console.log('💓 viewer heartbeat started for stream', sid);
+}
+function lvStopHeartbeat(){
+  if (_lvHeartbeatTimer){ clearInterval(_lvHeartbeatTimer); _lvHeartbeatTimer = null; }
+}
+async function lvLeaveStream(){
+  lvStopHeartbeat();
+  if (!_lvStreamId) return;
+  var sid = _lvStreamId;
+  try { await api('/api/live/leave', { method: 'POST', body: JSON.stringify({ id: sid }) }); } catch(_){}
+}
+
 async function openLiveViewer(streamId){
   // GISTAPP_LIVE_BTN_ALL — check if this is MY stream
   try {
@@ -5352,6 +5379,7 @@ async function openLiveViewer(streamId){
   var b = document.getElementById('live-viewer');
   if (!b){ console.warn('live-viewer div missing'); return; }
   _lvStreamId = streamId;
+  try { lvStartHeartbeat(); } catch(_){}  // GISTAPP_LIVE_HEARTBEAT_FE
   _lvIsGuest = false;
   b.classList.add('show');
   _lvHTML('lv-chat', '');
@@ -5599,6 +5627,7 @@ function lvRemoveGuestTile(identity){
 }
 
 async function closeLiveViewer(){
+  try { lvLeaveStream(); } catch(_){}  // GISTAPP_LIVE_HEARTBEAT_FE
   var b = document.getElementById('live-viewer');
   if (!b) return;
   lvStopPolling();
@@ -10005,6 +10034,15 @@ async function sbInviteGuest(uid, name){
     } catch(_){}
   });
 })();
+
+/* GISTAPP_LIVE_HEARTBEAT_FE — resume when tab becomes visible again */
+document.addEventListener('visibilitychange', function(){
+  if (!document.hidden && _lvStreamId){
+    try {
+      api('/api/live/heartbeat', { method: 'POST', body: JSON.stringify({ id: _lvStreamId }) }).catch(function(){});
+    } catch(_){}
+  }
+});
 
 boot();
 </script>
