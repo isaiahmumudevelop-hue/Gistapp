@@ -3002,6 +3002,167 @@ app.get('/api/posts/:id/comments', auth, async (req, res) => {
   } catch(e){ console.error('comments get:', e.message); res.status(500).json({ error: 'Server error' }); }
 });
 
+/* GISTAPP_BROADCAST — admin announcements (instant banners + feature launches) */
+(async function(){
+  try {
+    await pool.query(`CREATE TABLE IF NOT EXISTS broadcasts (
+      id SERIAL PRIMARY KEY,
+      title TEXT NOT NULL,
+      body TEXT NOT NULL,
+      image_url TEXT,
+      cta_text TEXT,
+      cta_url TEXT,
+      segment TEXT DEFAULT 'all',
+      channels JSONB DEFAULT '["app"]'::jsonb,
+      kind TEXT DEFAULT 'banner',
+      sent_by INTEGER,
+      sent_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS broadcasts_kind_sent_idx ON broadcasts (kind, sent_at DESC)`);
+    console.log('✅ broadcasts migrations ready');
+  } catch(e){ console.warn('broadcast migration:', e.message); }
+})();
+
+/* GISTAPP_BROADCAST — admin announcements */
+
+function _broadcastSegmentWhere(segment){
+  switch(segment){
+    case 'pro':      return "subscription_tier='pro'";
+    case 'business': return "subscription_tier='business'";
+    case 'free':     return "(subscription_tier IS NULL OR subscription_tier='free')";
+    case 'active':   return "last_seen_at > NOW() - INTERVAL '30 days'";
+    case 'inactive': return "(last_seen_at < NOW() - INTERVAL '30 days' OR last_seen_at IS NULL)";
+    default:         return "1=1";
+  }
+}
+
+// POST /api/admin/broadcast — create + immediately send
+app.post('/api/admin/broadcast', auth, adminOnly, async (req, res) => {
+  try {
+    const b = req.body || {};
+    const title = String(b.title || '').trim().slice(0, 120);
+    const bodyTxt = String(b.body || '').trim().slice(0, 1000);
+    const imageUrl = b.image_url ? String(b.image_url).slice(0, 500) : null;
+    const ctaText = b.cta_text ? String(b.cta_text).slice(0, 40) : null;
+    const ctaUrl = b.cta_url ? String(b.cta_url).slice(0, 500) : null;
+    const segment = String(b.segment || 'all');
+    const kind = b.kind === 'announcement' ? 'announcement' : 'banner';
+    const channels = Array.isArray(b.channels) ? b.channels.filter(function(c){ return c === 'app' || c === 'email'; }) : ['app'];
+    if (!title || !bodyTxt) return res.status(400).json({ error: 'Title and body required' });
+
+    // Insert row
+    const ins = await pool.query(
+      `INSERT INTO broadcasts (title, body, image_url, cta_text, cta_url, segment, channels, kind, sent_by, sent_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW()) RETURNING id, title, body, image_url, cta_text, cta_url, segment, channels, kind, sent_at`,
+      [title, bodyTxt, imageUrl, ctaText, ctaUrl, segment, JSON.stringify(channels), kind, req.user.id]
+    );
+    const row = ins.rows[0];
+
+    // Fetch recipients (only needed for email; socket uses broadcast)
+    const where = _broadcastSegmentWhere(segment);
+    const recips = await pool.query(
+      `SELECT id, email, display_name FROM users WHERE verified=true AND email IS NOT NULL AND ${where}`
+    );
+
+    // Channel: in-app (socket)
+    if (channels.indexOf('app') !== -1){
+      try {
+        io.emit('broadcast-banner', {
+          id: row.id,
+          title: row.title,
+          body: row.body,
+          image_url: row.image_url,
+          cta_text: row.cta_text,
+          cta_url: row.cta_url,
+          kind: row.kind
+        });
+      } catch(_){}
+    }
+
+    // Channel: email
+    let emailSent = 0, emailFailed = 0;
+    if (channels.indexOf('email') !== -1){
+      const baseUrl = process.env.APP_URL || 'https://gistapp.onrender.com';
+      const iconUrl = baseUrl + '/icon-192.png';
+      for (const u of recips.rows){
+        try {
+          const html = '<!doctype html><html><body style="margin:0;padding:0;background:#f2f0fa;font-family:Inter,-apple-system,sans-serif">' +
+            '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f2f0fa;padding:24px 12px"><tr><td align="center">' +
+            '<table role="presentation" width="560" cellspacing="0" cellpadding="0" style="max-width:560px;width:100%;background:#fff;border-radius:20px;overflow:hidden;box-shadow:0 12px 40px rgba(51,52,76,.10)">' +
+            '<tr><td style="background:linear-gradient(135deg,#2b2c44,#5a6cd6);padding:24px 32px;text-align:center">' +
+            '<img src="' + iconUrl + '" width="48" height="48" style="border-radius:12px;display:block;margin:0 auto 10px">' +
+            '<div style="color:#fff;font-size:11px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase;opacity:.85">GistApp</div>' +
+            '</td></tr>' +
+            '<tr><td style="padding:28px 32px">' +
+            (imageUrl ? '<img src="' + imageUrl + '" style="width:100%;border-radius:14px;margin-bottom:18px;display:block">' : '') +
+            '<h1 style="margin:0 0 14px;color:#1c1c22;font-size:22px;font-weight:800;letter-spacing:-.4px">' + title.replace(/[<>&]/g, function(c){ return ({'<':'&lt;','>':'&gt;','&':'&amp;'})[c]; }) + '</h1>' +
+            '<div style="color:#4a4a55;font-size:15px;line-height:1.7;white-space:pre-wrap">' + bodyTxt.replace(/[<>&]/g, function(c){ return ({'<':'&lt;','>':'&gt;','&':'&amp;'})[c]; }) + '</div>' +
+            (ctaText && ctaUrl ? '<div style="text-align:center;margin-top:24px"><a href="' + ctaUrl + '" style="background:#2b2c44;color:#fff;text-decoration:none;padding:14px 32px;border-radius:12px;font-weight:700;display:inline-block;font-size:14.5px">' + ctaText + '</a></div>' : '') +
+            '</td></tr>' +
+            '<tr><td style="background:#f7f6fc;padding:16px 32px;text-align:center;border-top:1px solid #eae7f5">' +
+            '<p style="margin:0;color:#a8a5b3;font-size:11px">You are receiving this because you have a GistApp account. &copy; ' + new Date().getFullYear() + ' GistApp Community</p>' +
+            '</td></tr></table></td></tr></table></body></html>';
+          await mailer.sendMail({
+            from: '"GistApp" <' + GMAIL_SENDER + '>',
+            to: u.email,
+            replyTo: process.env.SMTP_USER,
+            subject: title,
+            headers: { 'X-Priority': '3', 'Importance': 'normal' },
+            html: html
+          });
+          emailSent++;
+          await new Promise(r => setTimeout(r, 200));
+        } catch(_){ emailFailed++; }
+      }
+    }
+
+    console.log('📢 Broadcast sent:', row.id, 'segment:', segment, 'kind:', kind, 'email:', emailSent);
+    res.json({ ok: true, broadcast: row, recipients: recips.rowCount, emailSent: emailSent, emailFailed: emailFailed });
+  } catch(e){ console.error('broadcast:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+// GET /api/broadcasts/pending — user's unseen announcements
+app.get('/api/broadcasts/pending', auth, async (req, res) => {
+  try {
+    const me = await pool.query('SELECT prefs FROM users WHERE id=$1', [req.user.id]);
+    const seen = ((me.rows[0] && me.rows[0].prefs && me.rows[0].prefs.seen_broadcasts) || []).map(Number);
+    const r = await pool.query(
+      "SELECT id, title, body, image_url, cta_text, cta_url, kind, sent_at FROM broadcasts WHERE kind='announcement' AND sent_at IS NOT NULL ORDER BY sent_at DESC LIMIT 20"
+    );
+    const filtered = r.rows.filter(function(x){ return seen.indexOf(Number(x.id)) === -1; });
+    res.json({ announcements: filtered });
+  } catch(e){ console.error('broadcasts pending:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+// POST /api/broadcasts/:id/seen — mark as seen
+app.post('/api/broadcasts/:id/seen', auth, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ error: 'Invalid id' });
+    const me = await pool.query('SELECT prefs FROM users WHERE id=$1', [req.user.id]);
+    let seen = ((me.rows[0] && me.rows[0].prefs && me.rows[0].prefs.seen_broadcasts) || []).map(Number);
+    if (seen.indexOf(id) === -1) seen.push(id);
+    // Keep only last 100
+    if (seen.length > 100) seen = seen.slice(-100);
+    await pool.query(
+      "UPDATE users SET prefs = COALESCE(prefs,'{}'::jsonb) || jsonb_build_object('seen_broadcasts', $1::jsonb) WHERE id=$2",
+      [JSON.stringify(seen), req.user.id]
+    );
+    res.json({ ok: true });
+  } catch(e){ console.error('mark seen:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+// GET /api/admin/broadcasts — list past broadcasts
+app.get('/api/admin/broadcasts', auth, adminOnly, async (req, res) => {
+  try {
+    const r = await pool.query(
+      "SELECT b.id, b.title, b.body, b.segment, b.kind, b.channels, b.sent_at, u.display_name AS sent_by_name FROM broadcasts b LEFT JOIN users u ON u.id=b.sent_by ORDER BY b.sent_at DESC NULLS LAST LIMIT 50"
+    );
+    res.json({ broadcasts: r.rows });
+  } catch(e){ console.error('list broadcasts:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
 /* GISTAPP_BULLETIN — creator broadcast boards */
 (async function(){
   try {

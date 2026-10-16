@@ -1979,7 +1979,23 @@ if ('serviceWorker' in navigator){
   </div>
 
   <!-- ============ NOTIFICATION BANNER ============ -->
-  <div class="notif-banner" id="notif-banner">
+  <!-- GISTAPP_BROADCAST — broadcast/announcement banner -->
+<div id="bcast-banner" style="position:fixed;top:calc(12px + env(safe-area-inset-top,0px));left:12px;right:12px;z-index:99998;transform:translateY(-200%);transition:transform .35s cubic-bezier(.3,1.3,.5,1);max-width:560px;margin:0 auto;pointer-events:none">
+  <div style="background:linear-gradient(135deg,#2b2c44,#5a6cd6);border-radius:20px;padding:14px;box-shadow:0 16px 40px rgba(0,0,0,.5);color:#fff;display:flex;gap:12px;align-items:flex-start;pointer-events:auto;position:relative">
+    <div id="bcast-icon" style="width:40px;height:40px;border-radius:12px;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">📢</div>
+    <div style="flex:1;min-width:0">
+      <div id="bcast-title" style="font-size:14px;font-weight:800;letter-spacing:-.2px;line-height:1.3">Title</div>
+      <div id="bcast-body" style="font-size:12.5px;opacity:.9;margin-top:4px;line-height:1.5;white-space:pre-wrap"></div>
+      <div id="bcast-img-wrap" style="display:none;margin-top:10px"><img id="bcast-img" style="width:100%;border-radius:12px;display:block"></div>
+      <div id="bcast-cta-wrap" style="display:none;margin-top:10px">
+        <button id="bcast-cta" style="background:#fff;color:#2b2c44;border:none;padding:9px 16px;border-radius:10px;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer"></button>
+      </div>
+    </div>
+    <button onclick="closeBcastBanner()" style="background:rgba(255,255,255,.15);color:#fff;border:none;width:26px;height:26px;border-radius:50%;font-size:14px;cursor:pointer;flex-shrink:0;padding:0;display:flex;align-items:center;justify-content:center">✕</button>
+  </div>
+</div>
+
+<div class="notif-banner" id="notif-banner">
     <div class="notif-av" id="notif-av">?</div>
     <div class="notif-info">
       <div class="notif-title" id="notif-title">New message</div>
@@ -11535,6 +11551,240 @@ window.manageBulletin = async function(){
     document.addEventListener('touchstart', function(e){ if (e.touches.length === 1) _swipe.startX = e.touches[0].clientX, _swipe.startY = e.touches[0].clientY; }, { passive: true });
   }
 })();
+
+/* GISTAPP_BROADCAST — banner display + admin composer */
+var _bcastAutoHideTimer = null;
+var _bcastQueue = [];
+var _bcastCurrent = null;
+
+window.showBcastBanner = function(data){
+  if (!data) return;
+  _bcastCurrent = data;
+  var el = document.getElementById('bcast-banner');
+  if (!el) return;
+  var icon = document.getElementById('bcast-icon');
+  var title = document.getElementById('bcast-title');
+  var body = document.getElementById('bcast-body');
+  var imgWrap = document.getElementById('bcast-img-wrap');
+  var img = document.getElementById('bcast-img');
+  var ctaWrap = document.getElementById('bcast-cta-wrap');
+  var cta = document.getElementById('bcast-cta');
+  if (title) title.textContent = data.title || '';
+  if (body) body.textContent = data.body || '';
+  if (icon) icon.textContent = data.kind === 'announcement' ? '✨' : '📢';
+  if (imgWrap && img){
+    if (data.image_url){ img.src = data.image_url; imgWrap.style.display = 'block'; }
+    else { imgWrap.style.display = 'none'; }
+  }
+  if (ctaWrap && cta){
+    if (data.cta_text && data.cta_url){
+      cta.textContent = data.cta_text;
+      cta.onclick = function(){
+        var url = data.cta_url;
+        try { if (/^https?:/i.test(url)) window.open(url, '_blank'); else location.href = url; } catch(_){}
+        closeBcastBanner();
+      };
+      ctaWrap.style.display = 'block';
+    } else { ctaWrap.style.display = 'none'; }
+  }
+  el.style.transform = 'translateY(0)';
+
+  // Auto-hide after 10s for instant banners; announcements stay until dismissed
+  if (_bcastAutoHideTimer){ clearTimeout(_bcastAutoHideTimer); _bcastAutoHideTimer = null; }
+  if (data.kind !== 'announcement'){
+    _bcastAutoHideTimer = setTimeout(function(){ closeBcastBanner(); }, 10000);
+  }
+};
+
+window.closeBcastBanner = function(){
+  var el = document.getElementById('bcast-banner');
+  if (el) el.style.transform = 'translateY(-200%)';
+  if (_bcastAutoHideTimer){ clearTimeout(_bcastAutoHideTimer); _bcastAutoHideTimer = null; }
+  // Mark announcements as seen
+  if (_bcastCurrent && _bcastCurrent.kind === 'announcement' && _bcastCurrent.id){
+    try { api('/api/broadcasts/' + _bcastCurrent.id + '/seen', { method: 'POST' }); } catch(_){}
+  }
+  _bcastCurrent = null;
+  // Show next from queue
+  setTimeout(function(){
+    if (_bcastQueue.length){
+      var next = _bcastQueue.shift();
+      showBcastBanner(next);
+    }
+  }, 500);
+};
+
+// Socket listener for live broadcasts
+if (typeof socket !== 'undefined' && socket){
+  socket.on('broadcast-banner', function(data){
+    try { showBcastBanner(data); } catch(_){}
+  });
+}
+
+// On boot, load pending announcements
+async function loadPendingAnnouncements(){
+  try {
+    var r = await api('/api/broadcasts/pending');
+    var list = (r && r.announcements) || [];
+    if (!list.length) return;
+    // Queue all, show first
+    _bcastQueue = list.slice(1);
+    showBcastBanner(list[0]);
+  } catch(_){}
+}
+setTimeout(loadPendingAnnouncements, 2500);
+
+/* Admin — broadcast composer */
+window.openBroadcastPanel = function(){
+  var screen = document.getElementById('broadcast-screen');
+  if (screen){ screen.remove(); }
+  var s = document.createElement('div');
+  s.id = 'broadcast-screen';
+  s.style.cssText = 'position:fixed;inset:0;background:var(--bg);z-index:2970;display:flex;flex-direction:column;overflow-y:auto';
+  s.innerHTML = '<div style="position:sticky;top:0;background:var(--bg);border-bottom:1px solid var(--line);padding:14px 16px;display:flex;align-items:center;gap:12px;z-index:5">' +
+    '<button onclick="document.getElementById(\'broadcast-screen\').remove()" style="background:transparent;border:none;width:36px;height:36px;border-radius:50%;color:var(--ink);font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center">←</button>' +
+    '<div style="font-size:17px;font-weight:800;color:var(--ink);flex:1">Broadcast</div>' +
+    '</div>' +
+    '<div style="padding:16px 16px 60px">' +
+    '<div style="margin-bottom:14px">' +
+      '<div style="font-size:12px;font-weight:800;color:var(--sub);letter-spacing:1.2px;text-transform:uppercase;margin-bottom:6px">Type</div>' +
+      '<div style="display:flex;gap:8px">' +
+        '<button id="bc-kind-banner" onclick="bcSetKind(\'banner\')" style="flex:1;padding:12px;border-radius:12px;border:2px solid var(--accent,#7b8cff);background:var(--accent,#7b8cff);color:#fff;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">📢 Instant banner</button>' +
+        '<button id="bc-kind-ann" onclick="bcSetKind(\'announcement\')" style="flex:1;padding:12px;border-radius:12px;border:2px solid var(--line);background:var(--bg-2);color:var(--ink);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">✨ Feature launch</button>' +
+      '</div>' +
+      '<div style="font-size:11.5px;color:var(--sub);margin-top:6px;line-height:1.5">Instant banner auto-hides after 10s. Feature launch stays until dismissed by user, and shows for every user once.</div>' +
+    '</div>' +
+    '<div style="margin-bottom:14px">' +
+      '<div style="font-size:12px;font-weight:800;color:var(--sub);letter-spacing:1.2px;text-transform:uppercase;margin-bottom:6px">Segment</div>' +
+      '<select id="bc-segment" style="width:100%;padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--bg-2);color:var(--ink);font-family:inherit;font-size:14px">' +
+        '<option value="all">All verified users</option>' +
+        '<option value="pro">Pro subscribers</option>' +
+        '<option value="business">Business subscribers</option>' +
+        '<option value="free">Free users</option>' +
+        '<option value="active">Active (30 days)</option>' +
+        '<option value="inactive">Inactive (30+ days)</option>' +
+      '</select>' +
+    '</div>' +
+    '<div style="margin-bottom:14px">' +
+      '<div style="font-size:12px;font-weight:800;color:var(--sub);letter-spacing:1.2px;text-transform:uppercase;margin-bottom:6px">Channels</div>' +
+      '<div style="display:flex;gap:12px;align-items:center">' +
+        '<label style="display:flex;align-items:center;gap:6px;font-size:14px;color:var(--ink);cursor:pointer"><input type="checkbox" id="bc-ch-app" checked style="width:18px;height:18px;accent-color:#7b8cff"> In-app banner</label>' +
+        '<label style="display:flex;align-items:center;gap:6px;font-size:14px;color:var(--ink);cursor:pointer"><input type="checkbox" id="bc-ch-email" style="width:18px;height:18px;accent-color:#7b8cff"> Email</label>' +
+      '</div>' +
+    '</div>' +
+    '<div style="margin-bottom:14px">' +
+      '<div style="font-size:12px;font-weight:800;color:var(--sub);letter-spacing:1.2px;text-transform:uppercase;margin-bottom:6px">Title</div>' +
+      '<input id="bc-title" type="text" placeholder="e.g. New: voice comments are live!" maxlength="120" style="width:100%;padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--bg-2);color:var(--ink);font-family:inherit;font-size:14px">' +
+    '</div>' +
+    '<div style="margin-bottom:14px">' +
+      '<div style="font-size:12px;font-weight:800;color:var(--sub);letter-spacing:1.2px;text-transform:uppercase;margin-bottom:6px">Body</div>' +
+      '<textarea id="bc-body" placeholder="Short description of the update or announcement" maxlength="1000" rows="5" style="width:100%;padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--bg-2);color:var(--ink);font-family:inherit;font-size:14px;resize:vertical"></textarea>' +
+    '</div>' +
+    '<div style="margin-bottom:14px">' +
+      '<div style="font-size:12px;font-weight:800;color:var(--sub);letter-spacing:1.2px;text-transform:uppercase;margin-bottom:6px">Image URL (optional)</div>' +
+      '<input id="bc-img" type="url" placeholder="https://..." style="width:100%;padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--bg-2);color:var(--ink);font-family:inherit;font-size:14px">' +
+    '</div>' +
+    '<div style="display:flex;gap:8px;margin-bottom:14px">' +
+      '<div style="flex:1"><div style="font-size:12px;font-weight:800;color:var(--sub);letter-spacing:1.2px;text-transform:uppercase;margin-bottom:6px">CTA text</div>' +
+      '<input id="bc-cta-text" type="text" placeholder="Try it now" maxlength="40" style="width:100%;padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--bg-2);color:var(--ink);font-family:inherit;font-size:14px"></div>' +
+      '<div style="flex:1"><div style="font-size:12px;font-weight:800;color:var(--sub);letter-spacing:1.2px;text-transform:uppercase;margin-bottom:6px">CTA URL</div>' +
+      '<input id="bc-cta-url" type="text" placeholder="/?tab=feed or https://..." style="width:100%;padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--bg-2);color:var(--ink);font-family:inherit;font-size:14px"></div>' +
+    '</div>' +
+    '<button onclick="bcSubmit()" id="bc-send-btn" style="width:100%;padding:15px;border-radius:14px;border:none;background:linear-gradient(135deg,#5a6cd6,#7b8cff);color:#fff;font-size:15px;font-weight:800;font-family:inherit;cursor:pointer;margin-bottom:8px">Send broadcast</button>' +
+    '<button onclick="bcPreview()" style="width:100%;padding:13px;border-radius:14px;border:1px solid var(--line);background:var(--bg-2);color:var(--ink);font-size:14px;font-weight:700;font-family:inherit;cursor:pointer">Preview</button>' +
+    '</div>';
+  document.body.appendChild(s);
+  window._bcKind = 'banner';
+};
+
+window.bcSetKind = function(kind){
+  window._bcKind = kind;
+  var a = document.getElementById('bc-kind-banner');
+  var b = document.getElementById('bc-kind-ann');
+  if (!a || !b) return;
+  if (kind === 'banner'){
+    a.style.background = 'var(--accent,#7b8cff)'; a.style.color = '#fff'; a.style.borderColor = 'var(--accent,#7b8cff)';
+    b.style.background = 'var(--bg-2)'; b.style.color = 'var(--ink)'; b.style.borderColor = 'var(--line)';
+  } else {
+    b.style.background = 'var(--accent,#7b8cff)'; b.style.color = '#fff'; b.style.borderColor = 'var(--accent,#7b8cff)';
+    a.style.background = 'var(--bg-2)'; a.style.color = 'var(--ink)'; a.style.borderColor = 'var(--line)';
+  }
+};
+
+window.bcPreview = function(){
+  var data = {
+    title: (document.getElementById('bc-title').value || 'Preview title').trim(),
+    body: (document.getElementById('bc-body').value || 'Preview body text.').trim(),
+    image_url: (document.getElementById('bc-img').value || '').trim(),
+    cta_text: (document.getElementById('bc-cta-text').value || '').trim(),
+    cta_url: (document.getElementById('bc-cta-url').value || '').trim(),
+    kind: window._bcKind || 'banner'
+  };
+  showBcastBanner(data);
+};
+
+window.bcSubmit = async function(){
+  var title = (document.getElementById('bc-title').value || '').trim();
+  var body = (document.getElementById('bc-body').value || '').trim();
+  if (!title || !body){ try { toast('Title and body required'); } catch(_){} return; }
+  var payload = {
+    title: title,
+    body: body,
+    image_url: (document.getElementById('bc-img').value || '').trim(),
+    cta_text: (document.getElementById('bc-cta-text').value || '').trim(),
+    cta_url: (document.getElementById('bc-cta-url').value || '').trim(),
+    segment: document.getElementById('bc-segment').value,
+    kind: window._bcKind || 'banner',
+    channels: []
+  };
+  if (document.getElementById('bc-ch-app').checked) payload.channels.push('app');
+  if (document.getElementById('bc-ch-email').checked) payload.channels.push('email');
+  if (!payload.channels.length){ try { toast('Select at least one channel'); } catch(_){} return; }
+  var btn = document.getElementById('bc-send-btn');
+  if (btn){ btn.disabled = true; btn.textContent = 'Sending…'; }
+  try {
+    var r = await api('/api/admin/broadcast', { method: 'POST', body: JSON.stringify(payload) });
+    try { toast('Sent to ' + (r.recipients || 0) + ' users' + (r.emailSent ? ' (' + r.emailSent + ' emails)' : '')); } catch(_){}
+    var s = document.getElementById('broadcast-screen');
+    if (s) s.remove();
+  } catch(e){
+    try { toast(e.message || 'Broadcast failed'); } catch(_){}
+    if (btn){ btn.disabled = false; btn.textContent = 'Send broadcast'; }
+  }
+};
+
+/* Settings — admin-only broadcast row */
+(function(){
+  if (window._bcSettingHooked) return;
+  window._bcSettingHooked = true;
+  var _origRender = window.renderSettingsSections;
+  if (typeof _origRender !== 'function') return;
+  window.renderSettingsSections = function(){
+    var r = _origRender.apply(this, arguments);
+    setTimeout(injectBroadcastSetting, 200);
+    return r;
+  };
+})();
+
+function injectBroadcastSetting(){
+  var sections = document.getElementById('set-sections');
+  if (!sections) return;
+  if (document.getElementById('bc-setting-row')) return;
+  if (!me || !me.is_admin) return;  // admin only
+  var groups = sections.querySelectorAll('.sgroup');
+  var communityGroup = null;
+  for (var i = 0; i < groups.length; i++){
+    if ((groups[i].textContent || '').toLowerCase().indexOf('community') !== -1){ communityGroup = groups[i]; break; }
+  }
+  if (!communityGroup) return;
+  var btn = document.createElement('button');
+  btn.id = 'bc-setting-row';
+  btn.className = 'srow';
+  btn.setAttribute('data-key', 'broadcast');
+  btn.innerHTML = '<span class="icw">📢</span><span class="rt"><span class="lbl">Broadcast message</span><span class="sub">Push a banner or announcement (admin)</span></span><span class="chev">›</span>';
+  btn.onclick = function(){ try { openBroadcastPanel(); } catch(_){} };
+  communityGroup.appendChild(btn);
+}
 
 boot();
 </script>
