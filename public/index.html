@@ -5077,6 +5077,7 @@ async function sbLoadViewers(){
         '<div style="width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:13px;flex-shrink:0;' + av + '">' + (v.avatar_url ? '' : initial) + '</div>' +
         '<div style="flex:1;min-width:0"><div style="color:#fff;font-size:13.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (v.display_name || 'User') + ' ' + tier + '</div>' +
         (v.username ? '<div style="color:rgba(255,255,255,.5);font-size:11.5px">@' + v.username + '</div>' : '') + '</div>' +
+        '<button onclick="event.stopPropagation();sbInviteGuest(' + v.user_id + ', ' + JSON.stringify(v.display_name || 'guest') + ')" style="background:linear-gradient(135deg,#7b8cff,#a86bff);color:#fff;border:none;padding:6px 12px;border-radius:16px;font-size:11.5px;font-weight:700;font-family:inherit;cursor:pointer;white-space:nowrap">+ Invite</button>' + /* GISTAPP_L7_BUTTON */
         '</div>';
     }).join('');
   } catch(e){
@@ -9962,9 +9963,48 @@ function _a1Render(d){
     '<div style="font-size:11.5px;color:var(--sub);margin-top:4px">70% of ' + (t.gross_coins || 0).toLocaleString() + ' coins gifted</div>' +
     '</div>';
 
-  body.innerHTML = statsGrid + earnings + chart + top + gifts;
+  // A3 — GISTAPP_A3_FE — follower growth chart
+  var follChart = '';
+  if (d.followers_per_day && d.followers_per_day.length){
+    var totalNew = 0;
+    d.followers_per_day.forEach(function(f){ totalNew += f.count; });
+    follChart = '<div style="background:var(--bg-2);border:1px solid var(--line);border-radius:14px;padding:14px 12px;margin-bottom:16px">' +
+      '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px">' +
+      '<div style="font-size:12px;font-weight:800;color:var(--sub);letter-spacing:1px;text-transform:uppercase">Follower growth</div>' +
+      '<div style="font-size:12px;font-weight:700;color:var(--ink)">+' + totalNew + ' this period</div>' +
+      '</div>' +
+      _a1BarChart(d.followers_per_day) +
+      '</div>';
+  }
+
+  body.innerHTML = statsGrid + earnings + chart + follChart + top + gifts;
 }
 
+
+/* GISTAPP_L7_INVITE_FE — host invites guest to co-host */
+async function sbInviteGuest(uid, name){
+  if (!_ssStreamId) return;
+  try {
+    await api('/api/live/' + _ssStreamId + '/invite/' + uid, { method: 'POST' });
+    try { toast('Invited ' + (name || 'guest') + ' to co-host'); } catch(_){}
+  } catch(e){
+    try { toast(e.message || 'Could not invite'); } catch(_){}
+  }
+}
+/* Guest side — accept or decline an incoming invite */
+(function(){
+  if (typeof socket === 'undefined' || !socket) return;
+  socket.on('live-join-approved', function(p){
+    if (!p || !p.invited) return;  // only handle direct invites here
+    try {
+      var doIt = confirm('🎬 ' + (p.host_name || 'The host') + ' invited you to co-host. Join now?');
+      if (doIt){
+        // Auto-open the viewer and connect as co-host — reuse existing approved flow
+        try { if (typeof openLiveViewer === 'function' && p.stream_id) openLiveViewer(p.stream_id); } catch(_){}
+      }
+    } catch(_){}
+  });
+})();
 
 boot();
 </script>

@@ -759,6 +759,58 @@ async function sendGiftEmail(toEmail, displayName, info){
 // Throttle map: userId → timestamp of last gift email (in-memory, resets on restart)
 const _giftEmailLastSent = new Map();
 
+/* GISTAPP_MSG_EMAIL — offline DM notification emails (throttled 1/hr per user) */
+const _msgEmailLastSent = new Map(); // userId -> ts
+
+async function sendMessageNotificationEmail(toEmail, toName, info){
+  if (!toEmail) return false;
+  info = info || {};
+  const baseUrl = process.env.APP_URL || 'https://gistapp.onrender.com';
+  const iconUrl = baseUrl + '/icon-192.png';
+  const name = toName || 'there';
+  const senderName = info.sender_name || 'Someone';
+  const snippet = String(info.snippet || '').slice(0, 200);
+  const chatId = info.chat_id;
+
+  const html = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>New message</title></head>' +
+  '<body style="margin:0;padding:0;background:#f2f0fa;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Inter,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased">' +
+  '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f2f0fa;padding:24px 12px">' +
+  '<tr><td align="center">' +
+  '<table role="presentation" width="560" cellspacing="0" cellpadding="0" border="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:24px;overflow:hidden;box-shadow:0 12px 40px rgba(51,52,76,.10)">' +
+  '<tr><td style="background:linear-gradient(135deg,#2b2c44 0%,#5a6cd6 55%,#7b8cff 100%);padding:24px 32px;text-align:center">' +
+  '<img src="' + iconUrl + '" alt="GistApp" width="48" height="48" style="border-radius:12px;display:block;margin:0 auto 8px">' +
+  '<div style="color:#fff;font-size:18px;font-weight:800">💬 New message on GistApp</div>' +
+  '</td></tr>' +
+  '<tr><td style="padding:26px 32px 8px">' +
+  '<p style="margin:0 0 14px;color:#1c1c22;font-size:15.5px;line-height:1.5"><b>' + senderName + '</b> sent you a message' + (info.chat_name ? ' in <b>' + info.chat_name + '</b>' : '') + ':</p>' +
+  '<div style="background:#fafaff;border:1px solid #eae7f5;border-left:3px solid #7b8cff;border-radius:10px;padding:14px 16px;color:#2b2c44;font-size:14px;line-height:1.55;word-wrap:break-word">' + snippet + '</div>' +
+  '</td></tr>' +
+  '<tr><td style="padding:24px 32px 30px;text-align:center">' +
+  '<a href="' + baseUrl + '" style="background:#2b2c44;color:#fff;text-decoration:none;padding:13px 36px;border-radius:12px;font-weight:700;display:inline-block;font-size:14px">Reply on GistApp</a>' +
+  '</td></tr>' +
+  '<tr><td style="background:#f7f6fc;padding:18px 32px;text-align:center;border-top:1px solid #eae7f5">' +
+  '<p style="margin:0 0 6px;color:#8e8e93;font-size:11.5px;line-height:1.6">You got this because a message arrived while you were away.</p>' +
+  '<p style="margin:0;color:#a8a5b3;font-size:11px">Turn off message emails in <b>Settings → Notifications</b>.</p>' +
+  '</td></tr>' +
+  '</table></td></tr></table></body></html>';
+
+  try {
+    await mailer.sendMail({
+      from: '"GistApp" <' + GMAIL_SENDER + '>',
+      to: toEmail,
+      replyTo: process.env.SMTP_USER,
+      subject: senderName + ' sent you a message on GistApp',
+      headers: { 'X-Priority': '3', 'Importance': 'normal' },
+      html: html
+    });
+    console.log('✅ Message notification sent to', toEmail, '(from ' + senderName + ')');
+    return true;
+  } catch(e){
+    console.warn('msg email failed:', e && e.message);
+    return false;
+  }
+}
+
 const app    = express();
 
 /* ========== GISTAPP_RATE_LIMIT_V1 ========== */
@@ -1665,6 +1717,37 @@ app.post('/api/chats/:id/messages', auth, async (req,res)=>{
     if (rp.rowCount){ full.reply_body = rp.rows[0].body; full.reply_sender = rp.rows[0].sender; full.reply_sender_id = rp.rows[0].sender_id; }
   }
   io.to('chat:'+chatId).emit('message', full);
+  // GISTAPP_MSG_EMAIL_HOOK — offline DM email notification (throttled 1/hr)
+  try {
+    (async function(){
+      try {
+        var _ci = await pool.query("SELECT type, name FROM chats WHERE id=$1", [chatId]);
+        var _type = _ci.rows[0] ? _ci.rows[0].type : null;
+        if (_type === 'dm'){
+          var _others = await pool.query(
+            "SELECT cm.user_id, u.email, u.display_name, u.prefs FROM chat_members cm JOIN users u ON u.id=cm.user_id WHERE cm.chat_id=$1 AND cm.user_id<>$2",
+            [chatId, req.user.id]
+          );
+          for (var _i = 0; _i < _others.rows.length; _i++){
+            var _r = _others.rows[_i];
+            if (!_r.email) continue;
+            var _on = onlineUsers.has(_r.user_id) && (onlineUsers.get(_r.user_id) || 0) > 0;
+            if (_on) continue;
+            var _pf = _r.prefs || {};
+            if (_pf.message_emails === 'false') continue;
+            var _last = _msgEmailLastSent.get(_r.user_id) || 0;
+            if (Date.now() - _last < 60 * 60 * 1000) continue;
+            _msgEmailLastSent.set(_r.user_id, Date.now());
+            var _snip = String(full.body || (full.media_url ? '[media]' : '') || '(no text)');
+            var _sn = full.display_name || 'Someone';
+            sendMessageNotificationEmail(_r.email, _r.display_name, {
+              sender_name: _sn, snippet: _snip, chat_id: chatId
+            }).catch(function(){});
+          }
+        }
+      } catch(_e){ console.warn('msg email hook:', _e && _e.message); }
+    })();
+  } catch(_){}
   // GISTAPP_WEBPUSH_V1 — notify other chat members
   try {
     const members = await pool.query('SELECT user_id FROM chat_members WHERE chat_id=$1 AND user_id<>$2', [chatId, req.user.id]);
@@ -4555,8 +4638,25 @@ app.get('/api/analytics/streamer', auth, async (req, res) => {
       [uid]
     );
 
+    // A3 — GISTAPP_A3_FOLLOWERS — follower growth per day
+    const follR = await pool.query(
+      `WITH days AS (
+         SELECT generate_series(
+           (CURRENT_DATE - INTERVAL '${dayRange - 1} days')::date,
+           CURRENT_DATE::date,
+           INTERVAL '1 day'
+         )::date AS d
+       )
+       SELECT d::text AS date, COALESCE(COUNT(uf.follower_id), 0)::int AS count
+       FROM days
+       LEFT JOIN user_follows uf ON DATE(uf.created_at AT TIME ZONE 'Africa/Lagos') = d AND uf.following_id = $1
+       GROUP BY d ORDER BY d`,
+      [uid]
+    );
+
     res.json({
       range: range,
+      followers_per_day: follR.rows,
       totals: {
         streams: t.streams || 0,
         hours_streamed: Number(t.hours_streamed || 0),
@@ -4667,6 +4767,62 @@ app.get('/api/live/:id/my-request', auth, async (req, res) => {
     if (!r.rowCount) return res.json({ status: null });
     res.json({ status: r.rows[0].status, request_id: r.rows[0].id });
   } catch(e){ res.status(500).json({ error: 'Server error' }); }
+});
+
+/* GISTAPP_L7_INVITE — host invites a viewer to co-host directly */
+app.post('/api/live/:id/invite/:uid', auth, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const guestId = Number(req.params.uid);
+    const own = await pool.query('SELECT streamer_id, room_name, title FROM live_streams WHERE id=$1 AND status=\'live\'', [id]);
+    if (!own.rowCount) return res.status(404).json({ error: 'Stream not found or ended' });
+    if (own.rows[0].streamer_id !== req.user.id) return res.status(403).json({ error: 'Only host' });
+    if (guestId === req.user.id) return res.status(400).json({ error: 'Cannot invite yourself' });
+
+    // Ensure guest exists
+    const gu = await pool.query('SELECT id, display_name FROM users WHERE id=$1', [guestId]);
+    if (!gu.rowCount) return res.status(404).json({ error: 'User not found' });
+
+    // Upsert a join request marked as approved (auto-approve since host initiated)
+    const existing = await pool.query(
+      'SELECT id FROM live_join_requests WHERE stream_id=$1 AND user_id=$2',
+      [id, guestId]
+    );
+    let rid;
+    if (existing.rowCount){
+      await pool.query("UPDATE live_join_requests SET status='approved', updated_at=NOW() WHERE id=$1", [existing.rows[0].id]);
+      rid = existing.rows[0].id;
+    } else {
+      const ins = await pool.query(
+        "INSERT INTO live_join_requests (stream_id, user_id, status) VALUES ($1,$2,'approved') RETURNING id",
+        [id, guestId]
+      );
+      rid = ins.rows[0].id;
+    }
+
+    // Generate publisher token
+    const me = await pool.query('SELECT display_name FROM users WHERE id=$1', [req.user.id]);
+    const guestName = gu.rows[0].display_name || 'Guest';
+    let token = null;
+    try {
+      if (typeof livekitGenerateToken === 'function' && own.rows[0].room_name){
+        token = await livekitGenerateToken(own.rows[0].room_name, guestId, guestName, true);
+      }
+    } catch(_){}
+
+    // Notify guest
+    io.to('user:' + guestId).emit('live-join-approved', {
+      stream_id: id,
+      request_id: rid,
+      room: own.rows[0].room_name,
+      token: token,
+      invited: true,
+      host_name: me.rows[0] && me.rows[0].display_name
+    });
+
+    console.log('🎬 Host invited user', guestId, 'to co-host stream', id);
+    res.json({ ok: true, request_id: rid });
+  } catch(e){ console.error('live/invite:', e.message); res.status(500).json({ error: 'Server error' }); }
 });
 
 // POST /api/live/:id/approve/:rid — host approves a request
