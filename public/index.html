@@ -1552,6 +1552,9 @@ if ('serviceWorker' in navigator){
           <div class="prof-stat" onclick="showUserList('likers')"><b id="cp-likes-count">0</b><small>Likes</small></div>
         </div>
 
+        <!-- GISTAPP_BULLETIN_FE — bulletin slot injected on profile open -->
+        <div id="cp-bulletin" style="display:none;margin:14px 0"></div>
+
         <div class="cp-action-buttons">
           <button class="follow-btn not" id="cp-follow-btn" onclick="toggleFollowCp()">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5"/><path d="M19 6v6M16 9h6"/></svg>
@@ -11166,6 +11169,241 @@ if (typeof _origRenderForSticker === 'function'){
     return html;
   };
 }
+
+/* GISTAPP_BULLETIN_FE — populate the bulletin slot when a profile opens */
+(function(){
+  if (window._bulletinProfileHooked) return;
+  window._bulletinProfileHooked = true;
+  var _origOpenUserProfile = window.openUserProfile;
+  if (typeof _origOpenUserProfile !== 'function') return;
+  window.openUserProfile = async function(userId){
+    var r = await _origOpenUserProfile.apply(this, arguments);
+    // Populate bulletin slot after profile data renders
+    setTimeout(function(){ loadCpBulletin(userId); }, 250);
+    return r;
+  };
+})();
+
+async function loadCpBulletin(userId){
+  var slot = document.getElementById('cp-bulletin');
+  if (!slot || !userId) return;
+  slot.style.display = 'none';
+  slot.innerHTML = '';
+  try {
+    var d = await api('/api/bulletin/user/' + userId);
+    if (!d.board) return;
+    var board = d.board;
+    var cover = board.cover_color || '#7b8cff';
+    var lastPost = (d.posts && d.posts[0]) ? d.posts[0] : null;
+    var preview = lastPost ? (lastPost.body || '📷 Image post').slice(0, 120) : 'No posts yet';
+    var subCount = d.subscriber_count || 0;
+    var subLabel = d.is_owner ? 'Manage' : (d.is_subscribed ? 'Subscribed' : 'Subscribe');
+    var subColor = d.is_subscribed && !d.is_owner ? '#22c55e' : cover;
+
+    slot.style.display = 'block';
+    slot.innerHTML = '<div onclick="openBulletin(' + userId + ')" style="background:var(--bg-2);border:1px solid var(--line);border-radius:16px;padding:14px;cursor:pointer;display:flex;align-items:center;gap:12px">' +
+      '<div style="width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,' + cover + ',' + cover + 'cc);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">📣</div>' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font-size:13.5px;font-weight:800;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(board.name) + '</div>' +
+        '<div style="font-size:11.5px;color:var(--sub);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + subCount + ' subscriber' + (subCount === 1 ? '' : 's') + ' · ' + esc(preview) + '</div>' +
+      '</div>' +
+      '<div style="background:' + subColor + '22;color:' + subColor + ';font-size:11.5px;font-weight:800;padding:6px 10px;border-radius:10px;white-space:nowrap">' + subLabel + '</div>' +
+    '</div>';
+  } catch(_){
+    slot.style.display = 'none';
+  }
+}
+
+/* Settings row for bulletin — inject into Settings screen */
+(function(){
+  if (window._bulletinSettingsHooked) return;
+  window._bulletinSettingsHooked = true;
+  var _origRender = window.renderSettingsSections;
+  if (typeof _origRender !== 'function') return;
+  window.renderSettingsSections = function(){
+    var r = _origRender.apply(this, arguments);
+    setTimeout(injectBulletinSetting, 200);
+    return r;
+  };
+})();
+
+function injectBulletinSetting(){
+  var sections = document.getElementById('set-sections');
+  if (!sections) return;
+  if (document.getElementById('bbs-setting-row')) return;
+  // Find "Community" group and add after it
+  var groups = sections.querySelectorAll('.sgroup');
+  var target = null;
+  for (var i = 0; i < groups.length; i++){
+    if ((groups[i].textContent || '').toLowerCase().indexOf('community') !== -1){ target = groups[i]; break; }
+  }
+  if (!target) return;
+  var btn = document.createElement('button');
+  btn.id = 'bbs-setting-row';
+  btn.className = 'srow';
+  btn.setAttribute('data-key', 'bulletin');
+  btn.innerHTML = '<span class="icw">📣</span><span class="rt"><span class="lbl">My bulletin board</span><span class="sub">Broadcast to your followers (Pro)</span></span><span class="chev">›</span>';
+  btn.onclick = function(){ try { manageBulletin(); } catch(_){} };
+  target.appendChild(btn);
+}
+
+/* Handle notification badge for new bulletin posts */
+(function(){
+  if (typeof socket === 'undefined' || !socket) return;
+  socket.on('bulletin-new-post', function(p){
+    try { toast('📣 New bulletin from ' + (p.owner_name || 'a creator')); } catch(_){}
+  });
+})();
+
+/* GISTAPP_BULLETIN — creator broadcast boards */
+var _bulletinCurrentBoard = null;
+var _bulletinCurrentUserId = null;
+
+window.openBulletin = async function(userId){
+  _bulletinCurrentUserId = userId;
+  var s = document.getElementById('bulletin-screen');
+  if (!s){
+    s = document.createElement('div');
+    s.id = 'bulletin-screen';
+    s.style.cssText = 'position:fixed;inset:0;background:var(--bg);z-index:2965;display:flex;flex-direction:column;overflow-y:auto';
+    s.innerHTML = '<div style="position:sticky;top:0;background:var(--bg);border-bottom:1px solid var(--line);padding:14px 16px;display:flex;align-items:center;gap:12px;z-index:5">' +
+      '<button onclick="closeBulletin()" style="background:transparent;border:none;width:36px;height:36px;border-radius:50%;color:var(--ink);font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center">←</button>' +
+      '<div id="bulletin-title" style="font-size:17px;font-weight:800;color:var(--ink);flex:1">Bulletin</div>' +
+      '</div>' +
+      '<div id="bulletin-body" style="padding:0 0 60px"><div style="text-align:center;padding:40px;color:var(--sub)">Loading…</div></div>';
+    document.body.appendChild(s);
+  }
+  s.style.display = 'flex';
+  loadBulletin();
+};
+
+window.closeBulletin = function(){
+  var s = document.getElementById('bulletin-screen');
+  if (s) s.style.display = 'none';
+};
+
+window.loadBulletin = async function(){
+  var body = document.getElementById('bulletin-body');
+  var title = document.getElementById('bulletin-title');
+  if (!body || !_bulletinCurrentUserId) return;
+  body.innerHTML = '<div style="text-align:center;padding:40px;color:var(--sub)">Loading…</div>';
+  try {
+    var d = await api('/api/bulletin/user/' + _bulletinCurrentUserId);
+    if (!d.board){
+      body.innerHTML = '<div style="text-align:center;padding:60px 20px;color:var(--sub)"><div style="font-size:44px;margin-bottom:10px">📣</div><div style="font-size:14.5px;font-weight:700;color:var(--ink);margin-bottom:6px">No bulletin board yet</div><div style="font-size:13px;line-height:1.5">This creator has not set up a bulletin board.</div></div>';
+      return;
+    }
+    _bulletinCurrentBoard = d.board;
+    if (title) title.textContent = d.board.name || 'Bulletin';
+    renderBulletin(d);
+  } catch(e){
+    body.innerHTML = '<div style="text-align:center;padding:40px;color:var(--sub)">Could not load bulletin</div>';
+  }
+};
+
+function renderBulletin(d){
+  var body = document.getElementById('bulletin-body');
+  if (!body) return;
+  var board = d.board;
+  var cover = board.cover_color || '#7b8cff';
+  var subBtn;
+  if (d.is_owner){
+    subBtn = '<button onclick="bulletinNewPost()" style="background:var(--accent,#7b8cff);color:#fff;border:none;padding:11px 20px;border-radius:12px;font-size:14px;font-weight:800;font-family:inherit;cursor:pointer;width:100%">✍️ New post</button>';
+  } else if (d.is_subscribed){
+    subBtn = '<button onclick="bulletinToggleSub(false)" style="background:var(--bg-2);color:var(--ink);border:1px solid var(--line);padding:11px 20px;border-radius:12px;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;width:100%">✓ Subscribed</button>';
+  } else {
+    subBtn = '<button onclick="bulletinToggleSub(true)" style="background:var(--accent,#7b8cff);color:#fff;border:none;padding:11px 20px;border-radius:12px;font-size:14px;font-weight:800;font-family:inherit;cursor:pointer;width:100%">Subscribe</button>';
+  }
+
+  var header = '<div style="background:linear-gradient(135deg,' + cover + ',' + cover + 'cc);padding:26px 20px 22px;color:#fff">' +
+    '<div style="font-size:34px;margin-bottom:8px">📣</div>' +
+    '<div style="font-size:22px;font-weight:800;letter-spacing:-.4px">' + esc(board.name) + '</div>' +
+    (board.description ? '<div style="font-size:13.5px;opacity:.9;margin-top:6px;line-height:1.5">' + esc(board.description) + '</div>' : '') +
+    '<div style="font-size:12px;opacity:.85;margin-top:10px">' + (d.subscriber_count || 0) + ' subscriber' + (d.subscriber_count === 1 ? '' : 's') + '</div>' +
+  '</div>';
+
+  var subRow = '<div style="padding:14px 16px 4px">' + subBtn + '</div>';
+
+  var posts = '';
+  if (!d.posts || !d.posts.length){
+    posts = '<div style="text-align:center;padding:40px 20px;color:var(--sub);font-size:13px">No posts yet</div>';
+  } else {
+    posts = '<div style="padding:14px 16px">' + d.posts.map(function(p){
+      var delBtn = d.is_owner ? '<button onclick="bulletinDeletePost(' + p.id + ')" style="background:transparent;border:none;color:var(--sub);font-size:12px;cursor:pointer;padding:4px 6px">Delete</button>' : '';
+      var img = p.image_url ? '<img src="' + p.image_url + '" style="width:100%;border-radius:12px;margin-top:10px;display:block">' : '';
+      var bodyText = p.body ? '<div style="font-size:14.5px;color:var(--ink);line-height:1.6;white-space:pre-wrap">' + esc(p.body) + '</div>' : '';
+      return '<div style="background:var(--bg-2);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px">' +
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">' +
+          '<div style="font-size:11.5px;color:var(--sub);font-weight:700">' + timeAgo(p.created_at) + '</div>' +
+          delBtn +
+        '</div>' +
+        bodyText + img +
+      '</div>';
+    }).join('') + '</div>';
+  }
+
+  body.innerHTML = header + subRow + posts;
+}
+
+window.bulletinToggleSub = async function(going){
+  if (!_bulletinCurrentBoard) return;
+  var bid = _bulletinCurrentBoard.id;
+  try {
+    if (going){
+      await api('/api/bulletin/' + bid + '/subscribe', { method: 'POST' });
+      try { toast('Subscribed'); } catch(_){}
+    } else {
+      await api('/api/bulletin/' + bid + '/subscribe', { method: 'DELETE' });
+      try { toast('Unsubscribed'); } catch(_){}
+    }
+    loadBulletin();
+  } catch(e){ try { toast(e.message || 'Failed'); } catch(_){} }
+};
+
+window.bulletinNewPost = function(){
+  if (!_bulletinCurrentBoard) return;
+  var body = prompt('Write your bulletin post (up to 2000 chars):');
+  if (!body || !body.trim()) return;
+  api('/api/bulletin/' + _bulletinCurrentBoard.id + '/post', {
+    method: 'POST', body: JSON.stringify({ body: body.trim() })
+  }).then(function(){
+    try { toast('Posted to bulletin'); } catch(_){}
+    loadBulletin();
+  }).catch(function(e){
+    try { toast(e.message || 'Could not post'); } catch(_){}
+  });
+};
+
+window.bulletinDeletePost = async function(postId){
+  if (!confirm('Delete this bulletin post?')) return;
+  try {
+    await api('/api/bulletin/post/' + postId, { method: 'DELETE' });
+    try { toast('Deleted'); } catch(_){}
+    loadBulletin();
+  } catch(e){ try { toast(e.message || 'Failed'); } catch(_){} }
+};
+
+/* Settings — manage your bulletin (Pro only) */
+window.manageBulletin = async function(){
+  try {
+    var meRow = await api('/api/me');
+    if (!meRow.subscription_tier || meRow.subscription_tier === 'free'){
+      try { toast('Bulletin boards require Pro'); } catch(_){}
+      return;
+    }
+    var d = await api('/api/bulletin/user/' + me.id);
+    if (!d.board){
+      var name = prompt('Name your bulletin board:', (me.display_name || 'My') + "'s Bulletin");
+      if (!name) return;
+      var desc = prompt('Short description (optional):', '');
+      await api('/api/bulletin/create', { method: 'POST', body: JSON.stringify({ name: name, description: desc || '' }) });
+      try { toast('Bulletin created'); } catch(_){}
+      openBulletin(me.id);
+    } else {
+      openBulletin(me.id);
+    }
+  } catch(e){ try { toast(e.message || 'Could not open bulletin'); } catch(_){} }
+};
 
 boot();
 </script>

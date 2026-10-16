@@ -3002,6 +3002,39 @@ app.get('/api/posts/:id/comments', auth, async (req, res) => {
   } catch(e){ console.error('comments get:', e.message); res.status(500).json({ error: 'Server error' }); }
 });
 
+/* GISTAPP_BULLETIN — creator broadcast boards */
+(async function(){
+  try {
+    await pool.query(`CREATE TABLE IF NOT EXISTS bulletin_boards (
+      id SERIAL PRIMARY KEY,
+      owner_id INTEGER UNIQUE NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT,
+      cover_color TEXT DEFAULT '#7b8cff',
+      is_public BOOLEAN DEFAULT true,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    await pool.query(`CREATE TABLE IF NOT EXISTS bulletin_posts (
+      id SERIAL PRIMARY KEY,
+      board_id INTEGER NOT NULL,
+      owner_id INTEGER NOT NULL,
+      body TEXT NOT NULL,
+      image_url TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      edited_at TIMESTAMPTZ
+    )`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS bulletin_posts_board_idx ON bulletin_posts (board_id, created_at DESC)`);
+    await pool.query(`CREATE TABLE IF NOT EXISTS bulletin_subscriptions (
+      board_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      muted BOOLEAN DEFAULT false,
+      subscribed_at TIMESTAMPTZ DEFAULT NOW(),
+      PRIMARY KEY (board_id, user_id)
+    )`);
+    console.log('✅ bulletin migrations ready');
+  } catch(e){ console.warn('bulletin migration:', e.message); }
+})();
+
 /* GISTAPP_BATCH2 — sticker comments + report status */
 (async function(){
   try {
@@ -3012,6 +3045,173 @@ app.get('/api/posts/:id/comments', auth, async (req, res) => {
     console.log('✅ batch2 migrations ready');
   } catch(e){ console.warn('batch2 migration:', e.message); }
 })();
+
+/* GISTAPP_BULLETIN — creator broadcast boards */
+const BULLETIN_MAX_POSTS_PER_DAY = 20;
+
+function _isProLike(user){
+  return user && (user.subscription_tier === 'pro' || user.subscription_tier === 'business');
+}
+
+// Create or update your board (Pro only)
+app.post('/api/bulletin/create', auth, async (req, res) => {
+  try {
+    const me = await pool.query('SELECT subscription_tier FROM users WHERE id=$1', [req.user.id]);
+    if (!me.rowCount || !_isProLike(me.rows[0])) return res.status(403).json({ error: 'Bulletin boards require Pro', needs_premium: true });
+    const name = String((req.body && req.body.name) || '').trim().slice(0, 60);
+    const description = String((req.body && req.body.description) || '').trim().slice(0, 300);
+    const coverColor = String((req.body && req.body.cover_color) || '#7b8cff').slice(0, 20);
+    const isPublic = req.body && req.body.is_public !== undefined ? !!req.body.is_public : true;
+    if (!name) return res.status(400).json({ error: 'Board name required' });
+
+    const existing = await pool.query('SELECT id FROM bulletin_boards WHERE owner_id=$1', [req.user.id]);
+    let board;
+    if (existing.rowCount){
+      const r = await pool.query(
+        'UPDATE bulletin_boards SET name=$1, description=$2, cover_color=$3, is_public=$4 WHERE owner_id=$5 RETURNING id, name, description, cover_color, is_public',
+        [name, description || null, coverColor, isPublic, req.user.id]
+      );
+      board = r.rows[0];
+    } else {
+      const r = await pool.query(
+        'INSERT INTO bulletin_boards (owner_id, name, description, cover_color, is_public) VALUES ($1,$2,$3,$4,$5) RETURNING id, name, description, cover_color, is_public',
+        [req.user.id, name, description || null, coverColor, isPublic]
+      );
+      board = r.rows[0];
+      // Auto-subscribe all current followers
+      try {
+        await pool.query(
+          'INSERT INTO bulletin_subscriptions (board_id, user_id) SELECT $1, follower_id FROM user_follows WHERE following_id=$2 ON CONFLICT DO NOTHING',
+          [board.id, req.user.id]
+        );
+      } catch(_){}
+    }
+    res.json({ ok: true, board: board });
+  } catch(e){ console.error('bulletin create:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+// Get a user's board + recent posts
+app.get('/api/bulletin/user/:userId', auth, async (req, res) => {
+  try {
+    const uid = Number(req.params.userId);
+    const bRow = await pool.query('SELECT id, owner_id, name, description, cover_color, is_public, created_at FROM bulletin_boards WHERE owner_id=$1', [uid]);
+    if (!bRow.rowCount) return res.json({ board: null });
+    const board = bRow.rows[0];
+    if (!board.is_public && board.owner_id !== req.user.id){
+      // Private board — check subscription
+      const sub = await pool.query('SELECT 1 FROM bulletin_subscriptions WHERE board_id=$1 AND user_id=$2', [board.id, req.user.id]);
+      if (!sub.rowCount) return res.json({ board: { id: board.id, name: board.name, description: board.description, cover_color: board.cover_color, is_public: false }, posts: [], is_subscribed: false, is_owner: false });
+    }
+    const postsR = await pool.query(
+      'SELECT id, body, image_url, created_at, edited_at FROM bulletin_posts WHERE board_id=$1 ORDER BY created_at DESC LIMIT 50',
+      [board.id]
+    );
+    const subR = await pool.query('SELECT muted FROM bulletin_subscriptions WHERE board_id=$1 AND user_id=$2', [board.id, req.user.id]);
+    const subCountR = await pool.query('SELECT COUNT(*)::int AS n FROM bulletin_subscriptions WHERE board_id=$1', [board.id]);
+    res.json({
+      board: board,
+      posts: postsR.rows,
+      is_subscribed: subR.rowCount > 0,
+      muted: subR.rowCount ? !!subR.rows[0].muted : false,
+      subscriber_count: subCountR.rows[0].n,
+      is_owner: board.owner_id === req.user.id
+    });
+  } catch(e){ console.error('bulletin get:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+// Subscribe
+app.post('/api/bulletin/:boardId/subscribe', auth, async (req, res) => {
+  try {
+    const bid = Number(req.params.boardId);
+    const b = await pool.query('SELECT owner_id, is_public FROM bulletin_boards WHERE id=$1', [bid]);
+    if (!b.rowCount) return res.status(404).json({ error: 'Board not found' });
+    if (b.rows[0].owner_id === req.user.id) return res.status(400).json({ error: 'You cannot subscribe to your own board' });
+    await pool.query('INSERT INTO bulletin_subscriptions (board_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [bid, req.user.id]);
+    const cnt = await pool.query('SELECT COUNT(*)::int AS n FROM bulletin_subscriptions WHERE board_id=$1', [bid]);
+    res.json({ ok: true, subscribed: true, subscriber_count: cnt.rows[0].n });
+  } catch(e){ console.error('bulletin sub:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+app.delete('/api/bulletin/:boardId/subscribe', auth, async (req, res) => {
+  try {
+    const bid = Number(req.params.boardId);
+    await pool.query('DELETE FROM bulletin_subscriptions WHERE board_id=$1 AND user_id=$2', [bid, req.user.id]);
+    const cnt = await pool.query('SELECT COUNT(*)::int AS n FROM bulletin_subscriptions WHERE board_id=$1', [bid]);
+    res.json({ ok: true, subscribed: false, subscriber_count: cnt.rows[0].n });
+  } catch(e){ console.error('bulletin unsub:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+// Create post (owner only)
+app.post('/api/bulletin/:boardId/post', auth, async (req, res) => {
+  try {
+    const bid = Number(req.params.boardId);
+    const b = await pool.query('SELECT owner_id FROM bulletin_boards WHERE id=$1', [bid]);
+    if (!b.rowCount) return res.status(404).json({ error: 'Board not found' });
+    if (b.rows[0].owner_id !== req.user.id) return res.status(403).json({ error: 'Only owner can post' });
+    const body = String((req.body && req.body.body) || '').trim().slice(0, 2000);
+    const imageUrl = req.body && req.body.image_url ? String(req.body.image_url).slice(0, 500) : null;
+    if (!body && !imageUrl) return res.status(400).json({ error: 'Post body required' });
+
+    // Rate limit: max 20 posts per day
+    const today = await pool.query(
+      "SELECT COUNT(*)::int AS n FROM bulletin_posts WHERE board_id=$1 AND created_at > NOW() - INTERVAL '24 hours'",
+      [bid]
+    );
+    if (today.rows[0].n >= BULLETIN_MAX_POSTS_PER_DAY) return res.status(429).json({ error: 'Daily post limit reached' });
+
+    const r = await pool.query(
+      'INSERT INTO bulletin_posts (board_id, owner_id, body, image_url) VALUES ($1,$2,$3,$4) RETURNING id, body, image_url, created_at',
+      [bid, req.user.id, body, imageUrl]
+    );
+
+    // Notify subscribers via socket + push
+    try {
+      const subs = await pool.query('SELECT user_id, muted FROM bulletin_subscriptions WHERE board_id=$1 AND user_id<>$2', [bid, req.user.id]);
+      const me = await pool.query('SELECT display_name FROM users WHERE id=$1', [req.user.id]);
+      const name = (me.rows[0] && me.rows[0].display_name) || 'Someone';
+      const preview = body ? body.slice(0, 100) : '📷 New bulletin post';
+      subs.rows.forEach(function(s){
+        io.to('user:' + s.user_id).emit('bulletin-new-post', { board_id: bid, owner_name: name, preview: preview });
+        if (!s.muted){
+          sendPush(s.user_id, '📣 ' + name, preview, { url: '/?bulletin=' + bid, tag: 'bulletin-' + bid }).catch(function(){});
+        }
+      });
+    } catch(_){}
+
+    res.json({ ok: true, post: r.rows[0] });
+  } catch(e){ console.error('bulletin post:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+// Delete post (owner only)
+app.delete('/api/bulletin/post/:postId', auth, async (req, res) => {
+  try {
+    const pid = Number(req.params.postId);
+    const r = await pool.query('SELECT owner_id FROM bulletin_posts WHERE id=$1', [pid]);
+    if (!r.rowCount) return res.status(404).json({ error: 'Post not found' });
+    if (r.rows[0].owner_id !== req.user.id) return res.status(403).json({ error: 'Only owner' });
+    await pool.query('DELETE FROM bulletin_posts WHERE id=$1', [pid]);
+    res.json({ ok: true });
+  } catch(e){ console.error('bulletin del:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+// Get my subscriptions
+app.get('/api/bulletin/subscriptions/mine', auth, async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT b.id, b.name, b.description, b.cover_color, b.owner_id,
+              u.display_name AS owner_name, u.username AS owner_username, u.avatar_url AS owner_avatar, u.avatar_color AS owner_color,
+              (SELECT body FROM bulletin_posts WHERE board_id=b.id ORDER BY created_at DESC LIMIT 1) AS last_post
+       FROM bulletin_subscriptions s
+       JOIN bulletin_boards b ON b.id = s.board_id
+       JOIN users u ON u.id = b.owner_id
+       WHERE s.user_id=$1 AND s.muted=false
+       ORDER BY s.subscribed_at DESC
+       LIMIT 50`,
+      [req.user.id]
+    );
+    res.json({ subscriptions: r.rows });
+  } catch(e){ console.error('bulletin subs mine:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
 
 /* GISTAPP_BATCH2 — my submitted reports */
 app.get('/api/reports/mine', auth, async (req, res) => {
