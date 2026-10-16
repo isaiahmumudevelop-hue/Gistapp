@@ -11092,30 +11092,62 @@ window.openReportHistory = async function(){
   }
 };
 
-// Update Community screen — add "My reports" action
+// GISTAPP_REPORTS_ROW_FIX — inject "My reports" into Safety section via MutationObserver
 (function(){
-  if (window._batch2CommWrapped) return;
-  window._batch2CommWrapped = true;
-  var _orig = window.openCommunity;
-  if (typeof _orig === 'function'){
+  if (window._reportsRowObserved) return;
+  window._reportsRowObserved = true;
+
+  function injectMyReports(){
+    var body = document.getElementById('community-body');
+    if (!body) return;
+    // Find the "Blocked users" action row
+    var all = body.querySelectorAll('div[onclick]');
+    var blocked = null;
+    for (var i = 0; i < all.length; i++){
+      var txt = all[i].textContent || '';
+      if (txt.indexOf('Blocked users') !== -1){ blocked = all[i]; break; }
+    }
+    if (!blocked) return;
+    if (document.getElementById('report-history-row')) return;
+    var newRow = blocked.cloneNode(true);
+    newRow.id = 'report-history-row';
+    newRow.setAttribute('onclick', "document.getElementById('community-screen').style.display='none'; openReportHistory()");
+    // Replace emoji + title + sub
+    var kids = newRow.children;
+    if (kids.length >= 1) kids[0].textContent = '📋';
+    if (kids.length >= 2 && kids[1].children.length >= 2){
+      kids[1].children[0].textContent = 'My reports';
+      kids[1].children[1].textContent = 'See your report history';
+    }
+    blocked.parentNode.insertBefore(newRow, blocked.nextSibling);
+  }
+
+  // Observe #community-body for content changes
+  var observer = new MutationObserver(function(){
+    if (document.getElementById('community-screen') && document.getElementById('community-screen').style.display !== 'none'){
+      injectMyReports();
+    }
+  });
+
+  // Hook openCommunity to start observing after screen opens
+  var _origOpen = window.openCommunity;
+  if (typeof _origOpen === 'function'){
     window.openCommunity = function(){
-      var r = _orig.apply(this, arguments);
+      var r = _origOpen.apply(this, arguments);
       setTimeout(function(){
-        var safety = document.querySelector('#community-body [style*="Safety"]');
-        // Insert "My reports" row into safety section after Blocked users
-        var blocked = Array.from(document.querySelectorAll('#community-body > div > div')).find(function(el){
-          return (el.textContent || '').indexOf('Blocked users') !== -1 && el.getAttribute('onclick');
-        });
-        if (blocked && !document.getElementById('report-history-row')){
-          var newRow = blocked.cloneNode(true);
-          newRow.id = 'report-history-row';
-          newRow.setAttribute('onclick', "document.getElementById('community-screen').style.display='none'; openReportHistory()");
-          newRow.querySelector('div:nth-child(2) > div').textContent = '📋';
-          newRow.querySelector('div:nth-child(3) > div').textContent = 'My reports';
-          newRow.querySelector('div:nth-child(3) > div:nth-child(2)').textContent = 'See your report history';
-          blocked.parentNode.insertBefore(newRow, blocked.nextSibling);
+        var body = document.getElementById('community-body');
+        if (body){
+          injectMyReports();
+          try { observer.observe(body, { childList: true, subtree: true }); } catch(_){}
+          // Retry a few times in case API is slow
+          var tries = 0;
+          var iv = setInterval(function(){
+            tries++;
+            injectMyReports();
+            if (document.getElementById('report-history-row') || tries > 20) clearInterval(iv);
+          }, 500);
         }
-      }, 500);
+      }, 100);
       return r;
     };
   }
