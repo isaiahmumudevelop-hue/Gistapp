@@ -76,15 +76,28 @@ async function getGmailAccessToken(){
   return data.access_token;
 }
 
-async function sendViaGmailAPI({ to, subject, html, text, from }){
+async function sendViaGmailAPI({ to, subject, html, text, from, headers, replyTo }){
   const accessToken = await getGmailAccessToken();
   const senderName = 'GistApp';
   const fromHeader = '"' + senderName + '" <' + (from || GMAIL_SENDER) + '>';
   const boundary = 'gist_' + Date.now() + '_' + Math.random().toString(36).slice(2,8);
+  // GISTAPP_MIME_SUBJECT_FIX — RFC 2047 encode non-ASCII subjects (emoji, accents)
+  const _encSubject = (function(s){
+    s = String(s == null ? '' : s);
+    // eslint-disable-next-line no-control-regex
+    if (/^[\x00-\x7F]*$/.test(s)) return s;
+    return '=?UTF-8?B?' + Buffer.from(s, 'utf-8').toString('base64') + '?=';
+  })(subject);
+  const _msgId = '<' + Date.now() + '.' + Math.random().toString(36).slice(2,10) + '@gistapp.local>';
+  const _date = new Date().toUTCString();
   const mime = [
     'From: ' + fromHeader,
     'To: ' + to,
-    'Subject: ' + subject,
+    'Subject: ' + _encSubject,
+    'Date: ' + _date,
+    'Message-ID: ' + _msgId,
+    ...(replyTo ? ['Reply-To: ' + replyTo] : []),
+    ...(headers ? Object.keys(headers).map(function(k){ return k + ': ' + headers[k]; }) : []),
     'MIME-Version: 1.0',
     'Content-Type: multipart/alternative; boundary="' + boundary + '"',
     '',
@@ -123,12 +136,15 @@ async function sendViaGmailAPI({ to, subject, html, text, from }){
 // Shim so existing mailer.sendMail({...}) calls keep working
 const mailer = {
   sendMail: async function(opts){
+    // GISTAPP_MIME_SUBJECT_FIX — pass extra headers through
     return sendViaGmailAPI({
       to: opts.to,
       subject: opts.subject,
       html: opts.html,
       text: opts.text,
-      from: GMAIL_SENDER
+      from: GMAIL_SENDER,
+      headers: opts.headers || null,
+      replyTo: opts.replyTo || null
     });
   },
   verify: async function(cb){
@@ -175,9 +191,8 @@ async function sendVerificationEmail(toEmail, token, displayName){
     replyTo: process.env.SMTP_USER,
     subject: 'Verify your GistApp account',
     headers: {
-      'X-Priority': '1',
-      'X-MSMail-Priority': 'High',
-      'Importance': 'high',
+      'X-Priority': '3',
+      'Importance': 'normal',
       'List-Unsubscribe': '<mailto:' + process.env.SMTP_USER + '>'
     },
     html: `
@@ -246,6 +261,67 @@ async function sendWelcomeEmail(toEmail, displayName){
     `
   });
   return info;
+}
+
+/* GISTAPP_SECURITY_ALERT — emails on critical account changes */
+async function sendSecurityAlertEmail(toEmail, displayName, eventType, meta){
+  if (!toEmail) return;
+  meta = meta || {};
+  const baseUrl = process.env.APP_URL || 'http://localhost:3000';
+  const iconUrl = baseUrl + '/icon-192.png';
+  const name = displayName || 'there';
+  const configs = {
+    '2fa_enabled':   { emoji:'\uD83D\uDEE1\uFE0F', title:'Two-factor authentication enabled',
+                       body:'2FA is now active on your GistApp account. You will need your authenticator app to sign in.' },
+    '2fa_disabled':  { emoji:'\u26A0\uFE0F', title:'Two-factor authentication DISABLED',
+                       body:'2FA was turned off. Your account is now protected by password only. If you did not do this, re-enable 2FA immediately.' },
+    'email_changed': { emoji:'\u2709\uFE0F', title:'Your account email was changed',
+                       body:'The email on your GistApp account was changed to <b>' + (meta.newEmail || 'a new address') + '</b>. If you did not do this, secure your account immediately.' }
+  };
+  const c = configs[eventType];
+  if (!c) return;
+  const time = new Date().toLocaleString('en-GB', { timeZone: 'Africa/Lagos' }) + ' WAT';
+  const ip = meta.ip ? String(meta.ip) : 'unknown';
+  try {
+    await mailer.sendMail({
+      from: '"GistApp Security" <' + GMAIL_SENDER + '>',
+      to: toEmail,
+      replyTo: process.env.SMTP_USER,
+      subject: c.emoji + ' ' + c.title,
+      headers: { 'X-Priority': '3', 'Importance': 'normal', 'List-Unsubscribe': '<mailto:' + process.env.SMTP_USER + '>' },
+      html: `
+        <div style="font-family:Inter,-apple-system,system-ui,sans-serif;max-width:520px;margin:0 auto;padding:0;background:#f7f5ff;border-radius:20px;overflow:hidden">
+          <div style="background:linear-gradient(135deg,#e5484d,#ff6b6b);padding:24px 32px;text-align:center">
+            <img src="${iconUrl}" alt="GistApp" width="56" height="56" style="border-radius:14px;display:block;margin:0 auto 10px">
+            <div style="color:#fff;font-size:20px;font-weight:800">${c.emoji} ${c.title}</div>
+          </div>
+          <div style="padding:28px 32px 32px">
+            <p style="color:#33344c;font-size:16px;line-height:1.6;margin:0 0 16px">Hi ${name},</p>
+            <p style="color:#4a4568;font-size:15px;line-height:1.6;margin:0 0 20px">${c.body}</p>
+            <div style="background:#fff;border:1px solid #e6e2ff;border-radius:12px;padding:14px 16px;margin:0 0 22px">
+              <table style="width:100%;font-size:13.5px;color:#4a4568;line-height:1.7">
+                <tr><td style="color:#8e8e93;padding-right:12px">Account:</td><td>${toEmail}</td></tr>
+                <tr><td style="color:#8e8e93;padding-right:12px">Time:</td><td>${time}</td></tr>
+                <tr><td style="color:#8e8e93;padding-right:12px">IP:</td><td>${ip}</td></tr>
+              </table>
+            </div>
+            <div style="background:#fff3cd;border:1px solid #ffe58f;border-radius:12px;padding:14px 16px;margin:0 0 22px">
+              <p style="color:#7a5a00;font-size:13.5px;line-height:1.6;margin:0"><b>If this wasn't you</b>, secure your account immediately.</p>
+            </div>
+            <div style="text-align:center;margin:24px 0 12px">
+              <a href="${baseUrl}" style="background:#e5484d;color:#fff;text-decoration:none;padding:13px 32px;border-radius:12px;font-weight:700;display:inline-block;font-size:15px">Open GistApp</a>
+            </div>
+            <p style="color:#8e8e93;font-size:12.5px;line-height:1.6;margin:20px 0 0;text-align:center">You're receiving this because security settings on your GistApp account changed.<br>&copy; GistApp</p>
+          </div>
+        </div>
+      `
+    });
+    console.log('\u2705 Security alert sent (' + eventType + ') to', toEmail);
+    return true;
+  } catch(e){
+    console.warn('security alert failed:', e && e.message);
+    return false;
+  }
 }
 
 const app    = express();
@@ -1491,6 +1567,11 @@ app.post('/api/2fa/enable', auth, async (req, res) => {
     const ok = speakeasy.totp.verify({ secret, encoding:'base32', token: String(code||'').trim(), window: 1 });
     if (!ok) return res.status(400).json({ error: 'Invalid code' });
     await pool.query('UPDATE users SET totp_enabled=true WHERE id=$1', [req.user.id]);
+    // GISTAPP_SECURITY_ALERT
+    try {
+      const _me = await pool.query('SELECT email, display_name FROM users WHERE id=$1', [req.user.id]);
+      if (_me.rowCount) sendSecurityAlertEmail(_me.rows[0].email, _me.rows[0].display_name, '2fa_enabled', { ip: req.ip }).catch(function(){});
+    } catch(_){}
     res.json({ ok: true });
   } catch(e){ console.error(e); res.status(500).json({ error: 'Server error' }); }
 });
@@ -1502,6 +1583,11 @@ app.post('/api/2fa/disable', auth, async (req, res) => {
     const ok = await bcrypt.compare(String(password||''), r.rows[0].password_hash);
     if (!ok) return res.status(401).json({ error: 'Wrong password' });
     await pool.query('UPDATE users SET totp_enabled=false, totp_secret=NULL WHERE id=$1', [req.user.id]);
+    // GISTAPP_SECURITY_ALERT
+    try {
+      const _me = await pool.query('SELECT email, display_name FROM users WHERE id=$1', [req.user.id]);
+      if (_me.rowCount) sendSecurityAlertEmail(_me.rows[0].email, _me.rows[0].display_name, '2fa_disabled', { ip: req.ip }).catch(function(){});
+    } catch(_){}
     res.json({ ok: true });
   } catch(e){ console.error(e); res.status(500).json({ error: 'Server error' }); }
 });
@@ -1544,7 +1630,7 @@ app.get('/verify-email-change', async (req, res) => {
   const token = (req.query.token||'').trim();
   if (!token) return res.status(400).send('<h2>Missing token</h2>');
   const r = await pool.query(
-    'SELECT id, email_change_new FROM users WHERE email_change_token=$1 AND email_change_expires > NOW()',
+    'SELECT id, email, display_name, email_change_new FROM users WHERE email_change_token=$1 AND email_change_expires > NOW()',
     [token]
   );
   if (!r.rowCount) return res.send('<h2>Link expired or invalid</h2>');
@@ -1553,6 +1639,14 @@ app.get('/verify-email-change', async (req, res) => {
     'UPDATE users SET email=$1, email_change_token=NULL, email_change_new=NULL, email_change_expires=NULL WHERE id=$2',
     [newEmail, r.rows[0].id]
   );
+  // GISTAPP_SECURITY_ALERT — notify OLD email
+  try {
+    var _old = r.rows[0].email;
+    var _dn = r.rows[0].display_name || null;
+    if (_old && _old !== newEmail){
+      sendSecurityAlertEmail(_old, _dn, 'email_changed', { newEmail: newEmail, ip: req.ip }).catch(function(){});
+    }
+  } catch(_){}
   res.send('<html><body style="font-family:Inter,sans-serif;text-align:center;padding:60px"><h1 style="color:#25d366">✅ Email updated</h1><p>You can now log in with ' + newEmail + '</p><a href="/">Open GistApp</a></body></html>');
 });
 
