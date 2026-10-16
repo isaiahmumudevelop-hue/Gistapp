@@ -10044,6 +10044,58 @@ document.addEventListener('visibilitychange', function(){
   }
 });
 
+/* GISTAPP_BILLING_HISTORY_FE — Billing history section in settings */
+window.openBillingHistory = async function(){
+  var m = document.getElementById('billing-history-modal');
+  if (m){ m.remove(); return; }
+  var modal = document.createElement('div');
+  modal.id = 'billing-history-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9999;display:flex;align-items:flex-end;justify-content:center;backdrop-filter:blur(4px)';
+  modal.onclick = function(e){ if (e.target === modal) modal.remove(); };
+  var sheet = document.createElement('div');
+  sheet.style.cssText = 'background:var(--bg);width:100%;max-width:560px;max-height:80vh;border-radius:22px 22px 0 0;display:flex;flex-direction:column;overflow:hidden';
+  sheet.innerHTML = '<div style="padding:18px 20px 8px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line)">' +
+    '<div style="font-size:18px;font-weight:800;color:var(--ink)">Billing history</div>' +
+    '<button onclick="document.getElementById(\'billing-history-modal\').remove()" style="background:transparent;border:none;font-size:18px;color:var(--sub);cursor:pointer;padding:6px 10px">✕</button>' +
+    '</div>' +
+    '<div id="billing-history-body" style="overflow-y:auto;padding:16px 20px 24px"><div style="text-align:center;padding:30px;color:var(--sub)">Loading…</div></div>';
+  modal.appendChild(sheet);
+  document.body.appendChild(modal);
+
+  try {
+    var r = await api('/api/billing/invoices');
+    var list = (r && r.invoices) || [];
+    var body = document.getElementById('billing-history-body');
+    if (!body) return;
+    if (!list.length){
+      body.innerHTML = '<div style="text-align:center;padding:40px 20px;color:var(--sub)"><div style="font-size:44px;margin-bottom:10px">🧾</div><div style="font-size:14.5px;font-weight:700;color:var(--ink);margin-bottom:6px">No invoices yet</div><div style="font-size:13px;line-height:1.5">Your payment receipts will show up here.</div></div>';
+      return;
+    }
+    body.innerHTML = list.map(function(inv){
+      var d = new Date(inv.completed_at || inv.created_at);
+      var ds = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+      var amt = '\u20A6' + Number(inv.amount || 0).toLocaleString('en-NG');
+      var planLabel = inv.plan === 'business' ? 'Business' : 'Pro';
+      var method = inv.method === 'manual' ? 'Bank transfer' : 'Card';
+      return '<div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)">' +
+        '<div style="width:38px;height:38px;border-radius:10px;background:var(--bg-2);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">🧾</div>' +
+        '<div style="flex:1;min-width:0">' +
+        '<div style="font-size:13.5px;font-weight:700;color:var(--ink)">GistApp ' + planLabel + '</div>' +
+        '<div style="font-size:11.5px;color:var(--sub);margin-top:2px">' + ds + ' \u00B7 ' + method + '</div>' +
+        '</div>' +
+        '<div style="text-align:right;margin-right:4px">' +
+        '<div style="font-size:14px;font-weight:800;color:var(--ink)">' + amt + '</div>' +
+        '<div style="font-size:10.5px;color:var(--sub)">Paid</div>' +
+        '</div>' +
+        '<a href="/api/billing/invoices/' + inv.id + '/pdf" target="_blank" style="background:var(--bg-2);color:var(--ink);border:1px solid var(--line);text-decoration:none;padding:8px 12px;border-radius:10px;font-size:12px;font-weight:700;white-space:nowrap">Download</a>' +
+        '</div>';
+    }).join('');
+  } catch(e){
+    var body2 = document.getElementById('billing-history-body');
+    if (body2) body2.innerHTML = '<div style="text-align:center;padding:40px;color:var(--sub)">Could not load billing history</div>';
+  }
+};
+
 boot();
 </script>
 

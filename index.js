@@ -76,11 +76,12 @@ async function getGmailAccessToken(){
   return data.access_token;
 }
 
-async function sendViaGmailAPI({ to, subject, html, text, from, headers, replyTo }){
+async function sendViaGmailAPI({ to, subject, html, text, from, headers, replyTo, attachments}){
   const accessToken = await getGmailAccessToken();
   const senderName = 'GistApp';
   const fromHeader = '"' + senderName + '" <' + (from || GMAIL_SENDER) + '>';
   const boundary = 'gist_' + Date.now() + '_' + Math.random().toString(36).slice(2,8);
+  const altBoundary = 'gistalt_' + Date.now() + '_' + Math.random().toString(36).slice(2,8);
   // GISTAPP_MIME_SUBJECT_FIX — RFC 2047 encode non-ASCII subjects (emoji, accents)
   const _encSubject = (function(s){
     s = String(s == null ? '' : s);
@@ -90,7 +91,9 @@ async function sendViaGmailAPI({ to, subject, html, text, from, headers, replyTo
   })(subject);
   const _msgId = '<' + Date.now() + '.' + Math.random().toString(36).slice(2,10) + '@gistapp.local>';
   const _date = new Date().toUTCString();
-  const mime = [
+  const _hasAttach = Array.isArray(attachments) && attachments.length > 0;
+
+  const headerLines = [
     'From: ' + fromHeader,
     'To: ' + to,
     'Subject: ' + _encSubject,
@@ -98,22 +101,65 @@ async function sendViaGmailAPI({ to, subject, html, text, from, headers, replyTo
     'Message-ID: ' + _msgId,
     ...(replyTo ? ['Reply-To: ' + replyTo] : []),
     ...(headers ? Object.keys(headers).map(function(k){ return k + ': ' + headers[k]; }) : []),
-    'MIME-Version: 1.0',
-    'Content-Type: multipart/alternative; boundary="' + boundary + '"',
-    '',
-    '--' + boundary,
-    'Content-Type: text/plain; charset="UTF-8"',
-    '',
-    text || 'Please view this email in an HTML-compatible viewer.',
-    '',
-    '--' + boundary,
-    'Content-Type: text/html; charset="UTF-8"',
-    '',
-    html || text || '',
-    '',
-    '--' + boundary + '--',
-    ''
-  ].join('\r\n');
+    'MIME-Version: 1.0'
+  ];
+
+  let mime;
+  if (_hasAttach){
+    // multipart/mixed wrapper
+    const parts = [];
+    parts.push(...headerLines);
+    parts.push('Content-Type: multipart/mixed; boundary="' + boundary + '"');
+    parts.push('');
+    parts.push('--' + boundary);
+    parts.push('Content-Type: multipart/alternative; boundary="' + altBoundary + '"');
+    parts.push('');
+    parts.push('--' + altBoundary);
+    parts.push('Content-Type: text/plain; charset="UTF-8"');
+    parts.push('');
+    parts.push(text || 'Please view this email in an HTML-compatible viewer.');
+    parts.push('');
+    parts.push('--' + altBoundary);
+    parts.push('Content-Type: text/html; charset="UTF-8"');
+    parts.push('');
+    parts.push(html || text || '');
+    parts.push('');
+    parts.push('--' + altBoundary + '--');
+    parts.push('');
+    // Attachment parts
+    attachments.forEach(function(a){
+      parts.push('--' + boundary);
+      parts.push('Content-Type: ' + (a.contentType || 'application/octet-stream') + '; name="' + (a.filename || 'attachment') + '"');
+      parts.push('Content-Disposition: attachment; filename="' + (a.filename || 'attachment') + '"');
+      parts.push('Content-Transfer-Encoding: base64');
+      parts.push('');
+      var b64 = Buffer.isBuffer(a.content) ? a.content.toString('base64') : Buffer.from(String(a.content)).toString('base64');
+      // Wrap at 76 chars per RFC 2045
+      parts.push(b64.replace(/(.{76})/g, '$1\r\n'));
+      parts.push('');
+    });
+    parts.push('--' + boundary + '--');
+    parts.push('');
+    mime = parts.join('\r\n');
+  } else {
+    mime = [
+      ...headerLines,
+      'Content-Type: multipart/alternative; boundary="' + boundary + '"',
+      '',
+      '--' + boundary,
+      'Content-Type: text/plain; charset="UTF-8"',
+      '',
+      text || 'Please view this email in an HTML-compatible viewer.',
+      '',
+      '--' + boundary,
+      'Content-Type: text/html; charset="UTF-8"',
+      '',
+      html || text || '',
+      '',
+      '--' + boundary + '--',
+      ''
+    ].join('\r\n');
+  }
 
   const raw = Buffer.from(mime).toString('base64')
     .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -137,6 +183,7 @@ async function sendViaGmailAPI({ to, subject, html, text, from, headers, replyTo
 const mailer = {
   sendMail: async function(opts){
     // GISTAPP_MIME_SUBJECT_FIX — pass extra headers through
+    // GISTAPP_INVOICE_PDF — pass attachments through
     return sendViaGmailAPI({
       to: opts.to,
       subject: opts.subject,
@@ -144,7 +191,8 @@ const mailer = {
       text: opts.text,
       from: GMAIL_SENDER,
       headers: opts.headers || null,
-      replyTo: opts.replyTo || null
+      replyTo: opts.replyTo || null,
+      attachments: opts.attachments || null
     });
   },
   verify: async function(cb){
@@ -496,6 +544,162 @@ async function checkSubscriptionRenewals(){
   } catch(e){ console.warn('checkSubscriptionRenewals:', e.message); }
 }
 
+/* GISTAPP_INVOICE_PDF — generate a PDF invoice for a payment row */
+let _PDFDocument = null;
+function _getPDFDocument(){
+  if (_PDFDocument) return _PDFDocument;
+  try {
+    _PDFDocument = require('pdfkit');
+    return _PDFDocument;
+  } catch(e){
+    console.warn('pdfkit not available:', e.message);
+    return null;
+  }
+}
+
+async function generateInvoicePDF(payment){
+  const PDFDocument = _getPDFDocument();
+  if (!PDFDocument) throw new Error('PDF library not available');
+
+  return new Promise(async (resolve, reject) => {
+    try {
+      const doc = new PDFDocument({ size: 'A4', margin: 50 });
+      const chunks = [];
+      doc.on('data', c => chunks.push(c));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+
+      const baseUrl = process.env.APP_URL || 'https://gistapp.onrender.com';
+      const invoiceNum = 'INV-' + String(payment.id || 0).padStart(5, '0');
+      const paidAt = payment.completed_at ? new Date(payment.completed_at) : (payment.created_at ? new Date(payment.created_at) : new Date());
+      const dateStr = paidAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+
+      const planKey = payment.plan || 'pro';
+      const planName = planKey === 'business' ? 'GistApp Business' : 'GistApp Pro';
+      const amount = Number(payment.amount || 0);
+      const currency = payment.currency || 'NGN';
+      const sym = currency === 'NGN' ? '\u20A6' : currency;
+      const amountStr = sym + amount.toLocaleString('en-NG');
+
+      // Colors
+      const accent = '#5a6cd6';
+      const dark = '#2b2c44';
+      const muted = '#6a6a73';
+      const line = '#e6e4ef';
+
+      // Header bar
+      doc.rect(0, 0, doc.page.width, 110).fill(accent);
+      doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(26).text('GistApp', 50, 42);
+      doc.font('Helvetica').fontSize(11).fillColor('rgba(255,255,255,0.85)').text('Chat  \u00B7  Stream  \u00B7  Earn', 50, 74);
+
+      doc.font('Helvetica-Bold').fontSize(22).fillColor('#ffffff').text('INVOICE', 0, 45, { align: 'right', width: doc.page.width - 50 });
+
+      // Reset cursor position below header
+      doc.fillColor(dark).moveDown(3);
+
+      // Invoice meta (right side)
+      const metaTop = 140;
+      doc.font('Helvetica').fontSize(9).fillColor(muted)
+        .text('INVOICE NUMBER', 50, metaTop)
+        .text('DATE', 50, metaTop + 16)
+        .text('STATUS', 50, metaTop + 32);
+      doc.font('Helvetica-Bold').fontSize(10).fillColor(dark)
+        .text(invoiceNum, 50, metaTop + 42)
+        .text(dateStr, 50, metaTop + 58)
+        .text('PAID', 50, metaTop + 74);
+
+      // Billed to
+      doc.font('Helvetica').fontSize(9).fillColor(muted).text('BILLED TO', 320, metaTop);
+      doc.font('Helvetica-Bold').fontSize(11).fillColor(dark).text(payment.display_name || 'Customer', 320, metaTop + 16);
+      doc.font('Helvetica').fontSize(10).fillColor(dark).text(payment.email || '', 320, metaTop + 32);
+      if (payment.reference_id){
+        doc.fontSize(9).fillColor(muted).text('Ref: ' + payment.reference_id, 320, metaTop + 50);
+      }
+
+      // Horizontal rule
+      const lineY = metaTop + 110;
+      doc.moveTo(50, lineY).lineTo(doc.page.width - 50, lineY).strokeColor(line).lineWidth(1).stroke();
+
+      // Line items table
+      const tableTop = lineY + 20;
+      doc.font('Helvetica-Bold').fontSize(9).fillColor(muted)
+        .text('DESCRIPTION', 50, tableTop)
+        .text('QTY', 380, tableTop, { width: 40, align: 'right' })
+        .text('AMOUNT', 430, tableTop, { width: 110, align: 'right' });
+
+      doc.moveTo(50, tableTop + 20).lineTo(doc.page.width - 50, tableTop + 20).strokeColor(line).stroke();
+
+      doc.font('Helvetica-Bold').fontSize(11).fillColor(dark)
+        .text(planName + ' \u2014 30 days', 50, tableTop + 36)
+        .text('1', 380, tableTop + 36, { width: 40, align: 'right' })
+        .text(amountStr, 430, tableTop + 36, { width: 110, align: 'right' });
+
+      doc.font('Helvetica').fontSize(9).fillColor(muted)
+        .text('Full access to all ' + (planKey === 'business' ? 'Business' : 'Pro') + ' features', 50, tableTop + 54, { width: 300 });
+
+      // Totals
+      const totalsTop = tableTop + 110;
+      doc.moveTo(50, totalsTop).lineTo(doc.page.width - 50, totalsTop).strokeColor(line).stroke();
+
+      const totalX = 330;
+      doc.font('Helvetica').fontSize(10).fillColor(muted).text('Subtotal', totalX, totalsTop + 16);
+      doc.font('Helvetica-Bold').fontSize(10).fillColor(dark).text(amountStr, totalX, totalsTop + 16, { width: 210, align: 'right' });
+
+      doc.font('Helvetica').fontSize(10).fillColor(muted).text('Tax (0%)', totalX, totalsTop + 34);
+      doc.font('Helvetica-Bold').fontSize(10).fillColor(dark).text('\u2014', totalX, totalsTop + 34, { width: 210, align: 'right' });
+
+      // Total row (highlighted)
+      const totalRowY = totalsTop + 60;
+      doc.rect(totalX, totalRowY - 6, 210, 34).fill('#f4f2fb');
+      doc.font('Helvetica-Bold').fontSize(12).fillColor(dark).text('Total', totalX + 12, totalRowY + 4);
+      doc.font('Helvetica-Bold').fontSize(14).fillColor(dark).text(amountStr, totalX, totalRowY + 2, { width: 200, align: 'right' });
+
+      // Payment method
+      const payTop = totalRowY + 60;
+      const method = payment.method === 'manual' ? 'Bank transfer (OPay)' : 'Card (Paystack)';
+      doc.font('Helvetica').fontSize(9).fillColor(muted).text('PAYMENT METHOD', 50, payTop);
+      doc.font('Helvetica-Bold').fontSize(10).fillColor(dark).text(method, 50, payTop + 14);
+      if (payment.payer_name){
+        doc.font('Helvetica').fontSize(9).fillColor(muted).text('PAYER', 50, payTop + 36);
+        doc.font('Helvetica-Bold').fontSize(10).fillColor(dark).text(payment.payer_name, 50, payTop + 50);
+      }
+
+      // Footer
+      const footY = doc.page.height - 90;
+      doc.moveTo(50, footY).lineTo(doc.page.width - 50, footY).strokeColor(line).stroke();
+      doc.font('Helvetica').fontSize(9).fillColor(muted)
+        .text('Operated by PERION DEVELOPMENT LTD', 50, footY + 14)
+        .text('Questions? Contact support@gistapp.app', 50, footY + 28);
+
+      doc.fontSize(8).fillColor(muted)
+        .text('Generated automatically by GistApp on ' + new Date().toISOString().slice(0, 10), 50, footY + 46, { width: doc.page.width - 100, align: 'center' });
+
+      doc.end();
+    } catch(e){ reject(e); }
+  });
+}
+
+/* GISTAPP_INVOICE_PDF — send receipt email WITH PDF attachment */
+async function sendPaymentReceiptEmailWithInvoice(toEmail, displayName, info){
+  // delegate to existing sendPaymentReceiptEmail, but attach the invoice if we can find the payment row
+  try {
+    if (info && info.payment_id){
+      const r = await pool.query(
+        'SELECT p.*, u.email, u.display_name FROM payments p JOIN users u ON u.id=p.user_id WHERE p.id=$1',
+        [info.payment_id]
+      );
+      if (r.rowCount){
+        const payment = r.rows[0];
+        const pdfBuf = await generateInvoicePDF(payment);
+        // Attach to the receipt email — modify existing sendPaymentReceiptEmail signature
+        return sendPaymentReceiptEmail(toEmail, displayName, Object.assign({}, info, { _pdfBuffer: pdfBuf, _pdfName: 'GistApp-Invoice-' + String(payment.id).padStart(5, '0') + '.pdf' }));
+      }
+    }
+  } catch(e){ console.warn('invoice attach failed:', e.message); }
+  // fallback: send without attachment
+  return sendPaymentReceiptEmail(toEmail, displayName, info);
+}
+
 /* GISTAPP_SECURITY_ALERT — emails on critical account changes */
 async function sendSecurityAlertEmail(toEmail, displayName, eventType, meta){
   if (!toEmail) return;
@@ -645,7 +849,7 @@ async function sendPaymentReceiptEmail(toEmail, displayName, info){
   '</table></td></tr></table></body></html>';
 
   try {
-    await mailer.sendMail({
+    var _mailOpts = {
       from: '"GistApp" <' + GMAIL_SENDER + '>',
       to: toEmail,
       replyTo: process.env.SMTP_USER,
@@ -655,8 +859,17 @@ async function sendPaymentReceiptEmail(toEmail, displayName, info){
         'Importance': 'normal'
       },
       html: html
-    });
-    console.log('✅ Receipt sent to', toEmail, '(' + ref + ')');
+    };
+    // GISTAPP_INVOICE_PDF — attach invoice if provided
+    if (info && info._pdfBuffer){
+      _mailOpts.attachments = [{
+        filename: info._pdfName || 'GistApp-Invoice.pdf',
+        content: info._pdfBuffer,
+        contentType: 'application/pdf'
+      }];
+    }
+    await mailer.sendMail(_mailOpts);
+    console.log('✅ Receipt sent to', toEmail, '(' + ref + ')' + (info && info._pdfBuffer ? ' [PDF attached]' : ''));
     return true;
   } catch(e){
     console.warn('receipt email failed:', e && e.message);
@@ -3922,6 +4135,39 @@ async function isPremium(userId){
   } catch(_){ return false; }
 }
 
+/* GISTAPP_INVOICES_ENDPOINT — list of user's past payments + PDF download */
+app.get('/api/billing/invoices', auth, async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT id, reference_id, amount, currency, plan, method, status, completed_at, created_at
+       FROM payments
+       WHERE user_id=$1 AND status='success'
+       ORDER BY completed_at DESC NULLS LAST, created_at DESC
+       LIMIT 50`,
+      [req.user.id]
+    );
+    res.json({ invoices: r.rows });
+  } catch(e){ console.error('invoices list:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+app.get('/api/billing/invoices/:id/pdf', auth, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const r = await pool.query(
+      `SELECT p.*, u.email, u.display_name FROM payments p
+       JOIN users u ON u.id = p.user_id
+       WHERE p.id=$1 AND p.user_id=$2 AND p.status='success'`,
+      [id, req.user.id]
+    );
+    if (!r.rowCount) return res.status(404).json({ error: 'Invoice not found' });
+    const pdfBuf = await generateInvoicePDF(r.rows[0]);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'attachment; filename="GistApp-Invoice-' + String(id).padStart(5, '0') + '.pdf"');
+    res.setHeader('Content-Length', pdfBuf.length);
+    res.send(pdfBuf);
+  } catch(e){ console.error('invoice pdf:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
 // GET /api/billing/status
 app.get('/api/billing/status', auth, async (req, res) => {
   try {
@@ -4015,6 +4261,21 @@ async function momoCheckPending(){
           WHERE id=$1
         `, [p.user_id, planKey, plan.days]);
         console.log('✅ MoMo payment confirmed → user', p.user_id);
+        // GISTAPP_ALL_SUBS_RECEIPT — send receipt for MoMo renewal
+        try {
+          const _u = await pool.query('SELECT email, display_name FROM users WHERE id=$1', [p.user_id]);
+          if (_u.rowCount){
+            sendPaymentReceiptEmailWithInvoice(_u.rows[0].email, _u.rows[0].display_name, {
+              plan: planKey,
+              amount: plan.price || 7500,
+              method: 'momo',
+              reference: p.reference_id || ('MOMO-' + p.id),
+              completed_at: new Date().toISOString(),
+              days: plan.days,
+              payment_id: p.id
+            }).catch(function(){});
+          }
+        } catch(_){}
       } else if (s.status === 'FAILED'){
         await pool.query('UPDATE payments SET status=$1, momo_status=$2 WHERE id=$3', ['failed', 'FAILED', p.id]);
       }
@@ -4146,13 +4407,14 @@ app.get('/api/billing/verify/:ref', auth, async (req, res) => {
       try {
         const _u = await pool.query('SELECT email, display_name FROM users WHERE id=$1', [req.user.id]);
         if (_u.rowCount){
-          sendPaymentReceiptEmail(_u.rows[0].email, _u.rows[0].display_name, {
+          sendPaymentReceiptEmailWithInvoice(_u.rows[0].email, _u.rows[0].display_name, {
             plan: planKey,
             amount: d.amount ? Math.round(d.amount / 100) : (plan.price || 0),
             method: 'paystack',
             reference: ref,
             completed_at: new Date().toISOString(),
-            days: plan.days
+            days: plan.days,
+            payment_id: p.rows[0].id
           }).catch(function(){});
         }
       } catch(_){}
@@ -4194,6 +4456,21 @@ app.post('/api/billing/webhook', express.raw({ type: 'application/json' }), asyn
           WHERE id=$1
         `, [p.rows[0].user_id, planKey, plan.days]);
         console.log('✅ Paystack webhook activated user', p.rows[0].user_id, 'plan', planKey);
+        // GISTAPP_ALL_SUBS_RECEIPT — send receipt for webhook-activated payment
+        try {
+          const _u = await pool.query('SELECT email, display_name FROM users WHERE id=$1', [p.rows[0].user_id]);
+          if (_u.rowCount){
+            sendPaymentReceiptEmailWithInvoice(_u.rows[0].email, _u.rows[0].display_name, {
+              plan: planKey,
+              amount: event.data.amount ? Math.round(event.data.amount / 100) : (plan.price || 7500),
+              method: 'paystack',
+              reference: ref,
+              completed_at: new Date().toISOString(),
+              days: plan.days,
+              payment_id: p.rows[0].id
+            }).catch(function(){});
+          }
+        } catch(_){}
       }
     }
     res.sendStatus(200);
@@ -5270,13 +5547,14 @@ app.post('/api/admin/manual-approve/:id', auth, adminOnly, async (req, res) => {
       const _full = await pool.query('SELECT amount, reference_id, method FROM payments WHERE id=$1', [id]);
       const _u = await pool.query('SELECT email, display_name FROM users WHERE id=$1', [p.rows[0].user_id]);
       if (_u.rowCount && _full.rowCount){
-        sendPaymentReceiptEmail(_u.rows[0].email, _u.rows[0].display_name, {
+        sendPaymentReceiptEmailWithInvoice(_u.rows[0].email, _u.rows[0].display_name, {
           plan: planKey,
           amount: _full.rows[0].amount || plan.price || 0,
           method: 'manual',
           reference: _full.rows[0].reference_id || ('PAY-' + id),
           completed_at: new Date().toISOString(),
-          days: plan.days
+          days: plan.days,
+          payment_id: id
         }).catch(function(){});
       }
     } catch(_){}
