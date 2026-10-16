@@ -4601,6 +4601,182 @@ async function isPremiumUser(userId){
 }
 
 // POST /api/live/start — streamer begins
+/* GISTAPP_L5_SCHEDULE — schedule + RSVP endpoints */
+app.post('/api/live/schedule', auth, async (req, res) => {
+  try {
+    const title = String((req.body && req.body.title) || '').slice(0, 120).trim();
+    const description = String((req.body && req.body.description) || '').slice(0, 500).trim();
+    const startsAt = req.body && req.body.starts_at ? new Date(req.body.starts_at) : null;
+    if (!title) return res.status(400).json({ error: 'Title required' });
+    if (!startsAt || isNaN(startsAt.getTime())) return res.status(400).json({ error: 'Valid start time required' });
+    if (startsAt.getTime() < Date.now() + 60 * 1000) return res.status(400).json({ error: 'Must be at least 1 minute in the future' });
+    if (startsAt.getTime() > Date.now() + 30 * 24 * 60 * 60 * 1000) return res.status(400).json({ error: 'Max 30 days ahead' });
+
+    // Cancel any prior scheduled stream from this user
+    await pool.query("UPDATE live_schedules SET status='cancelled' WHERE streamer_id=$1 AND status='scheduled'", [req.user.id]);
+
+    const ins = await pool.query(
+      "INSERT INTO live_schedules (streamer_id, title, description, starts_at) VALUES ($1,$2,$3,$4) RETURNING id, title, description, starts_at, status",
+      [req.user.id, title, description || null, startsAt.toISOString()]
+    );
+
+    // Notify followers
+    try {
+      const followers = await pool.query('SELECT follower_id FROM user_follows WHERE following_id=$1', [req.user.id]);
+      const me = await pool.query('SELECT display_name FROM users WHERE id=$1', [req.user.id]);
+      const name = (me.rows[0] && me.rows[0].display_name) || 'Someone';
+      followers.rows.forEach(function(f){
+        io.to('user:' + f.follower_id).emit('stream-scheduled', {
+          id: ins.rows[0].id, streamer_id: req.user.id, streamer_name: name,
+          title: title, starts_at: ins.rows[0].starts_at
+        });
+        sendPush(f.follower_id, name + ' scheduled a live stream',
+          title + ' — ' + new Date(startsAt).toLocaleString('en-GB', { timeZone: 'Africa/Lagos', hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' }),
+          { url: '/?schedule=' + ins.rows[0].id, tag: 'sched-' + ins.rows[0].id }).catch(function(){});
+      });
+    } catch(_){}
+
+    res.json({ ok: true, schedule: ins.rows[0] });
+  } catch(e){ console.error('schedule:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+app.get('/api/live/schedules', auth, async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT s.id, s.streamer_id, s.title, s.description, s.starts_at, s.status,
+              u.display_name AS streamer_name, u.avatar_url, u.avatar_color, u.username,
+              (SELECT COUNT(*)::int FROM live_rsvps WHERE schedule_id=s.id) AS rsvp_count,
+              (SELECT COUNT(*)::int FROM live_rsvps WHERE schedule_id=s.id AND user_id=$1) AS i_rsvpd
+       FROM live_schedules s
+       JOIN users u ON u.id = s.streamer_id
+       WHERE s.status='scheduled' AND s.starts_at > NOW() - INTERVAL '30 minutes'
+       ORDER BY s.starts_at ASC
+       LIMIT 30`,
+      [req.user.id]
+    );
+    res.json({ schedules: r.rows });
+  } catch(e){ console.error('schedules list:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+app.post('/api/live/schedules/:id/rsvp', auth, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const s = await pool.query('SELECT streamer_id, status FROM live_schedules WHERE id=$1', [id]);
+    if (!s.rowCount) return res.status(404).json({ error: 'Not found' });
+    if (s.rows[0].status !== 'scheduled') return res.status(400).json({ error: 'Schedule not active' });
+    if (s.rows[0].streamer_id === req.user.id) return res.status(400).json({ error: 'Cannot RSVP to your own stream' });
+    await pool.query('INSERT INTO live_rsvps (schedule_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [id, req.user.id]);
+    const cnt = await pool.query('SELECT COUNT(*)::int AS n FROM live_rsvps WHERE schedule_id=$1', [id]);
+    res.json({ ok: true, rsvpd: true, count: cnt.rows[0].n });
+  } catch(e){ console.error('rsvp:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+app.delete('/api/live/schedules/:id/rsvp', auth, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    await pool.query('DELETE FROM live_rsvps WHERE schedule_id=$1 AND user_id=$2', [id, req.user.id]);
+    const cnt = await pool.query('SELECT COUNT(*)::int AS n FROM live_rsvps WHERE schedule_id=$1', [id]);
+    res.json({ ok: true, rsvpd: false, count: cnt.rows[0].n });
+  } catch(e){ console.error('unrsvp:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+app.delete('/api/live/schedules/:id', auth, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const s = await pool.query('SELECT streamer_id FROM live_schedules WHERE id=$1', [id]);
+    if (!s.rowCount) return res.status(404).json({ error: 'Not found' });
+    if (s.rows[0].streamer_id !== req.user.id && !req.user.is_admin) return res.status(403).json({ error: 'Only owner' });
+    await pool.query("UPDATE live_schedules SET status='cancelled' WHERE id=$1", [id]);
+    // Notify RSVPs
+    try {
+      const rsvps = await pool.query('SELECT user_id FROM live_rsvps WHERE schedule_id=$1', [id]);
+      rsvps.rows.forEach(function(r){
+        io.to('user:' + r.user_id).emit('stream-schedule-cancelled', { id: id });
+      });
+    } catch(_){}
+    res.json({ ok: true });
+  } catch(e){ console.error('cancel schedule:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+/* GISTAPP_L5_SCHEDULE — cron: fire 15-min + at-start notifications */
+async function checkStreamSchedules(){
+  try {
+    const baseUrl = process.env.APP_URL || 'https://gistapp.onrender.com';
+
+    // 15-min reminders
+    const soon = await pool.query(
+      `SELECT id, streamer_id, title, starts_at FROM live_schedules
+       WHERE status='scheduled' AND notified_15min=false
+         AND starts_at BETWEEN NOW() + INTERVAL '13 minutes' AND NOW() + INTERVAL '17 minutes'`
+    );
+    for (const s of soon.rows){
+      try {
+        const rsvps = await pool.query(
+          'SELECT r.user_id, u.email, u.display_name, u.prefs FROM live_rsvps r JOIN users u ON u.id=r.user_id WHERE r.schedule_id=$1',
+          [s.id]
+        );
+        const streamer = await pool.query('SELECT display_name FROM users WHERE id=$1', [s.streamer_id]);
+        const sname = (streamer.rows[0] && streamer.rows[0].display_name) || 'Someone';
+        const startTime = new Date(s.starts_at).toLocaleTimeString('en-GB', { timeZone: 'Africa/Lagos', hour: '2-digit', minute: '2-digit' });
+        for (const r of rsvps.rows){
+          sendPush(r.user_id, sname + ' is going live in 15 minutes',
+            s.title + ' at ' + startTime,
+            { url: '/', tag: 'sched-15-' + s.id }).catch(function(){});
+          // Email
+          if (r.email && (r.prefs || {}).schedule_emails !== 'false'){
+            mailer.sendMail({
+              from: '"GistApp" <' + GMAIL_SENDER + '>',
+              to: r.email,
+              replyTo: process.env.SMTP_USER,
+              subject: '🔴 ' + sname + ' is going live in 15 minutes',
+              html: '<!doctype html><html><body style="margin:0;padding:0;background:#f2f0fa;font-family:Inter,-apple-system,sans-serif">' +
+                '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f2f0fa;padding:24px 12px"><tr><td align="center">' +
+                '<table role="presentation" width="520" cellspacing="0" cellpadding="0" style="max-width:520px;width:100%;background:#fff;border-radius:20px;overflow:hidden;box-shadow:0 12px 40px rgba(51,52,76,.10)">' +
+                '<tr><td style="background:linear-gradient(135deg,#ff3b30,#ff5e3a);padding:24px 32px;text-align:center">' +
+                '<img src="' + baseUrl + '/icon-192.png" width="48" height="48" style="border-radius:12px;display:block;margin:0 auto 8px">' +
+                '<div style="color:#fff;font-size:18px;font-weight:800">🔴 Starting in 15 minutes</div></td></tr>' +
+                '<tr><td style="padding:26px 32px">' +
+                '<p style="margin:0 0 12px;color:#1c1c22;font-size:16px;font-weight:700">Hi ' + (r.display_name || 'there') + ',</p>' +
+                '<p style="margin:0 0 18px;color:#4a4a55;font-size:14.5px;line-height:1.6"><b>' + sname + '</b> is going live soon. You RSVP\u2019d so here\u2019s your reminder.</p>' + /* GISTAPP_L5_APOS_FIX */
+                '<div style="background:#fff3cd;border:1px solid #ffe58f;border-radius:12px;padding:14px 16px;margin-bottom:18px"><div style="color:#7a5a00;font-size:13px;font-weight:800">⏰ ' + s.title + '</div><div style="color:#2b2c44;font-size:13px;margin-top:4px">Starts at ' + startTime + ' WAT</div></div>' +
+                '<div style="text-align:center"><a href="' + baseUrl + '" style="background:#2b2c44;color:#fff;text-decoration:none;padding:13px 32px;border-radius:12px;font-weight:700;display:inline-block;font-size:14px">Open GistApp</a></div>' +
+                '<p style="color:#8e8e93;font-size:12px;margin:22px 0 0;text-align:center">You got this because you RSVP\u2019d. Turn off in Settings \u2192 Notifications.</p>' +
+                '</td></tr></table></td></tr></table></body></html>'
+            }).catch(function(){});
+          }
+        }
+        await pool.query('UPDATE live_schedules SET notified_15min=true WHERE id=$1', [s.id]);
+        console.log('📅 15-min reminder sent for schedule', s.id, '(to', rsvps.rowCount, 'RSVPs)');
+      } catch(inner){ console.warn('15min reminder error:', inner.message); }
+    }
+
+    // At-start notifications
+    const now = await pool.query(
+      `SELECT id, streamer_id, title, starts_at FROM live_schedules
+       WHERE status='scheduled' AND notified_start=false
+         AND starts_at BETWEEN NOW() - INTERVAL '3 minutes' AND NOW()`
+    );
+    for (const s of now.rows){
+      try {
+        const rsvps = await pool.query('SELECT user_id FROM live_rsvps WHERE schedule_id=$1', [s.id]);
+        const streamer = await pool.query('SELECT display_name FROM users WHERE id=$1', [s.streamer_id]);
+        const sname = (streamer.rows[0] && streamer.rows[0].display_name) || 'Someone';
+        rsvps.rows.forEach(function(r){
+          sendPush(r.user_id, sname + ' is going live now', s.title, { url: '/', tag: 'sched-now-' + s.id }).catch(function(){});
+        });
+        await pool.query('UPDATE live_schedules SET notified_start=true WHERE id=$1', [s.id]);
+        console.log('📅 At-start push sent for schedule', s.id, '(to', rsvps.rowCount, 'RSVPs)');
+      } catch(inner){ console.warn('at-start error:', inner.message); }
+    }
+
+    // Auto-expire schedules that started >30 min ago
+    await pool.query("UPDATE live_schedules SET status='expired' WHERE status='scheduled' AND starts_at < NOW() - INTERVAL '30 minutes'");
+  } catch(e){ console.warn('checkStreamSchedules:', e.message); }
+}
+setInterval(checkStreamSchedules, 5 * 60 * 1000);
+setTimeout(checkStreamSchedules, 90 * 1000);
+
+// POST /api/live/start — creates a LiveKit room + returns host token
 app.post('/api/live/start', auth, async (req, res) => {
   try {
     if (!LIVEKIT_READY) return res.status(503).json({ error: 'Live streaming not configured' });
@@ -4951,6 +5127,31 @@ app.get('/api/analytics/streamer', auth, async (req, res) => {
     });
   } catch(e){ console.error('analytics:', e.message); res.status(500).json({ error: 'Server error' }); }
 });
+
+/* GISTAPP_L5_SCHEDULE — schedule + RSVP tables */
+(async function(){
+  try {
+    await pool.query(`CREATE TABLE IF NOT EXISTS live_schedules (
+      id SERIAL PRIMARY KEY,
+      streamer_id INTEGER NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT,
+      starts_at TIMESTAMPTZ NOT NULL,
+      status TEXT DEFAULT 'scheduled',
+      notified_15min BOOLEAN DEFAULT false,
+      notified_start BOOLEAN DEFAULT false,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    await pool.query(`CREATE TABLE IF NOT EXISTS live_rsvps (
+      schedule_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      PRIMARY KEY (schedule_id, user_id)
+    )`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS live_schedules_upcoming_idx ON live_schedules (starts_at) WHERE status='scheduled'`);
+    console.log('✅ live_schedules + live_rsvps tables ready');
+  } catch(e){ console.warn('live_schedules setup:', e.message); }
+})();
 
 /* GISTAPP_LIVE_VIEWERS_V1 — table setup */
 (async function(){
