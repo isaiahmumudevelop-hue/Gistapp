@@ -259,6 +259,25 @@ body.dark .bubble.out{background:#4a55b8}
 .bubble.media{padding:6px}
 .bubble.media img,.bubble.media video{max-width:100%;max-height:320px;border-radius:14px;display:block;cursor:pointer}
 .bubble.media audio{max-width:240px;width:100%}
+/* GISTAPP_SWIPE_REPLY — swipe-to-reply visuals */
+.bubble{transition:transform .22s cubic-bezier(.3,1.3,.5,1);will-change:transform;touch-action:pan-y}
+.bubble.swipe-active{transition:none}
+.bubble.swipe-armed{transform:translateX(80px) !important}
+.bubble::before{
+  content:'↩️';
+  position:absolute;
+  left:-44px;
+  top:50%;
+  transform:translateY(-50%) scale(.6);
+  font-size:22px;
+  opacity:0;
+  transition:opacity .15s, transform .15s;
+  pointer-events:none;
+}
+.bubble.swipe-active::before{opacity:.35;transform:translateY(-50%) scale(.85)}
+.bubble.swipe-armed::before{opacity:1;transform:translateY(-50%) scale(1.15)}
+.bubble.swipe-released::before{opacity:0;transition:opacity .2s}
+
 .bubble.media .caption{padding:6px 8px 0}
 .bubble.deleted{opacity:.5;font-style:italic}
 .bubble.pinned{outline:2px solid #ffd60a}
@@ -11404,6 +11423,118 @@ window.manageBulletin = async function(){
     }
   } catch(e){ try { toast(e.message || 'Could not open bulletin'); } catch(_){} }
 };
+
+/* GISTAPP_SWIPE_REPLY — swipe right on a chat bubble to reply */
+(function(){
+  var _swipe = { active: false, bubble: null, startX: 0, startY: 0, dx: 0, locked: false, armed: false, startT: 0 };
+
+  function getBubbleFromEvent(e){
+    var el = e.target;
+    while (el && el !== document.body){
+      if (el.classList && el.classList.contains('bubble')) return el;
+      el = el.parentElement;
+    }
+    return null;
+  }
+
+  function resetSwipe(){
+    if (_swipe.bubble){
+      _swipe.bubble.classList.remove('swipe-active');
+      _swipe.bubble.classList.remove('swipe-armed');
+      _swipe.bubble.style.transform = '';
+      _swipe.bubble.classList.add('swipe-released');
+      setTimeout(function(){ if (_swipe.bubble) _swipe.bubble.classList.remove('swipe-released'); }, 250);
+    }
+    _swipe.active = false; _swipe.bubble = null; _swipe.dx = 0; _swipe.locked = false; _swipe.armed = false;
+  }
+
+  document.addEventListener('pointerdown', function(e){
+    if (e.button && e.button !== 0) return;             // only left button on mouse
+    if (!e.isPrimary) return;                            // ignore multi-touch
+    // Only in DM/chat screen
+    var dm = document.getElementById('screen-dm');
+    if (!dm || !dm.classList.contains('active')) return;
+    var b = getBubbleFromEvent(e);
+    if (!b) return;
+    // Skip if user tapped on a link, video, audio, or button (they have their own actions)
+    var tag = (e.target.tagName || '').toLowerCase();
+    if (tag === 'a' || tag === 'video' || tag === 'audio' || tag === 'button' || tag === 'input') return;
+    if (e.target.closest && e.target.closest('video, audio, .reply-quote')) return;
+
+    _swipe.active = true;
+    _swipe.bubble = b;
+    _swipe.startX = e.clientX;
+    _swipe.startY = e.clientY;
+    _swipe.dx = 0;
+    _swipe.locked = false;
+    _swipe.armed = false;
+    _swipe.startT = Date.now();
+  }, { passive: true });
+
+  document.addEventListener('pointermove', function(e){
+    if (!_swipe.active || !_swipe.bubble) return;
+    var dx = e.clientX - _swipe.startX;
+    var dy = e.clientY - _swipe.startY;
+
+    // If vertical movement dominates and we haven't locked, cancel (user is scrolling)
+    if (!_swipe.locked){
+      if (Math.abs(dy) > 12 && Math.abs(dy) > Math.abs(dx)){
+        resetSwipe();
+        return;
+      }
+      if (Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy)){
+        _swipe.locked = true;
+        _swipe.bubble.classList.add('swipe-active');
+        try { _swipe.bubble.setPointerCapture && _swipe.bubble.setPointerCapture(e.pointerId); } catch(_){}
+      } else {
+        return;
+      }
+    }
+
+    // Only allow rightward swipe (dx > 0)
+    var capped = Math.max(0, Math.min(dx, 90));
+    _swipe.dx = capped;
+    _swipe.bubble.style.transform = 'translateX(' + capped + 'px)';
+
+    // Arm threshold at 60px
+    if (capped >= 60 && !_swipe.armed){
+      _swipe.armed = true;
+      _swipe.bubble.classList.add('swipe-armed');
+      try { if (navigator.vibrate) navigator.vibrate(8); } catch(_){}
+    } else if (capped < 55 && _swipe.armed){
+      _swipe.armed = false;
+      _swipe.bubble.classList.remove('swipe-armed');
+    }
+
+    if (e.cancelable) e.preventDefault();
+  }, { passive: false });
+
+  function finishSwipe(e){
+    if (!_swipe.active || !_swipe.bubble) return;
+    var wasArmed = _swipe.armed;
+    var bubble = _swipe.bubble;
+    var msgId = bubble.dataset && bubble.dataset.id;
+    var heldMs = Date.now() - _swipe.startT;
+    resetSwipe();
+    if (wasArmed && msgId){
+      try {
+        if (typeof startReply === 'function') startReply(Number(msgId));
+        try { if (navigator.vibrate) navigator.vibrate(15); } catch(_){}
+      } catch(_){}
+    } else if (Math.abs(_swipe.dx) < 6 && heldMs < 300){
+      // Treat as a tap — leave existing click handlers to run
+    }
+  }
+
+  document.addEventListener('pointerup', finishSwipe, { passive: true });
+  document.addEventListener('pointercancel', function(){ if (_swipe.active) resetSwipe(); }, { passive: true });
+
+  // Belt-and-braces: some Android WebViews don't fire pointermove on touch
+  // Fall back to touchmove for older devices
+  if (!('PointerEvent' in window)){
+    document.addEventListener('touchstart', function(e){ if (e.touches.length === 1) _swipe.startX = e.touches[0].clientX, _swipe.startY = e.touches[0].clientY; }, { passive: true });
+  }
+})();
 
 boot();
 </script>
