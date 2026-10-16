@@ -220,45 +220,121 @@ async function sendVerificationEmail(toEmail, token, displayName){
 }
 
 
-/* GISTAPP_WELCOME_EMAIL — sent after email verification succeeds */
+/* GISTAPP_WELCOME_PRO — professional welcome email with community guidelines */
 async function sendWelcomeEmail(toEmail, displayName){
   const baseUrl = process.env.APP_URL || 'http://localhost:3000';
   const iconUrl = baseUrl + '/icon-192.png';
   const name = displayName || 'there';
+  const year = new Date().getFullYear();
+  const termsUrl = baseUrl + '/?legal=terms';
+  const privacyUrl = baseUrl + '/?legal=privacy';
+
+  const featureRow = (emoji, title, desc) =>
+    '<tr><td style="padding:13px 0;vertical-align:top;width:44px;font-size:22px;line-height:1">' + emoji + '</td>' +
+    '<td style="padding:13px 0;color:#1c1c22;font-size:14px;line-height:1.55"><b style="color:#2b2c44">' + title + '</b><br>' +
+    '<span style="color:#6a6a73">' + desc + '</span></td></tr>';
+
+  const canItem = (text) =>
+    '<tr><td style="padding:5px 0;color:#1f7a3d;font-size:15px;width:24px;vertical-align:top;font-weight:800">&#10003;</td>' +
+    '<td style="padding:5px 0;color:#2b2c44;font-size:13.5px;line-height:1.55">' + text + '</td></tr>';
+
+  const cannotItem = (text) =>
+    '<tr><td style="padding:5px 0;color:#c03434;font-size:15px;width:24px;vertical-align:top;font-weight:800">&#10007;</td>' +
+    '<td style="padding:5px 0;color:#2b2c44;font-size:13.5px;line-height:1.55">' + text + '</td></tr>';
+
+  const html = `<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Welcome to GistApp</title></head>
+<body style="margin:0;padding:0;background:#f2f0fa;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased">
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f2f0fa;padding:24px 12px">
+<tr><td align="center">
+<table role="presentation" width="560" cellspacing="0" cellpadding="0" border="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:24px;overflow:hidden;box-shadow:0 12px 40px rgba(51,52,76,.10)">
+
+<tr><td style="background:linear-gradient(135deg,#2b2c44 0%,#5a6cd6 55%,#7b8cff 100%);padding:38px 32px 30px;text-align:center">
+<img src="${iconUrl}" alt="GistApp" width="72" height="72" style="border-radius:20px;display:block;margin:0 auto 16px;box-shadow:0 10px 30px rgba(0,0,0,.35);border:3px solid rgba(255,255,255,.14)">
+<div style="color:#ffffff;font-size:25px;font-weight:800;letter-spacing:-.5px;line-height:1.2">Welcome to GistApp</div>
+<div style="color:rgba(255,255,255,.85);font-size:13px;font-weight:500;margin-top:6px;letter-spacing:.2px">Chat &middot; Stream &middot; Earn</div>
+</td></tr>
+
+<tr><td style="padding:32px 32px 4px">
+<p style="margin:0 0 14px;color:#1c1c22;font-size:19px;font-weight:700;letter-spacing:-.3px">Hey ${name} &#128075;</p>
+<p style="margin:0;color:#4a4a55;font-size:14.5px;line-height:1.65">Your account is verified and your email is confirmed. You are officially part of the GistApp community &mdash; a place to chat, go live, and earn from what you create. Here is everything you need to get started.</p>
+</td></tr>
+
+<tr><td style="padding:24px 32px 0">
+<div style="color:#8e8e93;font-size:11px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;margin-bottom:6px">What you can do</div>
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border-collapse:collapse">
+${featureRow('&#128172;','Start a chat','Message anyone by email &mdash; no phone number needed.')}
+${featureRow('&#128308;','Go live','Stream to your followers in real time and earn coins from gifts.')}
+${featureRow('&#127912;','Make it yours','Pick a wallpaper, accent color, and profile style that fits you.')}
+${featureRow('&#128274;','Stay secure','Enable 2FA and biometric lock to protect your account.')}
+</table>
+</td></tr>
+
+<tr><td style="padding:26px 32px 0">
+<div style="color:#8e8e93;font-size:11px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;margin-bottom:6px">Community guidelines</div>
+<p style="margin:0 0 14px;color:#4a4a55;font-size:13.5px;line-height:1.65">GistApp works because our members treat each other with respect. By joining, you agree to these ground rules.</p>
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f0fbf4;border:1px solid #c9efd6;border-radius:14px;border-collapse:separate">
+<tr><td colspan="2" style="padding:12px 18px 4px;color:#1f7a3d;font-size:13px;font-weight:800;letter-spacing:.2px">You are free to</td></tr>
+${canItem('Chat, post, and go live with anyone on the platform.')}
+${canItem('Share content you own or have the right to share.')}
+${canItem('Earn coins from gifts and withdraw your balance.')}
+${canItem('Block, mute, or report anyone who crosses a line.')}
+${canItem('Delete your account and data at any time.')}
+<tr><td colspan="2" style="padding:0 18px 14px"></td></tr>
+</table>
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#fdf1f1;border:1px solid #f4c9c9;border-radius:14px;margin-top:12px;border-collapse:separate">
+<tr><td colspan="2" style="padding:12px 18px 4px;color:#c03434;font-size:13px;font-weight:800;letter-spacing:.2px">You are not allowed to</td></tr>
+${cannotItem('Harass, threaten, or abuse other members.')}
+${cannotItem('Post illegal, adult, or sexually explicit content.')}
+${cannotItem('Impersonate anyone or misrepresent who you are.')}
+${cannotItem('Spam, scam, or run unauthorised promotions.')}
+${cannotItem('Share someone else\'s private information without consent.')}
+${cannotItem('Use the app if you are under 18 years old.')}
+<tr><td colspan="2" style="padding:0 18px 14px"></td></tr>
+</table>
+</td></tr>
+
+<tr><td style="padding:24px 32px 0">
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f7f5ff;border-left:3px solid #7b8cff;border-radius:8px;border-collapse:separate">
+<tr><td style="padding:14px 18px;color:#4a4568;font-size:13px;line-height:1.65">
+<b style="color:#2b2c44">By using GistApp</b>, you agree to our <a href="${termsUrl}" style="color:#5a6cd6;text-decoration:none;font-weight:700">Terms of Service</a> and <a href="${privacyUrl}" style="color:#5a6cd6;text-decoration:none;font-weight:700">Privacy Policy</a>. You can also read the full versions any time inside the app under <b>Settings &rarr; Legal</b>.
+</td></tr>
+</table>
+</td></tr>
+
+<tr><td style="padding:28px 32px 6px;text-align:center">
+<a href="${baseUrl}" style="background:#2b2c44;color:#ffffff;text-decoration:none;padding:15px 44px;border-radius:14px;font-weight:800;display:inline-block;font-size:15px;letter-spacing:.2px;box-shadow:0 8px 24px rgba(43,44,68,.28)">Open GistApp</a>
+</td></tr>
+
+<tr><td style="padding:12px 32px 30px">
+<p style="margin:0;color:#8e8e93;font-size:13px;line-height:1.65;text-align:center">Questions, feedback, or concerns? Just reply to this email &mdash; a real person reads every one.<br>We are glad to have you in the community.</p>
+</td></tr>
+
+<tr><td style="background:#f7f6fc;padding:22px 32px;text-align:center;border-top:1px solid #eae7f5">
+<p style="margin:0 0 6px;color:#8e8e93;font-size:11.5px;line-height:1.6">You are receiving this because you created a GistApp account.</p>
+<p style="margin:0;color:#a8a5b3;font-size:11px;line-height:1.6">&copy; ${year} GistApp Community &middot; All rights reserved.</p>
+</td></tr>
+
+</table>
+<table role="presentation" width="560" cellspacing="0" cellpadding="0" border="0" style="max-width:560px;width:100%;margin-top:12px">
+<tr><td style="text-align:center;color:#a8a5b3;font-size:11px;line-height:1.6;padding:0 12px">This email was sent to ${toEmail}.</td></tr>
+</table>
+</td></tr>
+</table>
+</body></html>`;
+
   const info = await mailer.sendMail({
-    from: '"GistApp" <' + GMAIL_SENDER + '>',
+    from: '"GistApp Community" <' + GMAIL_SENDER + '>',
     to: toEmail,
     replyTo: process.env.SMTP_USER,
-    subject: 'Welcome to GistApp, ' + name + ' 🎉',
+    subject: 'Welcome to the GistApp community, ' + name + ' \uD83C\uDF89',
     headers: {
       'X-Priority': '3',
-      'List-Unsubscribe': '<mailto:' + process.env.SMTP_USER + '>'
+      'Importance': 'normal',
+      'List-Unsubscribe': '<mailto:' + process.env.SMTP_USER + '>',
+      'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click'
     },
-    html: `
-      <div style="font-family:Inter,-apple-system,system-ui,sans-serif;max-width:520px;margin:0 auto;padding:0;background:#f7f5ff;border-radius:20px;overflow:hidden">
-        <div style="background:linear-gradient(135deg,#33344c,#7b8cff);padding:32px 32px 24px;text-align:center">
-          <img src="${iconUrl}" alt="GistApp" width="72" height="72" style="border-radius:18px;display:block;margin:0 auto 12px;box-shadow:0 8px 24px rgba(0,0,0,.25)">
-          <div style="color:#fff;font-size:22px;font-weight:800;letter-spacing:-.4px">Welcome to GistApp</div>
-        </div>
-        <div style="padding:28px 32px 32px">
-          <p style="color:#33344c;font-size:16px;line-height:1.6;margin:0 0 16px">Hey ${name} 👋</p>
-          <p style="color:#4a4568;font-size:15px;line-height:1.6;margin:0 0 20px">Your email is verified and your account is ready. Here's what you can do right now:</p>
-          <table style="width:100%;border-collapse:collapse;margin:0 0 24px">
-            <tr><td style="padding:10px 0;vertical-align:top;width:36px;font-size:20px">💬</td><td style="padding:10px 0;color:#33344c;font-size:14px;line-height:1.5"><b>Start a chat</b> — Message anyone by email, no phone number needed.</td></tr>
-            <tr><td style="padding:10px 0;vertical-align:top;font-size:20px">🔴</td><td style="padding:10px 0;color:#33344c;font-size:14px;line-height:1.5"><b>Go live</b> — Stream to your followers and earn coins from gifts.</td></tr>
-            <tr><td style="padding:10px 0;vertical-align:top;font-size:20px">🎨</td><td style="padding:10px 0;color:#33344c;font-size:14px;line-height:1.5"><b>Make it yours</b> — Pick a wallpaper, accent color, and profile look.</td></tr>
-            <tr><td style="padding:10px 0;vertical-align:top;font-size:20px">🔒</td><td style="padding:10px 0;color:#33344c;font-size:14px;line-height:1.5"><b>Stay safe</b> — Enable 2FA or biometric lock in Settings.</td></tr>
-          </table>
-          <div style="text-align:center;margin:28px 0 20px">
-            <a href="${baseUrl}" style="background:#33344c;color:#fff;text-decoration:none;padding:14px 36px;border-radius:14px;font-weight:700;display:inline-block;font-size:15px">Open GistApp</a>
-          </div>
-          <p style="color:#8e8e93;font-size:13px;line-height:1.6;margin:24px 0 0;text-align:center">Questions? Just reply to this email.<br>We're glad you're here.</p>
-        </div>
-        <div style="background:#ede9ff;padding:16px 32px;text-align:center">
-          <p style="color:#8e8e93;font-size:11px;margin:0;line-height:1.5">You're receiving this because you created a GistApp account.<br>&copy; GistApp</p>
-        </div>
-      </div>
-    `
+    html: html
   });
   return info;
 }
@@ -635,18 +711,16 @@ app.post('/api/signup', signupLimiter, async (req,res)=>{
       'INSERT INTO users (email,password_hash,display_name,verified,verify_token,verify_expires) VALUES ($1,$2,$3,false,$4,$5) RETURNING id,email,display_name,avatar_color,dark_mode,font_size',
       [email.toLowerCase(), hash, name, vtoken, vexpires]
     );
-    // Respond IMMEDIATELY — do not wait for SMTP
-    {
-      // removed duplicate sid
-      const userWithSid = Object.assign({}, r.rows[0], { session_id: sid });
-      res.json({
-        user: userWithSid,
-        token: sign(userWithSid),
-        needsVerification: true,
-        emailSent: true,
-        emailError: null
-      });
-    }
+    // GISTAPP_SIGNUP_SID_FIX — rotate session for new user
+    const sid = await rotateUserSession(r.rows[0].id);
+    const userWithSid = Object.assign({}, r.rows[0], { session_id: sid });
+    res.json({
+      user: userWithSid,
+      token: sign(userWithSid),
+      needsVerification: true,
+      emailSent: true,
+      emailError: null
+    });
 
     // Send the email in the background (fire-and-forget)
     sendVerificationEmail(email.toLowerCase(), vtoken, name)
@@ -2558,7 +2632,22 @@ app.get('/verify', async (req, res) => {
     await pool.query('UPDATE users SET verified=true, verify_token=NULL, verify_expires=NULL WHERE id=$1', [r.rows[0].id]);
     // GISTAPP_WELCOME_EMAIL — fire and forget, do not block the response
     sendWelcomeEmail(r.rows[0].email, r.rows[0].display_name).catch(function(e){ console.warn('welcome email failed:', e && e.message); });
-    res.send('<html><body style="font-family:Inter,system-ui,sans-serif;background:#050505;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;text-align:center;padding:20px"><div style="background:#fff;color:#1c1c22;max-width:400px;padding:40px 30px;border-radius:24px;box-shadow:0 20px 60px rgba(0,0,0,.5)"><div style="font-size:56px;margin-bottom:10px">\u2705</div><h2 style="margin:0 0 10px">Email verified!</h2><p style="color:#8e8e96;font-size:14px;line-height:1.5">Welcome, ' + (r.rows[0].display_name || '') + '. Your account is now active.</p><a href="/" style="display:inline-block;margin-top:20px;background:#33344c;color:#fff;text-decoration:none;padding:13px 28px;border-radius:14px;font-weight:700">Open GistApp</a></div></body></html>');
+    // GISTAPP_VERIFY_AUTOLOGIN — sign fresh JWT, inject into localStorage, redirect to app
+    // Fixes the case where the verify link opens in a different browser context (e.g. Gmail in-app)
+    try {
+      const _full = await pool.query('SELECT * FROM users WHERE id=$1', [r.rows[0].id]);
+      if (_full.rowCount){
+        const _sid = await rotateUserSession(r.rows[0].id);
+        const _u = Object.assign({}, _full.rows[0], { session_id: _sid });
+        const _jwt = sign(_u);
+        const _safeTok = JSON.stringify(_jwt);
+        const _name = r.rows[0].display_name || '';
+        const _html = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Email verified</title><style>body{font-family:Inter,-apple-system,system-ui,sans-serif;background:#050505;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;text-align:center;padding:20px}.c{background:#fff;color:#1c1c22;max-width:400px;width:100%;padding:40px 30px;border-radius:24px;box-shadow:0 20px 60px rgba(0,0,0,.5);box-sizing:border-box}.spin{width:32px;height:32px;border:3px solid #e6e5f0;border-top-color:#7b8cff;border-radius:50%;animation:s 0.9s linear infinite;margin:16px auto 0}@keyframes s{to{transform:rotate(360deg)}}</style></head><body><div class="c"><div style="font-size:56px;margin-bottom:10px">\u2705</div><h2 style="margin:0 0 10px">Email verified!</h2><p style="color:#8e8e96;font-size:14px;line-height:1.5;margin:0">Welcome, ' + _name + '. Taking you to setup\u2026</p><div class="spin"></div></div><script>(function(){try{var t=' + _safeTok + ';localStorage.setItem("token",t);}catch(e){}setTimeout(function(){location.replace("/")},800);})();</script></body></html>';
+        return res.send(_html);
+      }
+    } catch(_autologErr){
+      console.warn('verify autologin failed:', _autologErr && _autologErr.message);
+    }
   } catch(e){ console.error(e); res.status(500).send('<h2>Verification failed</h2>'); }
 });
 

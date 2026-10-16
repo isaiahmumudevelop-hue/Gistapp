@@ -9579,6 +9579,16 @@ function openLegal(screenId){
   document.body.classList.add('hide-nav');
   show(screenId);
 }
+
+/* GISTAPP_LEGAL_URL — ?legal=terms|privacy opens the screen on load */
+(function(){
+  try {
+    var p = new URLSearchParams(location.search).get('legal');
+    if (p === 'terms' || p === 'privacy'){
+      setTimeout(function(){ try { openLegal('screen-' + p); } catch(_){} }, 400);
+    }
+  } catch(_){}
+})();
 function closeLegal(){
   show('screen-auth');
 }
