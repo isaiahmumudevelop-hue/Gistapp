@@ -2944,28 +2944,129 @@ app.get('/api/posts/:id/comments', auth, async (req, res) => {
   try {
     const id = Number(req.params.id);
     const r = await pool.query(`
-      SELECT c.id, c.body, c.created_at, u.id AS user_id, u.display_name, u.avatar_color, u.avatar_url
+      SELECT c.id, c.body, c.created_at, c.audio_url, c.audio_duration, c.kind, c.poll_data,
+             u.id AS user_id, u.display_name, u.avatar_color, u.avatar_url
       FROM post_comments c
       JOIN users u ON u.id = c.user_id
       WHERE c.post_id = $1
       ORDER BY c.created_at ASC
       LIMIT 200
     `, [id]);
+    // For poll comments, fetch vote counts + my vote
+    const polls = r.rows.filter(function(x){ return x.kind === 'poll' && x.poll_data; });
+    if (polls.length){
+      const ids = polls.map(function(p){ return p.id; });
+      const votes = await pool.query(
+        'SELECT comment_id, option_index, COUNT(*)::int AS n FROM comment_poll_votes WHERE comment_id = ANY($1) GROUP BY comment_id, option_index',
+        [ids]
+      );
+      const mine = await pool.query(
+        'SELECT comment_id, option_index FROM comment_poll_votes WHERE comment_id = ANY($1) AND user_id=$2',
+        [ids, req.user.id]
+      );
+      const tally = {};
+      votes.rows.forEach(function(v){
+        if (!tally[v.comment_id]) tally[v.comment_id] = {};
+        tally[v.comment_id][v.option_index] = v.n;
+      });
+      const myPick = {};
+      mine.rows.forEach(function(v){ myPick[v.comment_id] = v.option_index; });
+      r.rows.forEach(function(c){
+        if (c.kind === 'poll'){
+          c.poll_tally = tally[c.id] || {};
+          c.poll_my_vote = myPick[c.id] != null ? myPick[c.id] : null;
+        }
+      });
+    }
     res.json(r.rows);
-  } catch(e){ res.status(500).json({ error: 'Server error' }); }
+  } catch(e){ console.error('comments get:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+/* GISTAPP_COMMUNITY_V1 — poll create + vote */
+app.post('/api/posts/:id/comment-poll', auth, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const postR = await pool.query('SELECT user_id FROM posts WHERE id=$1', [id]);
+    if (!postR.rowCount) return res.status(404).json({ error: 'Post not found' });
+    if (postR.rows[0].user_id !== req.user.id) return res.status(403).json({ error: 'Polls only on your own posts' });
+    const question = String((req.body && req.body.question) || '').slice(0, 200).trim();
+    const options = Array.isArray(req.body && req.body.options) ? req.body.options.map(function(o){ return String(o || '').slice(0, 60).trim(); }).filter(Boolean).slice(0, 5) : [];
+    if (!question) return res.status(400).json({ error: 'Question required' });
+    if (options.length < 2) return res.status(400).json({ error: 'At least 2 options required' });
+    const pollData = { question: question, options: options };
+    const r = await pool.query(
+      'INSERT INTO post_comments (post_id, user_id, body, kind, poll_data) VALUES ($1,$2,$3,$4,$5) RETURNING id, body, created_at, kind, poll_data',
+      [id, req.user.id, question, 'poll', JSON.stringify(pollData)]
+    );
+    const me = await pool.query('SELECT display_name, avatar_color, avatar_url FROM users WHERE id=$1', [req.user.id]);
+    const full = { ...r.rows[0], user_id: req.user.id, poll_tally: {}, poll_my_vote: null, ...me.rows[0] };
+    io.emit('feed-new-comment', { post_id: id, comment: full });
+    res.json(full);
+  } catch(e){ console.error('poll create:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+app.post('/api/comment-polls/:cid/vote', auth, async (req, res) => {
+  try {
+    const cid = Number(req.params.cid);
+    const optionIndex = Number(req.body && req.body.option_index);
+    const c = await pool.query("SELECT id, poll_data FROM post_comments WHERE id=$1 AND kind='poll'", [cid]);
+    if (!c.rowCount) return res.status(404).json({ error: 'Poll not found' });
+    const opts = (c.rows[0].poll_data && c.rows[0].poll_data.options) || [];
+    if (!Number.isInteger(optionIndex) || optionIndex < 0 || optionIndex >= opts.length) return res.status(400).json({ error: 'Invalid option' });
+    // upsert vote
+    await pool.query(
+      'INSERT INTO comment_poll_votes (comment_id, user_id, option_index) VALUES ($1,$2,$3) ON CONFLICT (comment_id, user_id) DO UPDATE SET option_index=EXCLUDED.option_index',
+      [cid, req.user.id, optionIndex]
+    );
+    const votes = await pool.query('SELECT option_index, COUNT(*)::int AS n FROM comment_poll_votes WHERE comment_id=$1 GROUP BY option_index', [cid]);
+    const tally = {};
+    votes.rows.forEach(function(v){ tally[v.option_index] = v.n; });
+    res.json({ ok: true, poll_tally: tally, poll_my_vote: optionIndex });
+  } catch(e){ console.error('poll vote:', e.message); res.status(500).json({ error: 'Server error' }); }
 });
 
 app.post('/api/posts/:id/comments', auth, async (req, res) => {
   try {
     const id = Number(req.params.id);
     const body = String(req.body.body || '').trim();
-    if (!body) return res.status(400).json({ error: 'Empty comment' });
+    const audio_url = req.body.audio_url ? String(req.body.audio_url).slice(0, 500) : null;
+    const audio_duration = req.body.audio_duration ? Number(req.body.audio_duration) : null;
+    if (!body && !audio_url) return res.status(400).json({ error: 'Empty comment' });
+
+    // GISTAPP_COMMUNITY_V1 — comment controls
+    const postR = await pool.query('SELECT user_id FROM posts WHERE id=$1', [id]);
+    if (!postR.rowCount) return res.status(404).json({ error: 'Post not found' });
+    const postOwnerId = postR.rows[0].user_id;
+    if (postOwnerId !== req.user.id){
+      const ownerR = await pool.query('SELECT prefs FROM users WHERE id=$1', [postOwnerId]);
+      const ownerPrefs = (ownerR.rows[0] && ownerR.rows[0].prefs) || {};
+      const cc = ownerPrefs.comment_control || 'everyone';
+      if (cc === 'nobody') return res.status(403).json({ error: 'Comments are turned off on this post' });
+      if (cc === 'friends'){
+        // require mutual follow: owner follows me AND I follow owner
+        const followA = await pool.query('SELECT 1 FROM user_follows WHERE follower_id=$1 AND following_id=$2', [postOwnerId, req.user.id]);
+        const followB = await pool.query('SELECT 1 FROM user_follows WHERE follower_id=$1 AND following_id=$2', [req.user.id, postOwnerId]);
+        if (!followA.rowCount || !followB.rowCount) return res.status(403).json({ error: 'Only friends can comment on this post' });
+      }
+      // Keyword filter
+      const kw = Array.isArray(ownerPrefs.comment_keywords) ? ownerPrefs.comment_keywords : [];
+      if (kw.length && body){
+        const lower = body.toLowerCase();
+        for (let i = 0; i < kw.length; i++){
+          const k = String(kw[i] || '').toLowerCase().trim();
+          if (k && lower.indexOf(k) !== -1){
+            return res.status(403).json({ error: 'Comment blocked by word filter' });
+          }
+        }
+      }
+    }
+
     const r = await pool.query(
-      'INSERT INTO post_comments (post_id, user_id, body) VALUES ($1,$2,$3) RETURNING id, body, created_at',
-      [id, req.user.id, body.slice(0, 500)]
+      'INSERT INTO post_comments (post_id, user_id, body, audio_url, audio_duration) VALUES ($1,$2,$3,$4,$5) RETURNING id, body, created_at, audio_url, audio_duration',
+      [id, req.user.id, body.slice(0, 500), audio_url, audio_duration]
     );
     const me = await pool.query('SELECT display_name, avatar_color, avatar_url FROM users WHERE id=$1', [req.user.id]);
-    const full = { ...r.rows[0], user_id: req.user.id, ...me.rows[0] };
+    const full = { ...r.rows[0], user_id: req.user.id, kind: 'text', ...me.rows[0] };
     io.emit('feed-new-comment', { post_id: id, comment: full });
     res.json(full);
   } catch(e){ console.error(e); res.status(500).json({ error: 'Server error' }); }
@@ -5315,6 +5416,26 @@ app.get('/api/analytics/streamer', auth, async (req, res) => {
     });
   } catch(e){ console.error('analytics:', e.message); res.status(500).json({ error: 'Server error' }); }
 });
+
+/* GISTAPP_COMMUNITY_V1 — comment controls, voice comments, polls */
+(async function(){
+  try {
+    // Voice comments
+    await pool.query(`ALTER TABLE post_comments ADD COLUMN IF NOT EXISTS audio_url TEXT`);
+    await pool.query(`ALTER TABLE post_comments ADD COLUMN IF NOT EXISTS audio_duration INTEGER`);
+    // Polls
+    await pool.query(`ALTER TABLE post_comments ADD COLUMN IF NOT EXISTS kind TEXT DEFAULT 'text'`);
+    await pool.query(`ALTER TABLE post_comments ADD COLUMN IF NOT EXISTS poll_data JSONB`);
+    await pool.query(`CREATE TABLE IF NOT EXISTS comment_poll_votes (
+      comment_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      option_index INTEGER NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      PRIMARY KEY (comment_id, user_id)
+    )`);
+    console.log('✅ community migrations ready');
+  } catch(e){ console.warn('community migration:', e.message); }
+})();
 
 /* GISTAPP_L5_SCHEDULE — schedule + RSVP tables */
 (async function(){

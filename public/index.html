@@ -1887,10 +1887,17 @@ if ('serviceWorker' in navigator){
       <button class="cd-close" onclick="closeComments()">✕</button>
     </div>
     <div class="cd-list" id="cd-list"></div>
-    <form class="cd-form" id="cd-form">
-      <input type="text" id="cd-input" placeholder="Add a comment…" autocomplete="off">
+    <form class="cd-form" id="cd-form" style="display:flex;align-items:center;gap:8px">
+      <button type="button" id="cd-mic-btn" onclick="cdToggleVoice()" title="Voice comment" style="background:var(--bg-2);border:1px solid var(--line);border-radius:50%;width:38px;height:38px;color:var(--accent,#7b8cff);cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center">  <!-- GISTAPP_COMMUNITY_POLISH -->
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3z"/><path d="M19 11a7 7 0 0 1-14 0M12 18v3"/></svg>
+      </button>
+      <button type="button" id="cd-poll-btn" onclick="cdOpenPoll()" title="Add a poll" style="background:transparent;border:none;padding:6px;color:var(--sub);cursor:pointer;flex-shrink:0;display:none;align-items:center">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11H3v10h6V11zM15 3H9v18h6V3zM21 13h-6v8h6v-8z"/></svg>
+      </button>
+      <input type="text" id="cd-input" placeholder="Add a comment…" autocomplete="off" style="flex:1">
       <button type="submit" class="cd-send">Send</button>
     </form>
+    <div id="cd-rec-timer" style="display:none;position:absolute;bottom:70px;left:50%;transform:translateX(-50%);background:rgba(255,59,48,.95);color:#fff;font-size:12px;font-weight:700;padding:6px 12px;border-radius:12px;z-index:5">● 00:00</div>
   </div>
 
   <!-- ============ CALL OVERLAY ============ -->
@@ -10392,6 +10399,319 @@ document.addEventListener('click', function(e){
   var gname = tile.querySelector('.g-name');
   if (gname){ gname.style.cssText = 'font-size:14px;padding:8px 14px;bottom:20px;left:50%;transform:translateX(-50%);right:auto;border-radius:20px;'; }
 });
+
+/* GISTAPP_COMMUNITY_V1 — voice comments, polls, controls */
+var _cdRec = null, _cdChunks = [], _cdStart = 0, _cdTimer = null, _cdIsRec = false;
+
+async function cdToggleVoice(){
+  if (_cdIsRec){ cdStopVoice(); return; }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ try { toast('Microphone not available'); } catch(_){} return; }
+  var stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+  catch(e){ try { toast('Microphone permission denied'); } catch(_){} return; }
+  _cdChunks = [];
+  var mime = '';
+  if (window.MediaRecorder){
+    if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) mime = 'audio/webm;codecs=opus';
+    else if (MediaRecorder.isTypeSupported('audio/webm')) mime = 'audio/webm';
+    else if (MediaRecorder.isTypeSupported('audio/mp4')) mime = 'audio/mp4';
+  }
+  try { _cdRec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream); }
+  catch(e){ _cdRec = new MediaRecorder(stream); }
+  _cdRec.ondataavailable = function(ev){ if (ev.data && ev.data.size > 0) _cdChunks.push(ev.data); };
+  _cdRec.onstop = cdOnRecStop;
+  _cdRec.start();
+  _cdIsRec = true;
+  _cdStart = Date.now();
+  var chip = document.getElementById('cd-rec-timer');
+  if (chip) chip.style.display = 'block';
+  _cdTimer = setInterval(function(){
+    var s = Math.floor((Date.now() - _cdStart) / 1000);
+    if (s > 60){ cdStopVoice(); return; }
+    if (chip) chip.textContent = '● ' + String(Math.floor(s/60)).padStart(2,'0') + ':' + String(s%60).padStart(2,'0');
+  }, 250);
+  var mic = document.getElementById('cd-mic-btn');
+  if (mic) mic.style.color = '#ff3b30';
+}
+
+function cdStopVoice(){
+  if (!_cdIsRec) return;
+  _cdIsRec = false;
+  clearInterval(_cdTimer);
+  var chip = document.getElementById('cd-rec-timer');
+  if (chip) chip.style.display = 'none';
+  var mic = document.getElementById('cd-mic-btn');
+  if (mic) mic.style.color = '';
+  try { if (_cdRec && _cdRec.state !== 'inactive') _cdRec.stop(); } catch(_){}
+}
+
+async function cdOnRecStop(){
+  try {
+    var blob = new Blob(_cdChunks, { type: (_cdRec && _cdRec.mimeType) || 'audio/webm' });
+    var duration = Math.round((Date.now() - _cdStart) / 1000);
+    if (!_currentPostId){ try { toast('No post selected'); } catch(_){} return; }
+    var fd = new FormData();
+    fd.append('file', blob, 'voice-comment.' + (blob.type.indexOf('mp4') !== -1 ? 'm4a' : 'webm'));
+    var res = await fetch('/api/upload', { method: 'POST', headers: { 'Authorization': 'Bearer ' + token }, body: fd });
+    var j = await res.json();
+    if (!res.ok || !j.url) throw new Error(j.error || 'Upload failed');
+    await api('/api/posts/' + _currentPostId + '/comments', {
+      method: 'POST',
+      body: JSON.stringify({ body: '🎙️ Voice comment', audio_url: j.url, audio_duration: duration })
+    });
+    openComments(_currentPostId);
+  } catch(e){
+    try { toast('Voice comment failed: ' + (e.message || 'error')); } catch(_){}
+  } finally {
+    _cdChunks = [];
+  }
+}
+
+/* Poll builder */
+function cdOpenPoll(){
+  if (!_currentPostId) return;
+  var q = prompt('Poll question (max 200 chars)');
+  if (!q || !q.trim()) return;
+  var opts = [];
+  for (var i = 0; i < 5; i++){
+    var o = prompt('Option ' + (i+1) + (i < 2 ? ' (required)' : ' (empty to stop)'));
+    if (!o || !o.trim()){ if (i < 2){ try { toast('Need at least 2 options'); } catch(_){} return; } break; }
+    opts.push(o.trim());
+  }
+  api('/api/posts/' + _currentPostId + '/comment-poll', {
+    method: 'POST',
+    body: JSON.stringify({ question: q.trim(), options: opts })
+  }).then(function(){
+    openComments(_currentPostId);
+  }).catch(function(e){
+    try { toast(e.message || 'Could not create poll'); } catch(_){}
+  });
+}
+
+async function cdVotePoll(cid, idx){
+  try {
+    var r = await api('/api/comment-polls/' + cid + '/vote', {
+      method: 'POST', body: JSON.stringify({ option_index: idx })
+    });
+    // Update DOM in place
+    var pollEl = document.getElementById('cd-poll-' + cid);
+    if (pollEl && r.poll_tally != null){
+      var total = 0;
+      Object.keys(r.poll_tally).forEach(function(k){ total += r.poll_tally[k]; });
+      var opts = pollEl.querySelectorAll('.cd-poll-opt');
+      opts.forEach(function(o, i){
+        var count = r.poll_tally[i] || 0;
+        var pct = total ? Math.round(count / total * 100) : 0;
+        o.querySelector('.cd-poll-bar').style.width = pct + '%';
+        o.querySelector('.cd-poll-pct').textContent = pct + '%';
+        o.classList.toggle('voted', i === idx);
+      });
+    }
+  } catch(e){
+    try { toast(e.message || 'Vote failed'); } catch(_){}
+  }
+}
+
+/* Update comment form on open — show/hide poll button based on post ownership */
+var _origOpenCommentsC = window.openComments;
+if (typeof _origOpenCommentsC === 'function' && !window._communityWrap){
+  window._communityWrap = true;
+  window.openComments = function(postId){
+    var r = _origOpenCommentsC.apply(this, arguments);
+    try {
+      var pollBtn = document.getElementById('cd-poll-btn');
+      var post = (window.postsCache || []).find(function(p){ return p.id === postId; });
+      if (pollBtn && post && me && post.user_id === me.id){
+        pollBtn.style.display = 'flex';
+      } else if (pollBtn){
+        pollBtn.style.display = 'none';
+      }
+    } catch(_){}
+    return r;
+  };
+}
+
+/* Override renderCommentNode to handle audio + poll */
+var _origRenderCommentNode = window.renderCommentNode;
+if (typeof _origRenderCommentNode === 'function'){
+  window.renderCommentNode = function(c){
+    var color = c.avatar_color || colorFor(c.display_name);
+    var av = c.avatar_url
+      ? '<div class="comment-av" style="background-image:url(' + c.avatar_url + ')"></div>'
+      : '<div class="comment-av" style="background:' + color + '">' + esc(initials(c.display_name)) + '</div>';
+
+    // Poll
+    if (c.kind === 'poll' && c.poll_data){
+      var opts = c.poll_data.options || [];
+      var tally = c.poll_tally || {};
+      var total = 0; Object.keys(tally).forEach(function(k){ total += tally[k]; });
+      var rows = opts.map(function(o, i){
+        var count = tally[i] || 0;
+        var pct = total ? Math.round(count / total * 100) : 0;
+        var voted = c.poll_my_vote === i;
+        return '<div class="cd-poll-opt' + (voted ? ' voted' : '') + '" onclick="cdVotePoll(' + c.id + ', ' + i + ')" style="position:relative;margin:6px 0;padding:9px 12px;border-radius:10px;background:rgba(123,140,255,.08);border:1.5px solid ' + (voted ? '#7b8cff' : 'transparent') + ';cursor:pointer;overflow:hidden">' +
+          '<div class="cd-poll-bar" style="position:absolute;left:0;top:0;bottom:0;width:' + pct + '%;background:' + (voted ? 'rgba(123,140,255,.35)' : 'rgba(123,140,255,.14)') + ';transition:width .3s"></div>' +
+          '<div style="position:relative;display:flex;justify-content:space-between;align-items:center"><span style="font-size:13px;font-weight:600;color:var(--ink)">' + esc(o) + '</span><span class="cd-poll-pct" style="font-size:12px;font-weight:700;color:var(--sub)">' + pct + '%</span></div>' +
+        '</div>';
+      }).join('');
+      return '<div class="comment">' + av +
+        '<div class="comment-bubble" style="max-width:85%"><b>' + esc(c.display_name) + '</b>' +
+        '<div style="font-size:14px;font-weight:700;color:var(--ink);margin:6px 0 4px">📊 ' + esc(c.poll_data.question || '') + '</div>' +
+        '<div id="cd-poll-' + c.id + '">' + rows + '</div>' +
+        '<div style="display:flex;gap:10px;align-items:center;margin-top:4px"><small>' + timeAgo(c.created_at) + '</small><span style="font-size:11px;color:var(--sub)">' + total + ' vote' + (total === 1 ? '' : 's') + '</span></div>' +
+        '</div></div>';
+    }
+
+    // Voice comment
+    if (c.audio_url){
+      var dur = c.audio_duration || 0;
+      var durStr = Math.floor(dur/60) + ':' + String(dur%60).padStart(2,'0');
+      // GISTAPP_COMMUNITY_POLISH — waveform bars + proper play/pause toggle
+      var bars = '';
+      for (var bi = 0; bi < 24; bi++){
+        var bh = 6 + Math.round(Math.abs(Math.sin(bi * 1.7 + c.id * 0.9)) * 14);
+        bars += '<span class="cd-wf-bar" style="width:2.5px;height:' + bh + 'px;background:rgba(123,140,255,.45);border-radius:1.5px;display:inline-block;vertical-align:middle;margin:0 1px"></span>';
+      }
+      return '<div class="comment">' + av +
+        '<div class="comment-bubble"><b>' + esc(c.display_name) + '</b>' +
+        '<div style="margin:8px 0;display:flex;align-items:center;gap:10px;background:rgba(123,140,255,.12);padding:8px 12px;border-radius:16px;min-width:180px">' +
+          '<button id="cd-play-' + c.id + '" onclick="cdToggleAudio(' + c.id + ')" style="background:var(--accent,#7b8cff);color:#fff;border:none;width:36px;height:36px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:14px;padding:0">▶</button>' +
+          '<audio id="cd-audio-' + c.id + '" src="' + c.audio_url + '" preload="none" ontimeupdate="cdAudioProgress(' + c.id + ')" onended="cdAudioEnded(' + c.id + ')" style="display:none"></audio>' +
+          '<div style="flex:1;display:flex;align-items:center;justify-content:space-between;height:22px;position:relative">' +
+            '<div style="display:flex;align-items:center;flex:1">' + bars + '</div>' +
+            '<div style="position:absolute;left:0;top:0;bottom:0;width:0%;background:linear-gradient(90deg,rgba(123,140,255,.3),rgba(123,140,255,.05));border-radius:12px;pointer-events:none;transition:width .1s" id="cd-prog-' + c.id + '"></div>' +
+          '</div>' +
+          '<span id="cd-dur-' + c.id + '" style="font-size:11px;font-weight:700;color:var(--sub);min-width:34px;text-align:right">' + durStr + '</span>' +
+        '</div>' +
+        '<div style="display:flex;gap:10px;align-items:center;margin-top:4px"><small>' + timeAgo(c.created_at) + '</small>' +
+        '<button class="comment-reply-btn" onclick="replyToComment(' + c.id + ',\'' + esc(c.display_name) + '\')">Reply</button></div>' +
+        '</div></div>';
+    }
+
+    // Text comment (default)
+    return _origRenderCommentNode.call(this, c);
+  };
+}
+
+/* GISTAPP_COMMENT_SETTINGS_UI — comment control + keyword filter in settings */
+(function(){
+  var _inj = false;
+  function inject(){
+    if (_inj) return;
+    var screens = document.querySelectorAll('#screen-settings .set-row, #screen-settings .setting-row, #screen-settings [data-pref]');
+    if (!screens.length) return;
+    var anchorRow = null;
+    for (var i=0; i<screens.length; i++){
+      var t = (screens[i].textContent || '').toLowerCase();
+      if (t.indexOf('notification') !== -1 || t.indexOf('security') !== -1){ anchorRow = screens[i]; break; }
+    }
+    if (!anchorRow) return;
+
+    // Comment control row
+    var row1 = document.createElement('div');
+    row1.className = anchorRow.className;
+    row1.setAttribute('data-pref', 'comment_control');
+    row1.style.cssText = anchorRow.style.cssText || '';
+    row1.innerHTML = '<div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:600">Who can comment on your posts</div><div id="pref-cc-val" style="font-size:12.5px;color:var(--sub);margin-top:2px">Everyone</div></div>' +
+      '<select id="pref-comment-control" style="background:var(--bg-2);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:8px 12px;font-size:13px;font-family:inherit" onchange="saveCommentControl(this.value)">' +
+      '<option value="everyone">Everyone</option>' +
+      '<option value="friends">Friends (mutual)</option>' +
+      '<option value="nobody">Nobody</option>' +
+      '</select>';
+    anchorRow.parentNode.insertBefore(row1, anchorRow.nextSibling);
+
+    // Keyword filter row
+    var row2 = document.createElement('div');
+    row2.className = anchorRow.className;
+    row2.setAttribute('data-pref', 'comment_keywords');
+    row2.style.cssText = anchorRow.style.cssText || '';
+    row2.innerHTML = '<div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:600">Blocked words in comments</div><div style="font-size:12.5px;color:var(--sub);margin-top:2px">Comma-separated. Comments containing these are auto-blocked.</div></div>' +
+      '<button onclick="editCommentKeywords()" style="background:var(--bg-2);color:var(--ink);border:1px solid var(--line);padding:8px 14px;border-radius:10px;font-size:12.5px;font-weight:700;font-family:inherit;cursor:pointer">Edit</button>';
+    anchorRow.parentNode.insertBefore(row2, row1.nextSibling);
+
+    // Load current values
+    try {
+      var cc = (me && me.prefs && me.prefs.comment_control) || 'everyone';
+      var sel = document.getElementById('pref-comment-control');
+      if (sel) sel.value = cc;
+      var lbl = document.getElementById('pref-cc-val');
+      if (lbl) lbl.textContent = cc === 'nobody' ? 'Nobody can comment' : cc === 'friends' ? 'Friends (mutual followers)' : 'Everyone can comment';
+    } catch(_){}
+    _inj = true;
+  }
+  var _origShow = window.show;
+  if (typeof _origShow === 'function' && !window._commSetWrapped){
+    window._commSetWrapped = true;
+    window.show = function(id){
+      var r = _origShow.apply(this, arguments);
+      if (id === 'screen-settings'){ _inj = false; setTimeout(inject, 150); }
+      return r;
+    };
+  }
+})();
+
+window.saveCommentControl = async function(val){
+  try {
+    await api('/api/me', { method: 'PATCH', body: JSON.stringify({ prefs: { comment_control: val } }) });
+    if (me && me.prefs) me.prefs.comment_control = val;
+    var lbl = document.getElementById('pref-cc-val');
+    if (lbl) lbl.textContent = val === 'nobody' ? 'Nobody can comment' : val === 'friends' ? 'Friends (mutual followers)' : 'Everyone can comment';
+    try { toast('Comment settings updated'); } catch(_){}
+  } catch(e){ try { toast('Could not save'); } catch(_){} }
+};
+
+window.editCommentKeywords = async function(){
+  var cur = (me && me.prefs && Array.isArray(me.prefs.comment_keywords)) ? me.prefs.comment_keywords.join(', ') : '';
+  var v = prompt('Blocked words (comma-separated):', cur);
+  if (v == null) return;
+  var arr = v.split(',').map(function(s){ return s.trim().toLowerCase(); }).filter(Boolean).slice(0, 50);
+  try {
+    await api('/api/me', { method: 'PATCH', body: JSON.stringify({ prefs: { comment_keywords: arr } }) });
+    if (me && me.prefs) me.prefs.comment_keywords = arr;
+    try { toast(arr.length ? arr.length + ' blocked words saved' : 'Keyword filter cleared'); } catch(_){}
+  } catch(e){ try { toast('Could not save'); } catch(_){} }
+};
+
+/* GISTAPP_COMMUNITY_POLISH — audio toggle + progress */
+window.cdToggleAudio = function(cid){
+  var a = document.getElementById('cd-audio-' + cid);
+  var b = document.getElementById('cd-play-' + cid);
+  if (!a || !b) return;
+  // Pause any other playing
+  document.querySelectorAll('audio[id^="cd-audio-"]').forEach(function(other){
+    if (other.id !== 'cd-audio-' + cid && !other.paused){
+      other.pause();
+      var ob = document.getElementById(other.id.replace('cd-audio-', 'cd-play-'));
+      if (ob) ob.textContent = '▶';
+    }
+  });
+  if (a.paused){ a.play().then(function(){ b.textContent = '❚❚'; }).catch(function(){}); }
+  else { a.pause(); b.textContent = '▶'; }
+};
+window.cdAudioProgress = function(cid){
+  var a = document.getElementById('cd-audio-' + cid);
+  var p = document.getElementById('cd-prog-' + cid);
+  var d = document.getElementById('cd-dur-' + cid);
+  if (!a || !p || !d) return;
+  if (a.duration && isFinite(a.duration)){
+    var pct = Math.round((a.currentTime / a.duration) * 100);
+    p.style.width = pct + '%';
+    var left = Math.max(0, Math.ceil(a.duration - a.currentTime));
+    d.textContent = Math.floor(left/60) + ':' + String(left%60).padStart(2,'0');
+  }
+};
+window.cdAudioEnded = function(cid){
+  var a = document.getElementById('cd-audio-' + cid);
+  var b = document.getElementById('cd-play-' + cid);
+  var p = document.getElementById('cd-prog-' + cid);
+  var d = document.getElementById('cd-dur-' + cid);
+  if (b) b.textContent = '▶';
+  if (p) p.style.width = '0%';
+  if (a && d){
+    var full = Math.floor(a.duration || 0);
+    if (isFinite(full)) d.textContent = Math.floor(full/60) + ':' + String(full%60).padStart(2,'0');
+  }
+};
 
 boot();
 </script>
