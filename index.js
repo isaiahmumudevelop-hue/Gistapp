@@ -2944,7 +2944,7 @@ app.get('/api/posts/:id/comments', auth, async (req, res) => {
   try {
     const id = Number(req.params.id);
     const r = await pool.query(`
-      SELECT c.id, c.body, c.created_at, c.audio_url, c.audio_duration, c.kind, c.poll_data, c.media_urls,
+      SELECT c.id, c.body, c.created_at, c.audio_url, c.audio_duration, c.kind, c.poll_data, c.media_urls, c.sticker_url,
              u.id AS user_id, u.display_name, u.avatar_color, u.avatar_url
       FROM post_comments c
       JOIN users u ON u.id = c.user_id
@@ -3000,6 +3000,35 @@ app.get('/api/posts/:id/comments', auth, async (req, res) => {
     }
     res.json(r.rows);
   } catch(e){ console.error('comments get:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+/* GISTAPP_BATCH2 — sticker comments + report status */
+(async function(){
+  try {
+    await pool.query(`ALTER TABLE post_comments ADD COLUMN IF NOT EXISTS sticker_url TEXT`);
+    await pool.query(`ALTER TABLE reports ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pending'`);
+    await pool.query(`ALTER TABLE reports ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ`);
+    await pool.query(`ALTER TABLE reports ADD COLUMN IF NOT EXISTS notes TEXT`);
+    console.log('✅ batch2 migrations ready');
+  } catch(e){ console.warn('batch2 migration:', e.message); }
+})();
+
+/* GISTAPP_BATCH2 — my submitted reports */
+app.get('/api/reports/mine', auth, async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT r.id, r.reported_id, r.reason, r.created_at, r.status, r.reviewed_at, r.notes,
+              u.display_name AS reported_name, u.username AS reported_username,
+              u.avatar_url AS reported_avatar, u.avatar_color AS reported_color
+       FROM reports r
+       LEFT JOIN users u ON u.id = r.reported_id
+       WHERE r.reporter_id = $1
+       ORDER BY r.created_at DESC
+       LIMIT 100`,
+      [req.user.id]
+    );
+    res.json({ reports: r.rows });
+  } catch(e){ console.error('reports mine:', e.message); res.status(500).json({ error: 'Server error' }); }
 });
 
 /* GISTAPP_CAROUSEL_REACT — photo carousel + reactions */
@@ -3156,7 +3185,8 @@ app.post('/api/posts/:id/comments', auth, async (req, res) => {
       media_urls = req.body.media_urls.slice(0, 9).map(function(u){ return String(u).slice(0, 500); }).filter(Boolean);
       if (!media_urls.length) media_urls = null;
     }
-    if (!body && !audio_url && !media_urls) return res.status(400).json({ error: 'Empty comment' });
+    const sticker_url = req.body.sticker_url ? String(req.body.sticker_url).slice(0, 500) : null;  // GISTAPP_BATCH2
+    if (!body && !audio_url && !media_urls && !sticker_url) return res.status(400).json({ error: 'Empty comment' });
 
     // GISTAPP_COMMUNITY_V1 — comment controls
     const postR = await pool.query('SELECT user_id FROM posts WHERE id=$1', [id]);
@@ -3187,8 +3217,8 @@ app.post('/api/posts/:id/comments', auth, async (req, res) => {
     }
 
     const r = await pool.query(
-      'INSERT INTO post_comments (post_id, user_id, body, audio_url, audio_duration, media_urls) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, body, created_at, audio_url, audio_duration, media_urls',
-      [id, req.user.id, body.slice(0, 500), audio_url, audio_duration, media_urls ? JSON.stringify(media_urls) : null]
+      'INSERT INTO post_comments (post_id, user_id, body, audio_url, audio_duration, media_urls, sticker_url) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id, body, created_at, audio_url, audio_duration, media_urls, sticker_url',
+      [id, req.user.id, body.slice(0, 500), audio_url, audio_duration, media_urls ? JSON.stringify(media_urls) : null, sticker_url]
     );
     const me = await pool.query('SELECT display_name, avatar_color, avatar_url FROM users WHERE id=$1', [req.user.id]);
     const full = { ...r.rows[0], user_id: req.user.id, kind: 'text', ...me.rows[0] };

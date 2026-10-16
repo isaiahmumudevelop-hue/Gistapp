@@ -1898,6 +1898,9 @@ if ('serviceWorker' in navigator){
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><rect x="3" y="5" width="18" height="14" rx="2.5"/><circle cx="9" cy="10" r="1.6"/><path d="M4 17l4.5-4.5L11 15l3-3 5 5"/></svg>
       </button>
       <input type="file" id="cd-photo-input" accept="image/*" multiple hidden onchange="cdHandlePhotos(this)">
+      <button type="button" id="cd-sticker-btn" onclick="cdOpenStickerPicker()" title="Sticker" style="background:var(--bg-2);border:1px solid var(--line);border-radius:50%;width:38px;height:38px;color:var(--accent,#7b8cff);cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center">  <!-- GISTAPP_BATCH2 -->
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21a9 9 0 1 1 9-9c0 2-1 3-2.5 3H15a2 2 0 0 0-2 2c0 1 .5 1.5.5 2.5S12.5 21 12 21z"/><circle cx="9" cy="9" r="1.2" fill="currentColor"/><circle cx="15" cy="9" r="1.2" fill="currentColor"/></svg>
+      </button>
       <input type="text" id="cd-input" placeholder="Add a comment…" autocomplete="off" style="flex:1">
       <button type="submit" class="cd-send">Send</button>
     </form>
@@ -10973,6 +10976,161 @@ if (typeof _origRenderCommentNode2 === 'function'){
     // Insert extras + rxBar before the closing `</div></div>` of the comment bubble
     // Simplest: append before the final `</div></div>`
     html = html.replace(/<\/div><\/div>$/, extras + rxBar + '</div></div>');
+    return html;
+  };
+}
+
+/* GISTAPP_BATCH2 — sticker picker in comments + report history */
+window.cdOpenStickerPicker = async function(){
+  var existing = document.getElementById('cd-sticker-modal');
+  if (existing){ existing.remove(); return; }
+  var modal = document.createElement('div');
+  modal.id = 'cd-sticker-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9999;display:flex;align-items:flex-end;justify-content:center;backdrop-filter:blur(4px)';
+  modal.onclick = function(e){ if (e.target === modal) modal.remove(); };
+  var sheet = document.createElement('div');
+  sheet.style.cssText = 'background:var(--bg);width:100%;max-width:560px;max-height:70vh;border-radius:22px 22px 0 0;display:flex;flex-direction:column;overflow:hidden';
+  sheet.innerHTML = '<div style="padding:16px 20px 10px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line)">' +
+    '<div style="font-size:16px;font-weight:800;color:var(--ink)">Your stickers</div>' +
+    '<button onclick="document.getElementById(\'cd-sticker-modal\').remove()" style="background:transparent;border:none;font-size:18px;color:var(--sub);cursor:pointer;padding:6px 10px">✕</button>' +
+    '</div>' +
+    '<div id="cd-sticker-body" style="overflow-y:auto;padding:14px 20px 24px"><div style="text-align:center;padding:30px;color:var(--sub)">Loading…</div></div>';
+  modal.appendChild(sheet);
+  document.body.appendChild(modal);
+
+  try {
+    var list = await api('/api/stickers');
+    var body = document.getElementById('cd-sticker-body');
+    if (!body) return;
+    if (!list.length){
+      body.innerHTML = '<div style="text-align:center;padding:40px 20px;color:var(--sub)">' +
+        '<div style="font-size:44px;margin-bottom:10px">🎨</div>' +
+        '<div style="font-size:14px;font-weight:700;color:var(--ink);margin-bottom:6px">No stickers yet</div>' +
+        '<div style="font-size:13px;line-height:1.5;margin-bottom:14px">Add stickers in Settings → Stickers</div>' +
+        '<button onclick="document.getElementById(\'cd-sticker-modal\').remove();openStickerManager && openStickerManager()" style="background:var(--accent,#7b8cff);color:#fff;border:none;padding:10px 20px;border-radius:12px;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">Open sticker manager</button>' +
+      '</div>';
+      return;
+    }
+    body.innerHTML = '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">' +
+      list.map(function(s){
+        return '<button onclick="cdSendSticker(\'' + s.url + '\')" style="background:var(--bg-2);border:1px solid var(--line);border-radius:14px;padding:8px;cursor:pointer;aspect-ratio:1;display:flex;align-items:center;justify-content:center">' +
+          '<img src="' + s.url + '" style="max-width:100%;max-height:100%;object-fit:contain">' +
+        '</button>';
+      }).join('') +
+    '</div>';
+  } catch(e){
+    var b2 = document.getElementById('cd-sticker-body');
+    if (b2) b2.innerHTML = '<div style="text-align:center;padding:30px;color:var(--sub)">Could not load stickers</div>';
+  }
+};
+
+window.cdSendSticker = async function(url){
+  var m = document.getElementById('cd-sticker-modal');
+  if (m) m.remove();
+  if (!_currentPostId || !url) return;
+  try {
+    await api('/api/posts/' + _currentPostId + '/comments', {
+      method: 'POST',
+      body: JSON.stringify({ body: '🎨 Sticker', sticker_url: url })
+    });
+    openComments(_currentPostId);
+  } catch(e){
+    try { toast(e.message || 'Could not send sticker'); } catch(_){}
+  }
+};
+
+/* Report history screen */
+window.openReportHistory = async function(){
+  var s = document.getElementById('report-history-screen');
+  if (s){ s.remove(); }
+  var screen = document.createElement('div');
+  screen.id = 'report-history-screen';
+  screen.style.cssText = 'position:fixed;inset:0;background:var(--bg);z-index:2960;display:flex;flex-direction:column;overflow-y:auto';
+  screen.innerHTML = '<div style="position:sticky;top:0;background:var(--bg);border-bottom:1px solid var(--line);padding:14px 16px;display:flex;align-items:center;gap:12px;z-index:5">' +
+    '<button onclick="document.getElementById(\'report-history-screen\').remove()" style="background:transparent;border:none;width:36px;height:36px;border-radius:50%;color:var(--ink);font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center">←</button>' +
+    '<div style="font-size:17px;font-weight:800;color:var(--ink);flex:1">My reports</div>' +
+    '</div>' +
+    '<div id="report-history-body" style="padding:16px 16px 60px"><div style="text-align:center;padding:40px;color:var(--sub)">Loading…</div></div>';
+  document.body.appendChild(screen);
+
+  try {
+    var r = await api('/api/reports/mine');
+    var list = (r && r.reports) || [];
+    var body = document.getElementById('report-history-body');
+    if (!body) return;
+    if (!list.length){
+      body.innerHTML = '<div style="text-align:center;padding:60px 20px;color:var(--sub)">' +
+        '<div style="font-size:44px;margin-bottom:10px">✅</div>' +
+        '<div style="font-size:14.5px;font-weight:700;color:var(--ink);margin-bottom:6px">No reports</div>' +
+        '<div style="font-size:13px;line-height:1.5">You have not reported anyone. Keep helping keep the community safe.</div>' +
+      '</div>';
+      return;
+    }
+    body.innerHTML = list.map(function(rep){
+      var color = rep.reported_color || '#7b8cff';
+      var av = rep.reported_avatar ? 'background-image:url(' + rep.reported_avatar + ');background-size:cover' : 'background:' + color;
+      var initial = (rep.reported_name || 'U').slice(0,1).toUpperCase();
+      var status = rep.status || 'pending';
+      var statusColor = status === 'reviewed' ? '#22c55e' : status === 'dismissed' ? '#8e8e93' : '#f59e0b';
+      var statusLabel = status === 'reviewed' ? 'Reviewed' : status === 'dismissed' ? 'Dismissed' : 'Pending';
+      return '<div style="background:var(--bg-2);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px">' +
+        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">' +
+          '<div style="width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:13px;flex-shrink:0;' + av + '">' + (rep.reported_avatar ? '' : initial) + '</div>' +
+          '<div style="flex:1;min-width:0">' +
+            '<div style="font-size:13.5px;font-weight:700;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(rep.reported_name || 'Unknown user') + '</div>' +
+            (rep.reported_username ? '<div style="font-size:11.5px;color:var(--sub)">@' + esc(rep.reported_username) + '</div>' : '') +
+          '</div>' +
+          '<span style="background:' + statusColor + '22;color:' + statusColor + ';font-size:10.5px;font-weight:800;padding:4px 9px;border-radius:10px;letter-spacing:.4px;text-transform:uppercase">' + statusLabel + '</span>' +
+        '</div>' +
+        '<div style="font-size:13px;color:var(--ink);line-height:1.5;background:var(--bg);padding:10px 12px;border-radius:10px">' + esc(rep.reason || 'No reason given') + '</div>' +
+        '<div style="font-size:11px;color:var(--sub);margin-top:8px">Reported ' + timeAgo(rep.created_at) + '</div>' +
+      '</div>';
+    }).join('');
+  } catch(e){
+    var b3 = document.getElementById('report-history-body');
+    if (b3) b3.innerHTML = '<div style="text-align:center;padding:40px;color:var(--sub)">Could not load reports</div>';
+  }
+};
+
+// Update Community screen — add "My reports" action
+(function(){
+  if (window._batch2CommWrapped) return;
+  window._batch2CommWrapped = true;
+  var _orig = window.openCommunity;
+  if (typeof _orig === 'function'){
+    window.openCommunity = function(){
+      var r = _orig.apply(this, arguments);
+      setTimeout(function(){
+        var safety = document.querySelector('#community-body [style*="Safety"]');
+        // Insert "My reports" row into safety section after Blocked users
+        var blocked = Array.from(document.querySelectorAll('#community-body > div > div')).find(function(el){
+          return (el.textContent || '').indexOf('Blocked users') !== -1 && el.getAttribute('onclick');
+        });
+        if (blocked && !document.getElementById('report-history-row')){
+          var newRow = blocked.cloneNode(true);
+          newRow.id = 'report-history-row';
+          newRow.setAttribute('onclick', "document.getElementById('community-screen').style.display='none'; openReportHistory()");
+          newRow.querySelector('div:nth-child(2) > div').textContent = '📋';
+          newRow.querySelector('div:nth-child(3) > div').textContent = 'My reports';
+          newRow.querySelector('div:nth-child(3) > div:nth-child(2)').textContent = 'See your report history';
+          blocked.parentNode.insertBefore(newRow, blocked.nextSibling);
+        }
+      }, 500);
+      return r;
+    };
+  }
+})();
+
+// Override renderCommentNode again for sticker rendering
+var _origRenderForSticker = window.renderCommentNode;
+if (typeof _origRenderForSticker === 'function'){
+  window.renderCommentNode = function(c){
+    var html = _origRenderForSticker.call(this, c);
+    // If sticker_url present, replace body with larger sticker image
+    if (c.sticker_url){
+      // Insert sticker image inside the bubble, right before the closing tags
+      html = html.replace(/<\/div><\/div>$/, '<div style="margin:6px 0"><img src="' + c.sticker_url + '" style="max-width:160px;max-height:160px;object-fit:contain" onclick="if(typeof openLightbox===\'function\')openLightbox(\'' + c.sticker_url + '\')"></div></div></div>');
+    }
     return html;
   };
 }
