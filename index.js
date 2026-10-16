@@ -2982,6 +2982,69 @@ app.get('/api/posts/:id/comments', auth, async (req, res) => {
   } catch(e){ console.error('comments get:', e.message); res.status(500).json({ error: 'Server error' }); }
 });
 
+/* GISTAPP_COMMUNITY_HUB — community stats + guidelines + top creators */
+app.get('/api/community/overview', auth, async (req, res) => {
+  try {
+    const statsR = await pool.query(`
+      SELECT
+        (SELECT COUNT(*)::int FROM users WHERE verified=true) AS members,
+        (SELECT COUNT(*)::int FROM posts) AS posts,
+        (SELECT COUNT(*)::int FROM live_streams WHERE status='ended' OR status='live') AS streams,
+        (SELECT COUNT(*)::int FROM live_gifts) AS gifts_sent,
+        (SELECT COUNT(*)::int FROM post_comments) AS comments
+    `);
+    const stats = statsR.rows[0];
+
+    // Trending hashtags from last 30 days
+    // GISTAPP_COMMUNITY_HUB_FIX — use LATERAL for set-returning fn in FROM
+    const hashtagR = await pool.query(`
+      SELECT LOWER(m.tag_arr[1]) AS tag, COUNT(*)::int AS n
+      FROM posts p
+      CROSS JOIN LATERAL regexp_matches(p.body, '#([A-Za-z0-9_]{2,30})', 'g') AS m(tag_arr)
+      WHERE p.created_at > NOW() - INTERVAL '30 days'
+      GROUP BY LOWER(m.tag_arr[1])
+      ORDER BY n DESC, tag ASC
+      LIMIT 8
+    `);
+
+    // Top creators by follower count
+    const topR = await pool.query(`
+      SELECT u.id, u.display_name, u.username, u.avatar_url, u.avatar_color,
+             u.subscription_tier,
+             COALESCE(f.followers, 0)::int AS followers
+      FROM users u
+      LEFT JOIN (SELECT following_id, COUNT(*)::int AS followers FROM user_follows GROUP BY following_id) f
+        ON f.following_id = u.id
+      WHERE u.verified = true
+      ORDER BY followers DESC NULLS LAST, u.id ASC
+      LIMIT 6
+    `);
+
+    res.json({
+      stats: stats,
+      trending_hashtags: hashtagR.rows,
+      top_creators: topR.rows,
+      guidelines: {
+        can: [
+          'Chat, post, and go live with anyone on the platform.',
+          'Share content you own or have the right to share.',
+          'Earn coins from gifts and withdraw your balance.',
+          'Block, mute, or report anyone who crosses a line.',
+          'Delete your account and data at any time.'
+        ],
+        cannot: [
+          'Harass, threaten, or abuse other members.',
+          'Post illegal, adult, or sexually explicit content.',
+          'Impersonate anyone or misrepresent who you are.',
+          'Spam, scam, or run unauthorised promotions.',
+          "Share someone else's private information without consent.",
+          'Use the app if you are under 18 years old.'
+        ]
+      }
+    });
+  } catch(e){ console.error('community overview:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
 /* GISTAPP_COMMUNITY_V1 — poll create + vote */
 app.post('/api/posts/:id/comment-poll', auth, async (req, res) => {
   try {
