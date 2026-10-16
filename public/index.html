@@ -9745,6 +9745,57 @@ window.savePrefWeeklyDigest = async function(on){
   } catch(e){ try { toast('Could not save preference'); } catch(_){} }
 };
 
+
+/* GISTAPP_MARKETING_FE — inject "Marketing emails" toggle into notifications settings */
+(function(){
+  var _injectedM = false;
+  function injectM(){
+    if (_injectedM) return;
+    var screens = document.querySelectorAll('#screen-settings .set-row, #screen-settings .setting-row, #screen-settings [data-pref]');
+    if (!screens.length) return;
+    var anchorRow = null;
+    for (var i=0; i<screens.length; i++){
+      if (screens[i].getAttribute('data-pref') === 'weekly_digest'){ anchorRow = screens[i]; break; }
+    }
+    if (!anchorRow){
+      for (var j=0; j<screens.length; j++){
+        var t = (screens[j].textContent || '').toLowerCase();
+        if (t.indexOf('security') !== -1 || t.indexOf('notification') !== -1){ anchorRow = screens[j]; break; }
+      }
+    }
+    if (!anchorRow) return;
+    var row = document.createElement('div');
+    row.className = anchorRow.className;
+    row.setAttribute('data-pref', 'marketing_emails');
+    row.style.cssText = anchorRow.style.cssText || '';
+    row.innerHTML = '<div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:600">Product updates &amp; news</div><div style="font-size:12.5px;color:var(--sub);margin-top:2px">Occasional announcements about new features</div></div>' +
+      '<label style="display:inline-flex;align-items:center;cursor:pointer"><input type="checkbox" id="pref-marketing-emails" style="width:22px;height:22px;accent-color:#7b8cff" onchange="savePrefMarketing(this.checked)"></label>';
+    anchorRow.parentNode.insertBefore(row, anchorRow.nextSibling);
+    try {
+      var val = (me && me.prefs && me.prefs.marketing_emails) || 'true';
+      var cb = document.getElementById('pref-marketing-emails');
+      if (cb) cb.checked = (val !== 'false');
+    } catch(_){}
+    _injectedM = true;
+  }
+  var _origShowM = window.show;
+  if (typeof _origShowM === 'function' && !window._marketingShowWrapped){
+    window._marketingShowWrapped = true;
+    window.show = function(id){
+      var r = _origShowM.apply(this, arguments);
+      if (id === 'screen-settings'){ _injectedM = false; setTimeout(injectM, 120); }
+      return r;
+    };
+  }
+})();
+window.savePrefMarketing = async function(on){
+  try {
+    await api('/api/me', { method:'PATCH', body: JSON.stringify({ prefs: { marketing_emails: on ? 'true' : 'false' } }) });
+    if (me && me.prefs) me.prefs.marketing_emails = on ? 'true' : 'false';
+    try { toast(on ? 'Product updates enabled' : 'Product updates disabled'); } catch(_){}
+  } catch(e){ try { toast('Could not save preference'); } catch(_){} }
+};
+
 boot();
 </script>
 

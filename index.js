@@ -4950,6 +4950,154 @@ app.get('/api/cron/weekly-digest', async (req, res) => {
   });
 });
 
+/* GISTAPP_MARKETING_EMAIL — admin broadcast to segments */
+function _marketingToken(uid){
+  return crypto_digest.createHmac('sha256', JWT_SECRET).update('marketing-unsub:' + uid).digest('hex').slice(0, 32);
+}
+
+function _marketingSegmentWhere(segment){
+  switch(segment){
+    case 'pro':      return "subscription_tier='pro'";
+    case 'business': return "subscription_tier='business'";
+    case 'free':     return "(subscription_tier IS NULL OR subscription_tier='free')";
+    case 'active':   return "last_seen_at > NOW() - INTERVAL '30 days'";
+    case 'inactive': return "(last_seen_at < NOW() - INTERVAL '30 days' OR last_seen_at IS NULL)";
+    case 'all':
+    default:         return "1=1";
+  }
+}
+
+function _marketingHTML(subject, previewText, bodyHTML, uid, baseUrl){
+  const tok = _marketingToken(uid);
+  const unsubUrl = baseUrl + '/api/email/unsub-marketing?u=' + uid + '&t=' + tok;
+  const settingsUrl = baseUrl + '/?settings=notifications';
+  const preview = previewText ? String(previewText) : '';
+
+  return '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + subject + '</title></head>' +
+  '<body style="margin:0;padding:0;background:#f2f0fa;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Inter,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased">' +
+  (preview ? '<div style="display:none;font-size:1px;color:#f2f0fa;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden">' + preview + '</div>' : '') +
+  '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f2f0fa;padding:24px 12px">' +
+  '<tr><td align="center">' +
+  '<table role="presentation" width="560" cellspacing="0" cellpadding="0" border="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:24px;overflow:hidden;box-shadow:0 12px 40px rgba(51,52,76,.10)">' +
+  '<tr><td style="background:linear-gradient(135deg,#2b2c44 0%,#5a6cd6 55%,#7b8cff 100%);padding:24px 32px;text-align:center">' +
+  '<img src="' + baseUrl + '/icon-192.png" alt="GistApp" width="48" height="48" style="border-radius:12px;display:block;margin:0 auto 8px;box-shadow:0 8px 20px rgba(0,0,0,.3)">' +
+  '<div style="color:#ffffff;font-size:12px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;opacity:.85">GistApp Team</div>' +
+  '</td></tr>' +
+  '<tr><td style="padding:32px 32px 8px">' +
+  '<h1 style="margin:0 0 16px;color:#1c1c22;font-size:22px;font-weight:800;letter-spacing:-.4px;line-height:1.3">' + subject + '</h1>' +
+  '<div style="color:#4a4a55;font-size:15px;line-height:1.7">' + bodyHTML + '</div>' +
+  '</td></tr>' +
+  '<tr><td style="padding:28px 32px 34px;text-align:center">' +
+  '<a href="' + baseUrl + '" style="background:#2b2c44;color:#ffffff;text-decoration:none;padding:14px 40px;border-radius:14px;font-weight:800;display:inline-block;font-size:14.5px;letter-spacing:.2px">Open GistApp</a>' +
+  '</td></tr>' +
+  '<tr><td style="background:#f7f6fc;padding:18px 32px;text-align:center;border-top:1px solid #eae7f5">' +
+  '<p style="margin:0 0 8px;color:#8e8e93;font-size:11.5px;line-height:1.6">You are receiving this because you have a GistApp account.</p>' +
+  '<p style="margin:0;color:#a8a5b3;font-size:11px;line-height:1.6">' +
+  '<a href="' + settingsUrl + '" style="color:#5a6cd6;text-decoration:none;font-weight:600">Manage preferences</a> &middot; ' +
+  '<a href="' + unsubUrl + '" style="color:#5a6cd6;text-decoration:none;font-weight:600">Unsubscribe</a>' +
+  '</p>' +
+  '<p style="margin:8px 0 0;color:#a8a5b3;font-size:10.5px">&copy; ' + new Date().getFullYear() + ' GistApp Community &middot; All rights reserved.</p>' +
+  '</td></tr>' +
+  '</table></td></tr></table></body></html>';
+}
+
+/* POST /api/admin/marketing/send
+   Body: { segment, subject, preview, body, cta_url?, test? }
+   - segment: all | pro | business | free | active | inactive
+   - test: if true, sends only to admin's own email
+   - dry: if true, returns recipient count without sending (safety)
+*/
+app.post('/api/admin/marketing/send', auth, adminOnly, async (req, res) => {
+  try {
+    const b = req.body || {};
+    const segment = String(b.segment || 'all');
+    const subject = String(b.subject || '').slice(0, 180).trim();
+    const preview = String(b.preview || '').slice(0, 200).trim();
+    const bodyRaw = String(b.body || '').slice(0, 8000).trim();
+    const test = !!b.test;
+    const dry = !!b.dry;
+
+    if (!subject || !bodyRaw) return res.status(400).json({ error: 'subject and body required' });
+
+    // Convert plaintext to safe HTML paragraphs (no arbitrary HTML injection)
+    const escapeHtml = function(t){ return String(t).replace(/[&<>"']/g, function(c){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]; }); };
+    const bodyHTML = bodyRaw.split(/\n\s*\n/).map(function(p){
+      return '<p style="margin:0 0 14px">' + escapeHtml(p).replace(/\n/g, '<br>') + '</p>';
+    }).join('');
+
+    const baseUrl = process.env.APP_URL || 'https://gistapp.onrender.com';
+    const whereClause = _marketingSegmentWhere(segment);
+
+    // Recipients — exclude unsubscribed from marketing
+    let sql = "SELECT id, email, display_name FROM users WHERE verified=true AND email IS NOT NULL AND COALESCE(prefs->>'marketing_emails','true') <> 'false' AND " + whereClause;
+
+    let recipients = [];
+    if (test){
+      const me = await pool.query('SELECT id, email, display_name FROM users WHERE id=$1', [req.user.id]);
+      recipients = me.rows;
+    } else {
+      const r = await pool.query(sql + ' ORDER BY id DESC LIMIT 5000');
+      recipients = r.rows;
+    }
+
+    if (dry){
+      return res.json({ ok: true, dry: true, segment: segment, recipients: recipients.length });
+    }
+
+    if (!test && recipients.length > 50){
+      // Require explicit confirm for large batches
+      if (b.confirm !== true){
+        return res.status(400).json({ error: 'Batch > 50 requires confirm:true', count: recipients.length });
+      }
+    }
+
+    let sent = 0, failed = 0;
+    const errors = [];
+    for (const u of recipients){
+      try {
+        const html = _marketingHTML(subject, preview, bodyHTML, u.id, baseUrl);
+        await mailer.sendMail({
+          from: '"GistApp Team" <' + GMAIL_SENDER + '>',
+          to: u.email,
+          replyTo: process.env.SMTP_USER,
+          subject: subject,
+          headers: {
+            'X-Priority': '3',
+            'Importance': 'normal',
+            'List-Unsubscribe': '<' + baseUrl + '/api/email/unsub-marketing?u=' + u.id + '&t=' + _marketingToken(u.id) + '>',
+            'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click'
+          },
+          html: html
+        });
+        sent++;
+        if (recipients.length > 1) await new Promise(r => setTimeout(r, 220)); // throttle Gmail
+      } catch(e){
+        failed++;
+        if (errors.length < 5) errors.push({ email: u.email, err: e.message });
+      }
+    }
+
+    console.log('📣 Marketing email sent:', sent, 'failed:', failed, 'segment:', segment);
+    res.json({ ok: true, sent: sent, failed: failed, total: recipients.length, errors: errors });
+  } catch(e){ console.error('marketing send:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+/* GET /api/email/unsub-marketing — one-click unsubscribe */
+app.get('/api/email/unsub-marketing', async (req, res) => {
+  try {
+    const uid = Number(req.query.u || 0);
+    const tok = String(req.query.t || '');
+    if (!uid || !tok) return res.status(400).send('<h2>Invalid link</h2>');
+    const expect = _marketingToken(uid);
+    if (tok !== expect) return res.status(403).send('<h2>Invalid link</h2>');
+    await pool.query(
+      "UPDATE users SET prefs = COALESCE(prefs,'{}'::jsonb) || jsonb_build_object('marketing_emails','false') WHERE id=$1",
+      [uid]
+    );
+    res.send('<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Unsubscribed</title></head><body style="font-family:Inter,-apple-system,system-ui,sans-serif;background:#f2f0fa;color:#1c1c22;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;text-align:center;padding:20px"><div style="background:#fff;max-width:420px;padding:40px 30px;border-radius:24px;box-shadow:0 12px 40px rgba(51,52,76,.10)"><div style="font-size:52px;margin-bottom:12px">✅</div><h2 style="margin:0 0 10px;font-size:22px;letter-spacing:-.3px">You are unsubscribed</h2><p style="color:#6a6a73;font-size:14px;line-height:1.6;margin:0 0 20px">You will not receive marketing emails anymore. You can re-enable it in the app under <b>Settings &rarr; Notifications</b>.</p><a href="/" style="display:inline-block;background:#2b2c44;color:#fff;text-decoration:none;padding:12px 28px;border-radius:12px;font-weight:700;font-size:14px">Back to GistApp</a></div></body></html>');
+  } catch(e){ console.error('unsub-marketing:', e.message); res.status(500).send('<h2>Server error</h2>'); }
+});
+
 /* GISTAPP_WEEKLY_DIGEST — unsubscribe (public, uses HMAC token) */
 app.get('/api/email/unsub-digest', async (req, res) => {
   try {
