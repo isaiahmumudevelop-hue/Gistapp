@@ -5001,9 +5001,11 @@ function sbShowLivePill(){
   var pill = document.createElement('div');
   pill.id = 'sb-live-pill';
   pill.style.cssText = 'position:fixed;top:calc(14px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#ff3b30,#ff5e3a);color:#fff;padding:10px 16px;border-radius:24px;font-size:13px;font-weight:800;cursor:pointer;z-index:9995;display:flex;align-items:center;gap:8px;box-shadow:0 6px 20px rgba(255,59,48,.5);font-family:inherit';
-  pill.innerHTML = '<span style="width:8px;height:8px;border-radius:50%;background:#fff;animation:sbPulse 1.4s infinite"></span> LIVE — tap to return';
+  pill.innerHTML = '<span style="width:8px;height:8px;border-radius:50%;background:#fff;animation:sbPulse 1.4s infinite"></span> LIVE <span id="sb-pill-viewers" style="opacity:.85;font-weight:600">· …</span> — tap to return';  // GISTAPP_L4_VIEWER_BADGE
   pill.onclick = sbRestoreLive;
   document.body.appendChild(pill);
+  // GISTAPP_L4_VIEWER_BADGE — fetch viewer count immediately
+  try { if (typeof ssFetchViewerCount === 'function') ssFetchViewerCount(); } catch(_){}
 }
 function sbHideLivePill(){
   var p = document.getElementById('sb-live-pill');
@@ -5975,8 +5977,14 @@ async function ssFetchViewerCount(){
   try {
     var r = await api('/api/live/streams');
     var s = (r || []).find(function(x){ return Number(x.id) === Number(_ssStreamId); });
+    var n = s ? (s.viewer_count || 0) : 0;
     var el = document.getElementById('sb-viewer-count');
-    if (el) el.textContent = s ? (s.viewer_count || 0) : 0;
+    if (el) el.textContent = n;
+    // GISTAPP_L4_VIEWER_BADGE — update pill with viewer count
+    var pillEl = document.getElementById('sb-pill-viewers');
+    if (pillEl){
+      pillEl.textContent = '· ' + n + ' viewer' + (n === 1 ? '' : 's');
+    }
   } catch(_){}
 }
 

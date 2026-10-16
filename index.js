@@ -339,6 +339,163 @@ ${cannotItem('Use the app if you are under 18 years old.')}
   return info;
 }
 
+/* GISTAPP_RENEWAL_REMINDER — emails Pro/Biz users before subscription expires */
+async function sendRenewalReminderEmail(toEmail, displayName, info){
+  if (!toEmail) return false;
+  info = info || {};
+  const baseUrl = process.env.APP_URL || 'https://gistapp.onrender.com';
+  const iconUrl = baseUrl + '/icon-192.png';
+  const name = displayName || 'there';
+  const planKey = info.plan || 'pro';
+  const planName = planKey === 'business' ? 'Business' : 'Pro';
+  const daysLeft = Number(info.days_left || 0);
+  const autoRenew = !!info.auto_renew;
+  const endsAt = info.ends_at ? new Date(info.ends_at) : null;
+  const endsStr = endsAt ? endsAt.toLocaleDateString('en-GB', { timeZone: 'Africa/Lagos', weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }) : 'soon';
+  const subject = daysLeft <= 1
+    ? 'Your ' + planName + ' subscription ends tomorrow ⏳'
+    : 'Your ' + planName + ' subscription ends in ' + daysLeft + ' days';
+
+  const emoji = planKey === 'business' ? '💎' : '👑';
+
+  const featureRow = (f) =>
+    '<tr><td style="padding:6px 0;color:#c03434;font-size:14px;width:22px;vertical-align:top">&#10007;</td>' +
+    '<td style="padding:6px 0;color:#2b2c44;font-size:13.5px;line-height:1.5">' + f + '</td></tr>';
+
+  const features = [
+    'Verified ' + emoji + ' badge on your profile',
+    planKey === 'business' ? 'All Business features (unlimited uploads, priority support)' : 'All Pro features',
+    'Ability to earn from gifts and withdraw earnings',
+    'Priority in search and discover'
+  ];
+
+  const statusBlock = autoRenew
+    ? '<div style="background:#f0fbf4;border:1px solid #c9efd6;border-radius:12px;padding:14px 16px;margin-bottom:18px">' +
+      '<div style="color:#1f7a3d;font-size:13px;font-weight:800;letter-spacing:.2px;margin-bottom:4px">✅ Auto-renew is ON</div>' +
+      '<div style="color:#2b2c44;font-size:13px;line-height:1.55">We will charge your saved payment method automatically on <b>' + endsStr + '</b>. No action needed.</div>' +
+      '</div>'
+    : '<div style="background:#fff3cd;border:1px solid #ffe58f;border-radius:12px;padding:14px 16px;margin-bottom:18px">' +
+      '<div style="color:#7a5a00;font-size:13px;font-weight:800;letter-spacing:.2px;margin-bottom:4px">⚠️ Auto-renew is OFF</div>' +
+      '<div style="color:#2b2c44;font-size:13px;line-height:1.55">Your subscription will end on <b>' + endsStr + '</b>. Tap below to renew and keep your benefits.</div>' +
+      '</div>';
+
+  const html = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + subject + '</title></head>' +
+  '<body style="margin:0;padding:0;background:#f2f0fa;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Inter,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased">' +
+  '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f2f0fa;padding:24px 12px">' +
+  '<tr><td align="center">' +
+  '<table role="presentation" width="560" cellspacing="0" cellpadding="0" border="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:24px;overflow:hidden;box-shadow:0 12px 40px rgba(51,52,76,.10)">' +
+
+  '<tr><td style="background:linear-gradient(135deg,#d97706 0%,#f59e0b 55%,#fbbf24 100%);padding:30px 32px 26px;text-align:center">' +
+  '<img src="' + iconUrl + '" alt="GistApp" width="56" height="56" style="border-radius:14px;display:block;margin:0 auto 12px;box-shadow:0 8px 22px rgba(0,0,0,.3)">' +
+  '<div style="font-size:44px;line-height:1;margin:0 0 6px">' + emoji + '</div>' +
+  '<div style="color:#ffffff;font-size:20px;font-weight:800;letter-spacing:-.3px">' + planName + ' subscription ' + (daysLeft <= 1 ? 'ends tomorrow' : 'ends in ' + daysLeft + ' days') + '</div>' +
+  '</td></tr>' +
+
+  '<tr><td style="padding:28px 32px 4px">' +
+  '<p style="margin:0 0 12px;color:#1c1c22;font-size:17px;font-weight:700;letter-spacing:-.2px">Hi ' + name + ',</p>' +
+  '<p style="margin:0 0 20px;color:#4a4a55;font-size:14.5px;line-height:1.65">Your <b>' + planName + '</b> subscription on GistApp ends on <b>' + endsStr + '</b>. Here is what you will lose if it lapses:</p>' +
+  '</td></tr>' +
+
+  '<tr><td style="padding:0 32px">' +
+  '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border-collapse:collapse">' +
+  features.map(featureRow).join('') +
+  '</table>' +
+  '</td></tr>' +
+
+  '<tr><td style="padding:24px 32px 0">' + statusBlock + '</td></tr>' +
+
+  '<tr><td style="padding:0 32px 6px;text-align:center">' +
+  '<a href="' + baseUrl + '" style="background:' + (autoRenew ? '#2b2c44' : '#d97706') + ';color:#ffffff;text-decoration:none;padding:15px 42px;border-radius:14px;font-weight:800;display:inline-block;font-size:15px;letter-spacing:.2px">' + (autoRenew ? 'Open GistApp' : 'Renew ' + planName) + '</a>' +
+  '</td></tr>' +
+
+  '<tr><td style="padding:12px 32px 30px;text-align:center">' +
+  '<p style="margin:0;color:#8e8e93;font-size:12.5px;line-height:1.65">Manage your subscription anytime in <b>Settings &rarr; Subscription</b>.<br>Questions? Just reply to this email.</p>' +
+  '</td></tr>' +
+
+  '<tr><td style="background:#f7f6fc;padding:18px 32px;text-align:center;border-top:1px solid #eae7f5">' +
+  '<p style="margin:0;color:#a8a5b3;font-size:11px;line-height:1.6">&copy; ' + new Date().getFullYear() + ' GistApp Community &middot; All rights reserved.</p>' +
+  '</td></tr>' +
+
+  '</table></td></tr></table></body></html>';
+
+  try {
+    await mailer.sendMail({
+      from: '"GistApp" <' + GMAIL_SENDER + '>',
+      to: toEmail,
+      replyTo: process.env.SMTP_USER,
+      subject: subject,
+      headers: {
+        'X-Priority': '3',
+        'Importance': 'normal'
+      },
+      html: html
+    });
+    console.log('✅ Renewal reminder sent to', toEmail, '(' + planName + ', ' + daysLeft + 'd left)');
+    return true;
+  } catch(e){
+    console.warn('renewal email failed:', e && e.message);
+    return false;
+  }
+}
+
+/* GISTAPP_RENEWAL_REMINDER — cron: check subscriptions ending in 5d or 1d */
+async function checkSubscriptionRenewals(){
+  try {
+    // Find Pro/Biz users whose subscription ends in the next 6 days
+    const r = await pool.query(`
+      SELECT id, email, display_name, subscription_tier, subscription_ends_at,
+             COALESCE(auto_renew, false) AS auto_renew, prefs
+      FROM users
+      WHERE subscription_tier IN ('pro','business')
+        AND subscription_status = 'active'
+        AND subscription_ends_at IS NOT NULL
+        AND subscription_ends_at > NOW()
+        AND subscription_ends_at < NOW() + INTERVAL '6 days'
+        AND email IS NOT NULL
+    `);
+
+    for (const u of r.rows){
+      try {
+        const daysLeft = Math.ceil((new Date(u.subscription_ends_at) - Date.now()) / (24 * 60 * 60 * 1000));
+        // Fire at 5 days and 1 day (or below)
+        let milestone = null;
+        if (daysLeft <= 1) milestone = '1d';
+        else if (daysLeft <= 5) milestone = '5d';
+        if (!milestone) continue;
+
+        // Check if we already sent for this milestone
+        const prefs = u.prefs || {};
+        const sentKey = 'renewal_' + milestone + '_sent_at';
+        const lastSent = prefs[sentKey];
+        if (lastSent){
+          const lastMs = Date.parse(lastSent);
+          if (!isNaN(lastMs) && (Date.now() - lastMs) < 3 * 24 * 60 * 60 * 1000){
+            continue; // sent within last 3 days — skip
+          }
+        }
+
+        // Don't spam if user already unsubscribed from renewal emails
+        if (prefs.renewal_emails === 'false') continue;
+
+        await sendRenewalReminderEmail(u.email, u.display_name, {
+          plan: u.subscription_tier,
+          days_left: daysLeft,
+          ends_at: u.subscription_ends_at,
+          auto_renew: u.auto_renew
+        });
+
+        // Mark as sent
+        await pool.query(
+          "UPDATE users SET prefs = COALESCE(prefs,'{}'::jsonb) || jsonb_build_object($1::text, NOW()::text) WHERE id=$2",
+          [sentKey, u.id]
+        );
+      } catch(innerErr){
+        console.warn('renewal reminder error for user', u.id, ':', innerErr.message);
+      }
+    }
+  } catch(e){ console.warn('checkSubscriptionRenewals:', e.message); }
+}
+
 /* GISTAPP_SECURITY_ALERT — emails on critical account changes */
 async function sendSecurityAlertEmail(toEmail, displayName, eventType, meta){
   if (!toEmail) return;
@@ -3728,7 +3885,7 @@ async function momoRenewalCheck(){
     const soon = await pool.query(`
       SELECT id, momo_number, subscription_ends_at, auto_renew
       FROM users
-      WHERE subscription_tier='premium'
+      WHERE subscription_tier IN ('pro','business')  -- GISTAPP_RENEWAL_REMINDER fix
         AND subscription_status='active'
         AND auto_renew=true
         AND subscription_ends_at IS NOT NULL
@@ -3790,6 +3947,9 @@ async function momoCheckPending(){
 
 setTimeout(momoRenewalCheck, 60 * 1000);
 setInterval(momoRenewalCheck, 6 * 60 * 60 * 1000);
+// GISTAPP_RENEWAL_REMINDER — check every 6h, email on 5d and 1d milestones
+setInterval(checkSubscriptionRenewals, 6 * 60 * 60 * 1000);
+setTimeout(checkSubscriptionRenewals, 3 * 60 * 1000); // first run 3min after boot
 setInterval(momoCheckPending, 30 * 1000);
 
 /* ---------- Paystack billing ---------- GISTAPP_PAYSTACK_V1 */
@@ -5100,6 +5260,34 @@ function _marketingHTML(subject, previewText, bodyHTML, uid, baseUrl){
   '</td></tr>' +
   '</table></td></tr></table></body></html>';
 }
+
+/* GISTAPP_RENEWAL_REMINDER — admin trigger for testing */
+app.post('/api/admin/check-renewals-now', auth, adminOnly, async (req, res) => {
+  try {
+    const force = !!(req.body && req.body.force);
+    if (force){
+      // Force mode — ignore already-sent markers, send to test user only
+      const targetId = Number((req.body && req.body.user_id) || 0) || req.user.id;
+      const u = await pool.query(
+        "SELECT id, email, display_name, subscription_tier, subscription_ends_at, COALESCE(auto_renew,false) AS auto_renew FROM users WHERE id=$1",
+        [targetId]
+      );
+      if (!u.rowCount) return res.status(404).json({ error: 'User not found' });
+      const row = u.rows[0];
+      const endsAt = row.subscription_ends_at || new Date(Date.now() + 5 * 24 * 60 * 60 * 1000);
+      const daysLeft = Math.ceil((new Date(endsAt) - Date.now()) / (24 * 60 * 60 * 1000));
+      await sendRenewalReminderEmail(row.email, row.display_name, {
+        plan: row.subscription_tier || 'pro',
+        days_left: daysLeft,
+        ends_at: endsAt,
+        auto_renew: row.auto_renew
+      });
+      return res.json({ ok: true, force: true, sent_to: row.email, days_left: daysLeft });
+    }
+    await checkSubscriptionRenewals();
+    res.json({ ok: true, triggered: true });
+  } catch(e){ console.error('check-renewals-now:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
 
 /* POST /api/admin/marketing/send
    Body: { segment, subject, preview, body, cta_url?, test? }
