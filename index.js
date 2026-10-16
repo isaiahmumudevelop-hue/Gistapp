@@ -4315,6 +4315,106 @@ async function livekitSyncViewerCounts(){
   } catch(e){ console.warn('vc sync:', e.message); }
 }
 setTimeout(livekitSyncViewerCounts, 3000);
+/* GISTAPP_ANALYTICS_V1 — streamer analytics aggregation */
+app.get('/api/analytics/streamer', auth, async (req, res) => {
+  try {
+    const uid = req.user.id;
+    const range = String(req.query.range || '30d');
+    let interval = "30 days";
+    if (range === '7d') interval = "7 days";
+    else if (range === '24h') interval = "24 hours";
+    else if (range === 'all') interval = null;
+
+    const whereTime = interval
+      ? "AND ls.started_at > NOW() - INTERVAL '" + interval + "'"
+      : "";
+
+    // Totals
+    const totalsR = await pool.query(
+      `SELECT
+         COUNT(*)::int AS streams,
+         COALESCE(SUM(EXTRACT(EPOCH FROM (COALESCE(ls.ended_at, ls.started_at) - ls.started_at)) / 3600), 0)::numeric(10,1) AS hours_streamed,
+         COALESCE(SUM(ls.peak_viewers), 0)::int AS peak_viewers,
+         COALESCE(SUM(ls.viewer_count), 0)::int AS total_viewers,
+         COALESCE(SUM(ls.gift_count), 0)::int AS gift_count,
+         COALESCE(SUM(ls.follower_gain), 0)::int AS follower_gain
+       FROM live_streams ls
+       WHERE ls.streamer_id = $1 ${whereTime}`,
+      [uid]
+    );
+    const t = totalsR.rows[0] || {};
+
+    // Coins earned from these streams
+    const coinsR = await pool.query(
+      `SELECT COALESCE(SUM(lg.coins), 0)::int AS gross_coins
+       FROM live_gifts lg
+       JOIN live_streams ls ON ls.id = lg.stream_id
+       WHERE ls.streamer_id = $1 ${whereTime}`,
+      [uid]
+    );
+    const grossCoins = coinsR.rows[0] ? coinsR.rows[0].gross_coins : 0;
+    const creatorCoins = Math.floor(grossCoins * 0.7);
+
+    // Streams per day (last N days)
+    const dayRange = (range === 'all') ? 30 : (range === '24h' ? 1 : (range === '7d' ? 7 : 30));
+    const daysR = await pool.query(
+      `WITH days AS (
+         SELECT generate_series(
+           (CURRENT_DATE - INTERVAL '${dayRange - 1} days')::date,
+           CURRENT_DATE::date,
+           INTERVAL '1 day'
+         )::date AS d
+       )
+       SELECT d::text AS date, COALESCE(COUNT(ls.id), 0)::int AS count
+       FROM days
+       LEFT JOIN live_streams ls ON DATE(ls.started_at AT TIME ZONE 'Africa/Lagos') = d AND ls.streamer_id = $1
+       GROUP BY d ORDER BY d`,
+      [uid]
+    );
+
+    // Top 5 streams by peak_viewers
+    const topR = await pool.query(
+      `SELECT ls.id, ls.title, ls.peak_viewers, ls.viewer_count, ls.started_at, ls.ended_at,
+              COALESCE((SELECT SUM(lg.coins) FROM live_gifts lg WHERE lg.stream_id = ls.id), 0)::int AS coins,
+              COALESCE(ls.gift_count, 0)::int AS gift_count
+       FROM live_streams ls
+       WHERE ls.streamer_id = $1 ${whereTime}
+       ORDER BY ls.peak_viewers DESC NULLS LAST, ls.started_at DESC
+       LIMIT 5`,
+      [uid]
+    );
+
+    // Gift breakdown
+    const giftsR = await pool.query(
+      `SELECT lg.gift_type, COUNT(*)::int AS count, COALESCE(SUM(lg.coins), 0)::int AS coins
+       FROM live_gifts lg
+       JOIN live_streams ls ON ls.id = lg.stream_id
+       WHERE ls.streamer_id = $1 ${whereTime}
+       GROUP BY lg.gift_type
+       ORDER BY coins DESC`,
+      [uid]
+    );
+
+    res.json({
+      range: range,
+      totals: {
+        streams: t.streams || 0,
+        hours_streamed: Number(t.hours_streamed || 0),
+        peak_viewers: t.peak_viewers || 0,
+        total_viewers: t.total_viewers || 0,
+        gift_count: t.gift_count || 0,
+        follower_gain: t.follower_gain || 0,
+        gross_coins: grossCoins,
+        creator_coins: creatorCoins,
+        creator_ngn: Math.floor(creatorCoins / 10)
+      },
+      streams_per_day: daysR.rows,
+      top_streams: topR.rows,
+      gift_breakdown: giftsR.rows
+    });
+  } catch(e){ console.error('analytics:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
 /* GISTAPP_LIVE_VIEWERS_V1 — table setup */
 (async function(){
   try {

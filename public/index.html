@@ -9796,6 +9796,168 @@ window.savePrefMarketing = async function(on){
   } catch(e){ try { toast('Could not save preference'); } catch(_){} }
 };
 
+/* GISTAPP_ANALYTICS_FE — streamer analytics screen logic */
+var _a1Range = '30d';
+var _a1Data = null;
+
+function openAnalytics(){
+  var s = document.getElementById('analytics-screen');
+  if (!s) return;
+  s.style.display = 'flex';
+  _a1SetRangeStyle();
+  a1Load();
+}
+function closeAnalytics(){
+  var s = document.getElementById('analytics-screen');
+  if (s) s.style.display = 'none';
+}
+function a1SetRange(r){
+  _a1Range = r;
+  _a1SetRangeStyle();
+  a1Load();
+}
+function _a1SetRangeStyle(){
+  var btns = document.querySelectorAll('.a1-range-btn');
+  btns.forEach(function(b){
+    if (b.getAttribute('data-range') === _a1Range){
+      b.style.background = 'var(--accent,#7b8cff)';
+      b.style.color = '#fff';
+      b.style.borderColor = 'var(--accent,#7b8cff)';
+    } else {
+      b.style.background = 'var(--bg-2)';
+      b.style.color = 'var(--ink)';
+      b.style.borderColor = 'var(--line)';
+    }
+  });
+}
+async function a1Load(){
+  var body = document.getElementById('a1-body');
+  if (!body) return;
+  body.innerHTML = '<div style="text-align:center;padding:40px;color:var(--sub)">Loading…</div>';
+  try {
+    var d = await api('/api/analytics/streamer?range=' + _a1Range);
+    _a1Data = d;
+    _a1Render(d);
+  } catch(e){
+    body.innerHTML = '<div style="text-align:center;padding:40px;color:var(--sub)">Could not load analytics.</div>';
+  }
+}
+
+function _a1FmtHours(h){
+  h = Number(h) || 0;
+  if (h < 1){ return Math.round(h * 60) + 'm'; }
+  if (h < 10){ return h.toFixed(1) + 'h'; }
+  return Math.round(h) + 'h';
+}
+function _a1StatCard(emoji, value, label){
+  return '<div style="background:var(--bg-2);border:1px solid var(--line);border-radius:14px;padding:14px 12px;text-align:center">' +
+    '<div style="font-size:20px;line-height:1">' + emoji + '</div>' +
+    '<div style="font-size:20px;font-weight:800;color:var(--ink);margin-top:6px;letter-spacing:-.3px">' + value + '</div>' +
+    '<div style="font-size:11px;font-weight:700;color:var(--sub);text-transform:uppercase;letter-spacing:.5px;margin-top:4px">' + label + '</div>' +
+    '</div>';
+}
+function _a1BarChart(data){
+  if (!data || !data.length) return '<div style="color:var(--sub);text-align:center;padding:24px;font-size:13px">No data</div>';
+  var max = 0;
+  data.forEach(function(d){ if (d.count > max) max = d.count; });
+  if (max === 0) max = 1;
+  var W = 320, H = 110, PAD = 6;
+  var barW = (W - PAD * 2) / data.length - 2;
+  var bars = '';
+  for (var i = 0; i < data.length; i++){
+    var d = data[i];
+    var bh = Math.max(2, (d.count / max) * (H - 24));
+    var x = PAD + i * (barW + 2);
+    var y = H - 20 - bh;
+    var color = d.count > 0 ? '#7b8cff' : 'var(--line)';
+    bars += '<rect x="' + x + '" y="' + y + '" width="' + barW + '" height="' + bh + '" rx="2" fill="' + color + '"></rect>';
+    // Label every other day (or every 5th if dense)
+    var labelEvery = data.length > 10 ? 5 : 2;
+    if (i % labelEvery === 0 || i === data.length - 1){
+      var dd = new Date(d.date);
+      var lbl = (dd.getMonth()+1) + '/' + dd.getDate();
+      bars += '<text x="' + (x + barW/2) + '" y="' + (H - 6) + '" font-size="8" fill="#8e8e93" text-anchor="middle" font-family="Inter,sans-serif">' + lbl + '</text>';
+    }
+    if (d.count > 0){
+      bars += '<text x="' + (x + barW/2) + '" y="' + (y - 3) + '" font-size="9" fill="var(--ink)" text-anchor="middle" font-family="Inter,sans-serif" font-weight="700">' + d.count + '</text>';
+    }
+  }
+  return '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" height="' + H + '" preserveAspectRatio="xMidYMid meet" style="display:block">' + bars + '</svg>';
+}
+function _a1Render(d){
+  var body = document.getElementById('a1-body');
+  if (!body) return;
+  var t = d.totals || {};
+
+  // Empty state
+  if ((t.streams || 0) === 0){
+    body.innerHTML = '<div style="text-align:center;padding:60px 20px;color:var(--sub)">' +
+      '<div style="font-size:56px;margin-bottom:12px">📊</div>' +
+      '<div style="font-size:16px;font-weight:700;color:var(--ink);margin-bottom:6px">No streams in this period</div>' +
+      '<div style="font-size:13.5px;line-height:1.6">Go live to start collecting analytics.<br>Your stats will appear here.</div>' +
+      '</div>';
+    return;
+  }
+
+  var statsGrid = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">' +
+    _a1StatCard('🎥', t.streams || 0, 'Streams') +
+    _a1StatCard('⏱️', _a1FmtHours(t.hours_streamed), 'Hours live') +
+    _a1StatCard('👥', t.peak_viewers || 0, 'Peak viewers') +
+    _a1StatCard('🪙', (t.creator_coins || 0).toLocaleString(), 'Coins earned') +
+    '</div>';
+
+  var chart = '<div style="background:var(--bg-2);border:1px solid var(--line);border-radius:14px;padding:14px 12px;margin-bottom:16px">' +
+    '<div style="font-size:12px;font-weight:800;color:var(--sub);letter-spacing:1px;text-transform:uppercase;margin-bottom:12px">Streams per day</div>' +
+    _a1BarChart(d.streams_per_day) +
+    '</div>';
+
+  var top = '';
+  if ((d.top_streams || []).length){
+    top = '<div style="background:var(--bg-2);border:1px solid var(--line);border-radius:14px;padding:14px 14px;margin-bottom:16px">' +
+      '<div style="font-size:12px;font-weight:800;color:var(--sub);letter-spacing:1px;text-transform:uppercase;margin-bottom:10px">Top streams</div>';
+    d.top_streams.forEach(function(s, i){
+      var title = esc(s.title || 'Untitled stream');
+      var when = s.started_at ? timeAgo(s.started_at) : '';
+      top += '<div style="display:flex;align-items:center;gap:10px;padding:9px 0;' + (i > 0 ? 'border-top:1px solid var(--line)' : '') + '">' +
+        '<div style="font-size:14px;font-weight:800;color:var(--sub);width:18px">' + (i+1) + '</div>' +
+        '<div style="flex:1;min-width:0">' +
+        '<div style="font-size:13.5px;font-weight:700;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + title + '</div>' +
+        '<div style="font-size:11.5px;color:var(--sub);margin-top:2px">' + when + ' · 👥 ' + (s.peak_viewers || 0) + ' · 🪙 ' + (s.coins || 0) + '</div>' +
+        '</div></div>';
+    });
+    top += '</div>';
+  }
+
+  var gifts = '';
+  if ((d.gift_breakdown || []).length){
+    var emojiMap = { rose:'🌹', heart:'❤️', fire:'🔥', star:'⭐', cake:'🎂', crown:'👑', gem:'💎', rocket:'🚀' };
+    gifts = '<div style="background:var(--bg-2);border:1px solid var(--line);border-radius:14px;padding:14px 14px;margin-bottom:16px">' +
+      '<div style="font-size:12px;font-weight:800;color:var(--sub);letter-spacing:1px;text-transform:uppercase;margin-bottom:10px">Gift breakdown</div>';
+    d.gift_breakdown.forEach(function(g, i){
+      var emo = emojiMap[g.gift_type] || '🎁';
+      gifts += '<div style="display:flex;align-items:center;gap:10px;padding:7px 0;' + (i > 0 ? 'border-top:1px solid var(--line)' : '') + '">' +
+        '<div style="font-size:20px;width:26px;text-align:center">' + emo + '</div>' +
+        '<div style="flex:1;font-size:13.5px;color:var(--ink);font-weight:600;text-transform:capitalize">' + esc(g.gift_type || 'gift') + '</div>' +
+        '<div style="font-size:12.5px;color:var(--sub)">' + g.count + '×</div>' +
+        '<div style="font-size:13.5px;font-weight:800;color:var(--ink);margin-left:12px">' + (g.coins || 0) + ' 🪙</div>' +
+        '</div>';
+    });
+    gifts += '</div>';
+  }
+
+  var earnings = '<div style="background:linear-gradient(135deg,rgba(123,140,255,.15),rgba(123,140,255,.05));border:1px solid rgba(123,140,255,.35);border-radius:14px;padding:16px 18px;margin-bottom:16px">' +
+    '<div style="font-size:11px;font-weight:800;color:var(--sub);letter-spacing:1px;text-transform:uppercase">Total earned</div>' +
+    '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:8px">' +
+    '<div style="font-size:26px;font-weight:800;color:var(--ink);letter-spacing:-.4px">' + (t.creator_coins || 0).toLocaleString() + ' 🪙</div>' +
+    '<div style="font-size:16px;font-weight:700;color:var(--sub)">₦' + (t.creator_ngn || 0).toLocaleString() + '</div>' +
+    '</div>' +
+    '<div style="font-size:11.5px;color:var(--sub);margin-top:4px">70% of ' + (t.gross_coins || 0).toLocaleString() + ' coins gifted</div>' +
+    '</div>';
+
+  body.innerHTML = statsGrid + earnings + chart + top + gifts;
+}
+
+
 boot();
 </script>
 
@@ -10736,6 +10898,13 @@ window.addEventListener('error', function(e){
     <div class="wallet-stat"><b id="wallet-pending">0</b><span>Pending</span></div>
     <div class="wallet-stat"><b id="wallet-rate">10</b><span>Coins/₦1</span></div>
   </div>
+  <!-- GISTAPP_ANALYTICS_FE — view analytics button -->
+  <div style="padding:0 16px 10px">
+    <button onclick="openAnalytics()" style="width:100%;padding:13px 18px;background:var(--bg-2);border:1px solid var(--line);border-radius:14px;color:var(--ink);font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+      View stream analytics
+    </button>
+  </div>
   <div class="wallet-section">
     <h3>Withdraw</h3>
     <input type="number" class="wallet-input" id="wallet-withdraw-coins" placeholder="Coins to withdraw" min="100" autocomplete="off">
@@ -10769,6 +10938,25 @@ window.addEventListener('error', function(e){
   <div class="wallet-section">
     <h3>Recent activity</h3>
     <div id="wallet-tx-list"><div class="wallet-empty">No activity yet</div></div>
+  </div>
+</div>
+
+<!-- GISTAPP_ANALYTICS_FE — streamer analytics screen -->
+<div id="analytics-screen" style="position:fixed;inset:0;background:var(--bg);z-index:2900;display:none;flex-direction:column;overflow-y:auto">
+  <div style="position:sticky;top:0;background:var(--bg);border-bottom:1px solid var(--line);padding:14px 16px;display:flex;align-items:center;gap:12px;z-index:5">
+    <button onclick="closeAnalytics()" style="background:transparent;border:none;width:36px;height:36px;border-radius:50%;color:var(--ink);font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center">←</button>
+    <div style="font-size:17px;font-weight:800;color:var(--ink);flex:1">Stream analytics</div>
+  </div>
+
+  <!-- Range toggle -->
+  <div style="padding:14px 16px 4px;display:flex;gap:6px">
+    <button onclick="a1SetRange('7d')" data-range="7d" class="a1-range-btn" style="flex:1;padding:9px;border-radius:10px;border:1px solid var(--line);background:var(--bg-2);color:var(--ink);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">7 days</button>
+    <button onclick="a1SetRange('30d')" data-range="30d" class="a1-range-btn" style="flex:1;padding:9px;border-radius:10px;border:1px solid var(--line);background:var(--bg-2);color:var(--ink);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">30 days</button>
+    <button onclick="a1SetRange('all')" data-range="all" class="a1-range-btn" style="flex:1;padding:9px;border-radius:10px;border:1px solid var(--line);background:var(--bg-2);color:var(--ink);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">All time</button>
+  </div>
+
+  <div id="a1-body" style="padding:14px 16px 40px">
+    <div style="text-align:center;padding:40px;color:var(--sub)">Loading…</div>
   </div>
 </div>
 
