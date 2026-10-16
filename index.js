@@ -679,6 +679,178 @@ async function generateInvoicePDF(payment){
   });
 }
 
+/* GISTAPP_EARNINGS_PDF — creator earnings report (stats + breakdown) */
+async function generateEarningsPDF(userId, range){
+  const PDFDocument = _getPDFDocument();
+  if (!PDFDocument) throw new Error('PDF library not available');
+
+  // Fetch data
+  const uid = userId;
+  let interval = "30 days";
+  if (range === '7d') interval = "7 days";
+  else if (range === 'all') interval = null;
+  const whereTime = interval ? "AND ls.started_at > NOW() - INTERVAL '" + interval + "'" : "";
+
+  const me = await pool.query('SELECT email, display_name FROM users WHERE id=$1', [uid]);
+  const user = me.rows[0] || { display_name: 'Creator', email: '' };
+
+  const totals = await pool.query(
+    `SELECT
+       COUNT(*)::int AS streams,
+       COALESCE(SUM(EXTRACT(EPOCH FROM (COALESCE(ls.ended_at, ls.started_at) - ls.started_at)) / 3600), 0)::numeric(10,1) AS hours_streamed,
+       COALESCE(SUM(ls.peak_viewers), 0)::int AS peak_viewers,
+       COALESCE(SUM(ls.gift_count), 0)::int AS gift_count
+     FROM live_streams ls WHERE ls.streamer_id=$1 ${whereTime}`,
+    [uid]
+  );
+  const t = totals.rows[0] || {};
+
+  const earnings = await pool.query(
+    `SELECT COALESCE(SUM(lg.coins), 0)::int AS gross_coins
+     FROM live_gifts lg JOIN live_streams ls ON ls.id=lg.stream_id
+     WHERE ls.streamer_id=$1 ${whereTime}`,
+    [uid]
+  );
+  const grossCoins = earnings.rows[0] ? earnings.rows[0].gross_coins : 0;
+  const creatorCoins = Math.floor(grossCoins * 0.7);
+  const creatorNgn = Math.floor(creatorCoins / 10);
+
+  const streams = await pool.query(
+    `SELECT ls.id, ls.title, ls.peak_viewers, ls.started_at,
+            COALESCE((SELECT SUM(lg.coins) FROM live_gifts lg WHERE lg.stream_id=ls.id), 0)::int AS coins
+     FROM live_streams ls WHERE ls.streamer_id=$1 ${whereTime}
+     ORDER BY ls.started_at DESC LIMIT 15`,
+    [uid]
+  );
+
+  const gifts = await pool.query(
+    `SELECT lg.gift_type, COUNT(*)::int AS n, COALESCE(SUM(lg.coins),0)::int AS coins
+     FROM live_gifts lg JOIN live_streams ls ON ls.id=lg.stream_id
+     WHERE ls.streamer_id=$1 ${whereTime}
+     GROUP BY lg.gift_type ORDER BY coins DESC`,
+    [uid]
+  );
+
+  const rangeLabel = range === '7d' ? 'Last 7 days' : range === 'all' ? 'All time' : 'Last 30 days';
+
+  return new Promise(async (resolve, reject) => {
+    try {
+      const doc = new PDFDocument({ size: 'A4', margin: 50 });
+      const chunks = [];
+      doc.on('data', c => chunks.push(c));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+
+      const accent = '#5a6cd6';
+      const dark = '#2b2c44';
+      const muted = '#6a6a73';
+      const line = '#e6e4ef';
+
+      // Header
+      doc.rect(0, 0, doc.page.width, 100).fill(accent);
+      doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(24).text('GistApp', 50, 34);
+      doc.font('Helvetica').fontSize(10).fillColor('rgba(255,255,255,0.85)').text('Creator Earnings Report', 50, 66);
+      doc.font('Helvetica-Bold').fontSize(14).fillColor('#ffffff').text(rangeLabel, 0, 42, { align: 'right', width: doc.page.width - 50 });
+
+      // Creator info
+      const metaTop = 130;
+      doc.font('Helvetica').fontSize(9).fillColor(muted).text('CREATOR', 50, metaTop);
+      doc.font('Helvetica-Bold').fontSize(12).fillColor(dark).text(user.display_name || 'Creator', 50, metaTop + 16);
+      doc.font('Helvetica').fontSize(10).fillColor(dark).text(user.email || '', 50, metaTop + 34);
+      doc.font('Helvetica').fontSize(9).fillColor(muted).text('Generated on', 350, metaTop);
+      doc.font('Helvetica-Bold').fontSize(10).fillColor(dark).text(new Date().toLocaleString('en-GB', { timeZone: 'Africa/Lagos' }) + ' WAT', 350, metaTop + 16);
+
+      // Earnings hero card
+      const heroY = metaTop + 80;
+      doc.rect(50, heroY, doc.page.width - 100, 90).fill('#f4f2fb');
+      doc.font('Helvetica').fontSize(10).fillColor(muted).text('TOTAL EARNED', 70, heroY + 16);
+      doc.font('Helvetica-Bold').fontSize(32).fillColor(dark).text(creatorCoins.toLocaleString() + ' \u20AE', 70, heroY + 32, { continued: false });
+      doc.font('Helvetica').fontSize(11).fillColor(dark).text('\u2248 \u20A6' + creatorNgn.toLocaleString(), 70, heroY + 68);
+      doc.font('Helvetica').fontSize(9).fillColor(muted).text('Gross: ' + grossCoins.toLocaleString() + ' \u20AE  \u00B7  70% creator share', 300, heroY + 16);
+      doc.font('Helvetica-Bold').fontSize(20).fillColor(dark).text(String(t.streams || 0), 300, heroY + 36);
+      doc.font('Helvetica').fontSize(9).fillColor(muted).text('streams', 300, heroY + 62);
+      doc.font('Helvetica-Bold').fontSize(20).fillColor(dark).text(String(t.gift_count || 0), 420, heroY + 36);
+      doc.font('Helvetica').fontSize(9).fillColor(muted).text('gifts', 420, heroY + 62);
+
+      // Summary stats row
+      const statsY = heroY + 110;
+      const statBox = (label, value, x) => {
+        doc.font('Helvetica').fontSize(9).fillColor(muted).text(label.toUpperCase(), x, statsY);
+        doc.font('Helvetica-Bold').fontSize(14).fillColor(dark).text(value, x, statsY + 14);
+      };
+      statBox('Hours streamed', String(t.hours_streamed || 0), 50);
+      statBox('Peak viewers', String(t.peak_viewers || 0), 200);
+      statBox('Streams', String(t.streams || 0), 350);
+      statBox('Avg coins/stream', t.streams ? Math.round(grossCoins / t.streams) + ' \u20AE' : '\u2014', 460);
+
+      // Streams table
+      let tableY = statsY + 60;
+      doc.font('Helvetica-Bold').fontSize(11).fillColor(dark).text('Stream breakdown', 50, tableY);
+      tableY += 22;
+      doc.font('Helvetica-Bold').fontSize(8.5).fillColor(muted);
+      doc.text('DATE', 50, tableY);
+      doc.text('TITLE', 120, tableY);
+      doc.text('VIEWERS', 380, tableY, { width: 60, align: 'right' });
+      doc.text('COINS', 440, tableY, { width: 100, align: 'right' });
+      tableY += 14;
+      doc.moveTo(50, tableY).lineTo(doc.page.width - 50, tableY).strokeColor(line).lineWidth(0.5).stroke();
+      tableY += 6;
+
+      const streamRows = streams.rows;
+      if (streamRows.length === 0){
+        doc.font('Helvetica-Oblique').fontSize(10).fillColor(muted).text('No streams in this period.', 50, tableY + 4);
+        tableY += 24;
+      } else {
+        for (const s of streamRows){
+          if (tableY > doc.page.height - 120) break;
+          const dt = new Date(s.started_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+          doc.font('Helvetica').fontSize(10).fillColor(dark).text(dt, 50, tableY);
+          doc.font('Helvetica').fontSize(10).fillColor(dark).text(String(s.title || 'Untitled').slice(0, 40), 120, tableY, { width: 250, ellipsis: true });
+          doc.font('Helvetica').fontSize(10).fillColor(dark).text(String(s.peak_viewers || 0), 380, tableY, { width: 60, align: 'right' });
+          doc.font('Helvetica-Bold').fontSize(10).fillColor(dark).text(String(s.coins || 0), 440, tableY, { width: 100, align: 'right' });
+          tableY += 18;
+        }
+      }
+
+      // Gift breakdown
+      const giftRows = gifts.rows;
+      if (giftRows.length && tableY < doc.page.height - 160){
+        tableY += 20;
+        doc.font('Helvetica-Bold').fontSize(11).fillColor(dark).text('Top gifts', 50, tableY);
+        tableY += 22;
+        doc.font('Helvetica-Bold').fontSize(8.5).fillColor(muted);
+        doc.text('GIFT', 50, tableY);
+        doc.text('COUNT', 300, tableY, { width: 80, align: 'right' });
+        doc.text('COINS', 400, tableY, { width: 140, align: 'right' });
+        tableY += 14;
+        doc.moveTo(50, tableY).lineTo(doc.page.width - 50, tableY).strokeColor(line).stroke();
+        tableY += 6;
+
+        for (const g of giftRows.slice(0, 8)){
+          if (tableY > doc.page.height - 100) break;
+          doc.font('Helvetica').fontSize(10).fillColor(dark).text(String(g.gift_type || 'gift').toUpperCase(), 50, tableY);
+          doc.font('Helvetica').fontSize(10).fillColor(dark).text(String(g.n), 300, tableY, { width: 80, align: 'right' });
+          doc.font('Helvetica-Bold').fontSize(10).fillColor(dark).text(String(g.coins), 400, tableY, { width: 140, align: 'right' });
+          tableY += 18;
+        }
+      }
+
+      // Footer
+      const footY = doc.page.height - 80;
+      doc.moveTo(50, footY).lineTo(doc.page.width - 50, footY).strokeColor(line).stroke();
+      doc.font('Helvetica').fontSize(9).fillColor(muted);
+      doc.text('GistApp Creator Report \u00B7 Operated by PERION DEVELOPMENT LTD', 50, footY + 12);
+      doc.text('support@gistapp.app', 50, footY + 26);
+      doc.fontSize(8).fillColor(muted).text(
+        'Generated automatically by GistApp on ' + new Date().toISOString().slice(0, 10),
+        50, footY + 42, { width: doc.page.width - 100, align: 'center' }
+      );
+
+      doc.end();
+    } catch(e){ reject(e); }
+  });
+}
+
 /* GISTAPP_INVOICE_PDF — send receipt email WITH PDF attachment */
 async function sendPaymentReceiptEmailWithInvoice(toEmail, displayName, info){
   // delegate to existing sendPaymentReceiptEmail, but attach the invoice if we can find the payment row
@@ -4134,6 +4306,22 @@ async function isPremium(userId){
     return true;
   } catch(_){ return false; }
 }
+
+/* GISTAPP_EARNINGS_PDF — download earnings report as PDF */
+app.get('/api/analytics/earnings/pdf', auth, async (req, res) => {
+  try {
+    const range = String(req.query.range || '30d');
+    const pdfBuf = await generateEarningsPDF(req.user.id, range);
+    const date = new Date().toISOString().slice(0, 10);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'attachment; filename="GistApp-Earnings-' + date + '.pdf"');
+    res.setHeader('Content-Length', pdfBuf.length);
+    res.send(pdfBuf);
+  } catch(e){
+    console.error('earnings pdf:', e.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
 
 /* GISTAPP_INVOICES_ENDPOINT — list of user's past payments + PDF download */
 app.get('/api/billing/invoices', auth, async (req, res) => {
