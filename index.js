@@ -885,7 +885,9 @@ async function sendSecurityAlertEmail(toEmail, displayName, eventType, meta){
     '2fa_disabled':  { emoji:'\u26A0\uFE0F', title:'Two-factor authentication DISABLED',
                        body:'2FA was turned off. Your account is now protected by password only. If you did not do this, re-enable 2FA immediately.' },
     'email_changed': { emoji:'\u2709\uFE0F', title:'Your account email was changed',
-                       body:'The email on your GistApp account was changed to <b>' + (meta.newEmail || 'a new address') + '</b>. If you did not do this, secure your account immediately.' }
+                       body:'The email on your GistApp account was changed to <b>' + (meta.newEmail || 'a new address') + '</b>. If you did not do this, secure your account immediately.' },
+    'new_login':    { emoji:'\uD83D\uDD10', title:'New login to your account',
+                       body:'We noticed a login from a device or location we have not seen before. If this was you, no action is needed.' }
   };
   const c = configs[eventType];
   if (!c) return;
@@ -912,6 +914,7 @@ async function sendSecurityAlertEmail(toEmail, displayName, eventType, meta){
                 <tr><td style="color:#8e8e93;padding-right:12px">Account:</td><td>${toEmail}</td></tr>
                 <tr><td style="color:#8e8e93;padding-right:12px">Time:</td><td>${time}</td></tr>
                 <tr><td style="color:#8e8e93;padding-right:12px">IP:</td><td>${ip}</td></tr>
+                ${meta.userAgent ? '<tr><td style="color:#8e8e93;padding-right:12px;vertical-align:top">Device:</td><td style="word-break:break-word">' + String(meta.userAgent).slice(0, 200).replace(/[<>&]/g, function(c){return ({'<':'&lt;','>':'&gt;','&':'&amp;'})[c];}) + '</td></tr>' : ''}
               </table>
             </div>
             <div style="background:#fff3cd;border:1px solid #ffe58f;border-radius:12px;padding:14px 16px;margin:0 0 22px">
@@ -1620,6 +1623,28 @@ app.post('/api/login', loginLimiter, async (req,res)=>{
     // GISTAPP_SINGLE_DEVICE
       const sid = await rotateUserSession(user.id);
       user.session_id = sid;
+      // GISTAPP_SEC_BATCH1 — login alert if new IP
+      try {
+        const _ip = String(req.ip || '').replace('::ffff:', '');
+        const _ua = String(req.headers['user-agent'] || 'unknown').slice(0, 200);
+        const _prefs = user.prefs || {};
+        if (_prefs.login_alerts !== 'false' && _ip){
+          const _known = Array.isArray(_prefs.known_ips) ? _prefs.known_ips.map(String) : [];
+          const _isNew = _known.indexOf(_ip) === -1;
+          if (_isNew){
+            // add to known (keep last 20)
+            const _next = _known.concat([_ip]).slice(-20);
+            pool.query(
+              "UPDATE users SET prefs = COALESCE(prefs,'{}'::jsonb) || jsonb_build_object('known_ips', $1::jsonb) WHERE id=$2",
+              [JSON.stringify(_next), user.id]
+            ).catch(function(){});
+            sendSecurityAlertEmail(user.email, user.display_name, 'new_login', {
+              ip: _ip, userAgent: _ua
+            }).catch(function(){});
+          }
+        }
+      } catch(_){}
+      
       res.json({
       user: {
         id: user.id, email: user.email, display_name: user.display_name,
@@ -3930,7 +3955,13 @@ app.post('/api/lock/reset-action', auth, async (req, res) => {
       return res.json({ ok: true, message: 'PIN updated' });
     }
     if (action === 'set_password'){
-      if (!new_password || String(new_password).length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
+      // GISTAPP_SEC_BATCH1 — same strength as signup
+      {
+        const _p = String(new_password || '');
+        if (_p.length < 8 || !/[a-zA-Z]/.test(_p) || !/[0-9]/.test(_p)){
+          return res.status(400).json({ error: 'Password must be 8+ characters with both letters and numbers' });
+        }
+      }
       const hash = await bcrypt.hash(String(new_password), 10);
       await pool.query('UPDATE users SET password_hash=$1, reset_code_hash=NULL, reset_code_expires=NULL WHERE id=$2', [hash, req.user.id]);
       return res.json({ ok: true, message: 'Password updated' });
@@ -3974,13 +4005,18 @@ app.get('/reset-password', async (req, res) => {
   const r = await pool.query('SELECT id FROM users WHERE pw_reset_token=$1 AND pw_reset_expires > NOW()', [token]);
   if (!r.rowCount) return res.send('<html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#050505;color:#fff"><h2 style="color:#ff453a">Link expired</h2><a href="/" style="color:#7b8cff">Back to app</a></body></html>');
   const safeToken = JSON.stringify(token);
-  res.send('<html><head><meta name=viewport content="width=device-width,initial-scale=1"><style>body{font-family:Inter,sans-serif;background:#050505;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:20px}.c{background:#fff;color:#1c1c22;max-width:400px;width:100%;padding:32px 24px;border-radius:24px;box-shadow:0 20px 60px rgba(0,0,0,.5);box-sizing:border-box}h2{margin:0 0 8px;font-size:22px}p{color:#8e8e96;margin:0 0 20px;font-size:14px}input{width:100%;height:50px;border-radius:14px;border:1.5px solid #e8e5f0;background:#faf9fd;padding:0 16px;font-size:15px;margin-bottom:12px;box-sizing:border-box;outline:none}button{width:100%;height:52px;background:#14141a;color:#fff;border:none;border-radius:16px;font-size:15px;font-weight:700;cursor:pointer}.e{color:#e5484d;font-size:13px;min-height:18px;font-weight:600;margin-bottom:6px}</style></head><body><div class=c><h2>Set a new password</h2><p>Minimum 6 characters.</p><div class=e id=e></div><input id=p1 type=password placeholder="New password"><input id=p2 type=password placeholder="Confirm password"><button onclick="save()">Save password</button></div><script>async function save(){var e=document.getElementById("e");e.textContent="";var p1=document.getElementById("p1").value;var p2=document.getElementById("p2").value;if(p1.length<6){e.textContent="Password must be at least 6 characters";return}if(p1!==p2){e.textContent="Passwords do not match";return}try{const r=await fetch("/api/pw-reset/complete",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({token:' + safeToken + ',password:p1})});const j=await r.json();if(!r.ok)throw new Error(j.error||"Failed");document.body.innerHTML="<div style=font-family:Inter;background:#050505;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh;text-align:center;padding:20px><div><div style=font-size:60px>OK</div><h2>Password updated</h2><a href=/ style=color:#7b8cff>Open GistApp</a></div></div>"}catch(err){e.textContent=err.message}}</script></body></html>');
+  res.send('<html><head><meta name=viewport content="width=device-width,initial-scale=1"><style>body{font-family:Inter,sans-serif;background:#050505;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:20px}.c{background:#fff;color:#1c1c22;max-width:400px;width:100%;padding:32px 24px;border-radius:24px;box-shadow:0 20px 60px rgba(0,0,0,.5);box-sizing:border-box}h2{margin:0 0 8px;font-size:22px}p{color:#8e8e96;margin:0 0 20px;font-size:14px}input{width:100%;height:50px;border-radius:14px;border:1.5px solid #e8e5f0;background:#faf9fd;padding:0 16px;font-size:15px;margin-bottom:12px;box-sizing:border-box;outline:none}button{width:100%;height:52px;background:#14141a;color:#fff;border:none;border-radius:16px;font-size:15px;font-weight:700;cursor:pointer}.e{color:#e5484d;font-size:13px;min-height:18px;font-weight:600;margin-bottom:6px}</style></head><body><div class=c><h2>Set a new password</h2><p>Minimum 8 characters with letters and numbers.</p><div class=e id=e></div><input id=p1 type=password placeholder="New password"><input id=p2 type=password placeholder="Confirm password"><button onclick="save()">Save password</button></div><script>async function save(){var e=document.getElementById("e");e.textContent="";var p1=document.getElementById("p1").value;var p2=document.getElementById("p2").value;if(p1.length<8||!/[a-zA-Z]/.test(p1)||!/[0-9]/.test(p1)){e.textContent="Password must be 8+ characters with letters and numbers";return}if(p1!==p2){e.textContent="Passwords do not match";return}try{const r=await fetch("/api/pw-reset/complete",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({token:' + safeToken + ',password:p1})});const j=await r.json();if(!r.ok)throw new Error(j.error||"Failed");document.body.innerHTML="<div style=font-family:Inter;background:#050505;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh;text-align:center;padding:20px><div><div style=font-size:60px>OK</div><h2>Password updated</h2><a href=/ style=color:#7b8cff>Open GistApp</a></div></div>"}catch(err){e.textContent=err.message}}</script></body></html>');
 });
 
 app.post('/api/pw-reset/complete', async (req, res) => {
   try {
     const { token, password } = req.body;
-    if (!token || !password || password.length < 6) return res.status(400).json({ error: 'Invalid input' });
+    // GISTAPP_SEC_BATCH1 — enforce same strength as signup
+    if (!token || !password) return res.status(400).json({ error: 'Invalid input' });
+    const _pws = String(password);
+    if (_pws.length < 8 || !/[a-zA-Z]/.test(_pws) || !/[0-9]/.test(_pws)){
+      return res.status(400).json({ error: 'Password must be 8+ characters with both letters and numbers' });
+    }
     const r = await pool.query('SELECT id FROM users WHERE pw_reset_token=$1 AND pw_reset_expires > NOW()', [token]);
     if (!r.rowCount) return res.status(400).json({ error: 'Token expired or invalid' });
     const hash = await bcrypt.hash(String(password), 10);

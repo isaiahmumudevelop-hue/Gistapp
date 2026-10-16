@@ -1364,6 +1364,15 @@ if ('serviceWorker' in navigator){
           <input id="auth-email-su" type="email" data-i18n-placeholder="Email" placeholder="Email" autocomplete="email" spellcheck="false">
           <div class="pw-wrap">
             <input id="auth-pass-su" type="password" data-i18n-placeholder="Password (8+ chars, letters + numbers)" placeholder="Password" autocomplete="new-password">
+            <div id="pw-meter" style="margin:-6px 0 10px;padding:0 4px">
+              <div style="display:flex;gap:4px;height:4px;margin-bottom:5px">
+                <div class="pw-bar" data-i="0" style="flex:1;background:#e5e5ec;border-radius:2px"></div>
+                <div class="pw-bar" data-i="1" style="flex:1;background:#e5e5ec;border-radius:2px"></div>
+                <div class="pw-bar" data-i="2" style="flex:1;background:#e5e5ec;border-radius:2px"></div>
+                <div class="pw-bar" data-i="3" style="flex:1;background:#e5e5ec;border-radius:2px"></div>
+              </div>
+              <div id="pw-hint" style="font-size:11.5px;color:#8e8e96;min-height:16px"></div>
+            </div>
             <button type="button" class="eye" onclick="togglePw('auth-pass-su',this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg></button>
           </div>
           <label class="auth-terms" id="auth-terms-wrap">
@@ -11785,6 +11794,78 @@ function injectBroadcastSetting(){
   btn.onclick = function(){ try { openBroadcastPanel(); } catch(_){} };
   communityGroup.appendChild(btn);
 }
+
+/* GISTAPP_SEC_BATCH1 — password strength meter */
+function _pwScore(pw){
+  if (!pw) return 0;
+  var score = 0;
+  if (pw.length >= 8) score++;
+  if (pw.length >= 12) score++;
+  if (/[a-z]/.test(pw) && /[A-Z]/.test(pw)) score++;
+  if (/[0-9]/.test(pw)) score++;
+  if (/[^A-Za-z0-9]/.test(pw)) score++;
+  return Math.min(4, score);
+}
+function _pwUpdate(){
+  var input = document.getElementById('auth-pass-su');
+  var meter = document.getElementById('pw-meter');
+  var hint = document.getElementById('pw-hint');
+  if (!input || !meter || !hint) return;
+  var pw = input.value || '';
+  var score = _pwScore(pw);
+  var colors = ['#e5e5ec', '#e5484d', '#f5a623', '#30d158', '#30d158'];
+  var labels = ['', 'Weak', 'Fair', 'Strong', 'Very strong'];
+  meter.querySelectorAll('.pw-bar').forEach(function(bar){
+    var i = parseInt(bar.getAttribute('data-i'), 10);
+    bar.style.background = (i < score) ? colors[score] : '#e5e5ec';
+  });
+  if (!pw){ hint.textContent = ''; return; }
+  hint.textContent = labels[score] || '';
+  hint.style.color = colors[score] || '#8e8e96';
+  // Also check minimum requirements
+  var ok = pw.length >= 8 && /[a-zA-Z]/.test(pw) && /[0-9]/.test(pw);
+  if (!ok && pw.length > 0){
+    hint.textContent += ' — need 8+ chars with letters and numbers';
+    hint.style.color = '#e5484d';
+  }
+}
+document.addEventListener('input', function(e){
+  if (e.target && e.target.id === 'auth-pass-su') _pwUpdate();
+});
+// Also hook signup password reset (clear on nav)
+var _origShowSignup = window.showSignup;
+if (typeof _origShowSignup === 'function' && !window._pwMeterHooked){
+  window._pwMeterHooked = true;
+  window.showSignup = function(){
+    var r = _origShowSignup.apply(this, arguments);
+    setTimeout(_pwUpdate, 100);
+    return r;
+  };
+}
+
+/* GISTAPP_SEC_BATCH1 — message expiry warning */
+(function(){
+  if (window._expiryWarned) return;
+  window._expiryWarned = true;
+  // Show a one-time warning when user sends first disappearing message
+  var _origSendMsg = window.sendMsg;
+  if (typeof _origSendMsg !== 'function') return;
+  window.sendMsg = function(){
+    var prefs = (window.userPrefs || (me && me.prefs) || {});
+    var disp = prefs.disappearing || 'Off';
+    if (disp !== 'Off' && !localStorage.getItem('expiry_warned_' + disp)){
+      localStorage.setItem('expiry_warned_' + disp, '1');
+      try {
+        var el = document.getElementById('notif-banner');
+        if (el && el.innerHTML !== ''){
+          // If real notif is showing, wait — just toast
+        }
+        toast('⏱️ Messages now disappear after ' + disp);
+      } catch(_){}
+    }
+    return _origSendMsg.apply(this, arguments);
+  };
+})();
 
 boot();
 </script>
