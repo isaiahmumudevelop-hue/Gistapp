@@ -1404,20 +1404,28 @@ async function auth(req,res,next){
   try { payload = jwt.verify(token, JWT_SECRET); }
   catch { return res.status(401).json({error:'Invalid token'}); }
 
+  // GISTAPP_2FA_LOGIN — pre_auth tokens (issued mid-login) cannot access the API
+  if (payload && payload.pre_auth){
+    return res.status(401).json({ error: 'Sign in required', code: 'PRE_AUTH' });
+  }
 
-  // GISTAPP_AUTH_SESSION — reject tokens from old sessions
+
+  // GISTAPP_SESSIONS_V2 — validate session via user_sessions table (multi-device)
   try {
-    if (payload && payload.id){
-      let cached = _sessionCacheGet(payload.id);
-      if (cached === null){
-        const sr = await pool.query('SELECT session_id FROM users WHERE id=$1', [payload.id]);
-        if (!sr.rowCount) return res.status(401).json({ error: 'User not found' });
-        cached = sr.rows[0].session_id || null;
-        if (cached) _sessionCacheSet(payload.id, cached);
+    if (payload && payload.id && payload.session_id){
+      const sessKey = payload.id + ':' + payload.session_id;
+      let valid = _sessionCacheGet(sessKey);
+      if (valid === null){
+        const sr = await pool.query(
+          'SELECT id FROM user_sessions WHERE user_id=$1 AND session_id=$2 AND revoked_at IS NULL',
+          [payload.id, payload.session_id]
+        );
+        valid = sr.rowCount > 0;
+        // Cache only positive results for 15s to reduce DB load
+        if (valid) _sessionCacheSet(sessKey, 1);
       }
-      // If DB has a session_id and it doesn't match → user logged in elsewhere
-      if (cached && payload.session_id && String(cached) !== String(payload.session_id)){
-        return res.status(401).json({ error: 'Logged in on another device', code: 'SESSION_REPLACED' });
+      if (!valid){
+        return res.status(401).json({ error: 'Session expired or revoked', code: 'SESSION_REVOKED' });
       }
     }
   } catch(sessErr){
@@ -1452,15 +1460,15 @@ async function auth(req,res,next){
 }
 // GISTAPP_SIGNUP_HARDENING — carry verified + google_id in JWT
 /* GISTAPP_SINGLE_DEVICE — one active session per user */
-const _sessionCache = new Map(); // userId -> { sid, exp }
-function _sessionCacheSet(uid, sid){
-  _sessionCache.set(Number(uid), { sid: sid, exp: Date.now() + 15000 });
+const _sessionCache = new Map(); // compositeKey -> { exp }
+function _sessionCacheSet(key, val){
+  _sessionCache.set(String(key), { exp: Date.now() + 15000 });
 }
-function _sessionCacheGet(uid){
-  const e = _sessionCache.get(Number(uid));
+function _sessionCacheGet(key){
+  const e = _sessionCache.get(String(key));
   if (!e) return null;
-  if (Date.now() > e.exp){ _sessionCache.delete(Number(uid)); return null; }
-  return e.sid;
+  if (Date.now() > e.exp){ _sessionCache.delete(String(key)); return null; }
+  return 1;
 }
 
 async function rotateUserSession(userId){
@@ -1506,7 +1514,7 @@ app.post('/api/auth/google', async (req,res) => {
     }
     await pool.query('UPDATE users SET last_seen_at=NOW() WHERE id=$1',[user.id]);
     // GISTAPP_GOOGLE_SESSION — rotate session on Google login too
-    const sid = await rotateUserSession(user.id);
+    const sid = await createUserSession(user.id, req);
     user.session_id = sid;
     // GISTAPP_LOGIN_SESSION
     // removed duplicate sid
@@ -1590,7 +1598,7 @@ app.post('/api/signup', signupLimiter, async (req,res)=>{
       [email.toLowerCase(), hash, name, vtoken, vexpires]
     );
     // GISTAPP_SIGNUP_SID_FIX — rotate session for new user
-    const sid = await rotateUserSession(r.rows[0].id);
+    const sid = await createUserSession(r.rows[0].id, req);
     const userWithSid = Object.assign({}, r.rows[0], { session_id: sid });
     res.json({
       user: userWithSid,
@@ -1619,31 +1627,23 @@ app.post('/api/login', loginLimiter, async (req,res)=>{
         needsVerification: true
       });
     }
+    // GISTAPP_2FA_LOGIN — if user has 2FA enabled, pause for code entry
+    if (user.totp_enabled && user.totp_secret){
+      const preAuthToken = jwt.sign({ id: user.id, pre_auth: true, step: 'totp' }, JWT_SECRET, { expiresIn: '5m' });
+      return res.json({ totp_required: true, login_token: preAuthToken });
+    }
+    // GISTAPP_2FA_LOGIN — if admin without 2FA, force setup
+    // GISTAPP_2FA_TEMP_DISABLED — bypass during debugging
+    if (false && user.is_admin && !user.totp_enabled){
+      const setupToken = jwt.sign({ id: user.id, pre_auth: true, step: 'admin_2fa_setup' }, JWT_SECRET, { expiresIn: '30m' });
+      return res.json({ admin_2fa_setup_required: true, login_token: setupToken });
+    }
     await pool.query('UPDATE users SET last_seen_at=NOW() WHERE id=$1',[user.id]);
+    await _logLoginEvent(user.id, req, 'password');
+    await _maybeSendLoginAlert(user, req);
     // GISTAPP_SINGLE_DEVICE
-      const sid = await rotateUserSession(user.id);
+      const sid = await createUserSession(user.id, req);
       user.session_id = sid;
-      // GISTAPP_SEC_BATCH1 — login alert if new IP
-      try {
-        const _ip = String(req.ip || '').replace('::ffff:', '');
-        const _ua = String(req.headers['user-agent'] || 'unknown').slice(0, 200);
-        const _prefs = user.prefs || {};
-        if (_prefs.login_alerts !== 'false' && _ip){
-          const _known = Array.isArray(_prefs.known_ips) ? _prefs.known_ips.map(String) : [];
-          const _isNew = _known.indexOf(_ip) === -1;
-          if (_isNew){
-            // add to known (keep last 20)
-            const _next = _known.concat([_ip]).slice(-20);
-            pool.query(
-              "UPDATE users SET prefs = COALESCE(prefs,'{}'::jsonb) || jsonb_build_object('known_ips', $1::jsonb) WHERE id=$2",
-              [JSON.stringify(_next), user.id]
-            ).catch(function(){});
-            sendSecurityAlertEmail(user.email, user.display_name, 'new_login', {
-              ip: _ip, userAgent: _ua
-            }).catch(function(){});
-          }
-        }
-      } catch(_){}
       
       res.json({
       user: {
@@ -2549,7 +2549,143 @@ app.get('/api/search', auth, async (req, res) => {
   } catch(e){ console.error(e); res.status(500).json({ error: 'Server error' }); }
 });
 
-/* ---------- two-step verification ---------- */
+/* GISTAPP_SESSIONS_V2 — session management */
+app.get('/api/sessions', auth, async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT id, session_id, ip, user_agent, device_name, created_at, last_active_at
+       FROM user_sessions
+       WHERE user_id=$1 AND revoked_at IS NULL AND last_active_at > NOW() - INTERVAL '90 days'
+       ORDER BY last_active_at DESC
+       LIMIT 20`,
+      [req.user.id]
+    );
+    const current = req.user.session_id;
+    res.json({
+      sessions: r.rows.map(function(s){
+        return {
+          id: s.id,
+          device: s.device_name || 'Unknown device',
+          ip: s.ip || 'unknown',
+          created_at: s.created_at,
+          last_active_at: s.last_active_at,
+          is_current: s.session_id === current
+        };
+      })
+    });
+  } catch(e){ console.error('sessions list:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+app.delete('/api/sessions/:id', auth, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const r = await pool.query(
+      'UPDATE user_sessions SET revoked_at=NOW() WHERE id=$1 AND user_id=$2 RETURNING session_id',
+      [id, req.user.id]
+    );
+    if (!r.rowCount) return res.status(404).json({ error: 'Session not found' });
+    // Invalidate cache
+    _sessionCache.delete(String(req.user.id + ':' + r.rows[0].session_id));
+    res.json({ ok: true });
+  } catch(e){ console.error('session revoke:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+app.delete('/api/sessions/all-others', auth, async (req, res) => {
+  try {
+    const current = req.user.session_id;
+    const r = await pool.query(
+      'UPDATE user_sessions SET revoked_at=NOW() WHERE user_id=$1 AND session_id<>$2 AND revoked_at IS NULL RETURNING session_id',
+      [req.user.id, current]
+    );
+    r.rows.forEach(function(row){
+      _sessionCache.delete(String(req.user.id + ':' + row.session_id));
+    });
+    res.json({ ok: true, revoked: r.rowCount });
+  } catch(e){ console.error('revoke all:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+/* GISTAPP_SESSIONS_V2 — explicit logout (revoke current session) */
+app.post('/api/logout', auth, async (req, res) => {
+  try {
+    if (req.user.session_id){
+      await pool.query(
+        'UPDATE user_sessions SET revoked_at=NOW() WHERE user_id=$1 AND session_id=$2',
+        [req.user.id, req.user.session_id]
+      );
+      _sessionCache.delete(String(req.user.id + ':' + req.user.session_id));
+    }
+    res.json({ ok: true });
+  } catch(e){ console.error('logout:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+/* GISTAPP_2FA_LOGIN — second step of login (TOTP verify) */
+app.post('/api/login/2fa', loginLimiter, async (req, res) => {
+  try {
+    const { login_token, code } = req.body || {};
+    if (!login_token || !code) return res.status(400).json({ error: 'Missing fields' });
+    let payload;
+    try { payload = jwt.verify(login_token, JWT_SECRET); }
+    catch(_){ return res.status(401).json({ error: 'Ticket expired — sign in again' }); }
+    if (!payload.pre_auth || payload.step !== 'totp') return res.status(400).json({ error: 'Invalid ticket' });
+    const r = await pool.query('SELECT * FROM users WHERE id=$1', [payload.id]);
+    if (!r.rowCount) return res.status(401).json({ error: 'User not found' });
+    const user = r.rows[0];
+    if (!user.totp_enabled || !user.totp_secret) return res.status(400).json({ error: '2FA not enabled for this account' });
+    const ok = speakeasy.totp.verify({ secret: user.totp_secret, encoding: 'base32', token: String(code).trim(), window: 1 });
+    if (!ok) return res.status(401).json({ error: 'Invalid code' });
+    // Complete login
+    await pool.query('UPDATE users SET last_seen_at=NOW() WHERE id=$1', [user.id]);
+    await _logLoginEvent(user.id, req, 'password+2fa');
+    await _maybeSendLoginAlert(user, req);
+    const sid = await createUserSession(user.id, req);
+    user.session_id = sid;
+    res.json({
+      user: { id: user.id, email: user.email, display_name: user.display_name, avatar_color: user.avatar_color, dark_mode: user.dark_mode, font_size: user.font_size },
+      token: sign(user)
+    });
+  } catch(e){ console.error('login/2fa:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+/* GISTAPP_2FA_LOGIN — admin 2FA setup bootstrap (login_token → session with 2FA disabled) */
+app.post('/api/login/admin-2fa-bootstrap', loginLimiter, async (req, res) => {
+  try {
+    const { login_token } = req.body || {};
+    if (!login_token) return res.status(400).json({ error: 'Missing ticket' });
+    let payload;
+    try { payload = jwt.verify(login_token, JWT_SECRET); }
+    catch(_){ return res.status(401).json({ error: 'Ticket expired — sign in again' }); }
+    if (!payload.pre_auth || payload.step !== 'admin_2fa_setup') return res.status(400).json({ error: 'Invalid ticket' });
+    const r = await pool.query('SELECT * FROM users WHERE id=$1', [payload.id]);
+    if (!r.rowCount) return res.status(401).json({ error: 'User not found' });
+    const user = r.rows[0];
+    if (!user.is_admin) return res.status(403).json({ error: 'Admin only' });
+    if (user.totp_enabled) return res.status(400).json({ error: 'Already enabled' });
+    // Issue a temporary session so the client can call /api/2fa/setup and /api/2fa/enable
+    await pool.query('UPDATE users SET last_seen_at=NOW() WHERE id=$1', [user.id]);
+    await _logLoginEvent(user.id, req, 'admin-2fa-setup');
+    const sid = await rotateUserSession(user.id);
+    user.session_id = sid;
+    // Mark token as bootstrap-only via a special claim; frontend must show wizard
+    res.json({
+      user: { id: user.id, email: user.email, display_name: user.display_name, avatar_color: user.avatar_color, dark_mode: user.dark_mode, font_size: user.font_size },
+      token: sign(user),
+      admin_2fa_pending: true
+    });
+  } catch(e){ console.error('admin-2fa-bootstrap:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+/* GISTAPP_2FA_LOGIN — recent login history */
+app.get('/api/auth/login-history', auth, async (req, res) => {
+  try {
+    const r = await pool.query(
+      'SELECT id, ip, user_agent, method, logged_in_at FROM login_events WHERE user_id=$1 ORDER BY logged_in_at DESC LIMIT 20',
+      [req.user.id]
+    );
+    res.json({ events: r.rows });
+  } catch(e){ console.error('login-history:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+/* ---------- two-step verification ---------- *//* ---------- two-step verification ---------- */
 app.post('/api/2fa/setup', auth, async (req, res) => {
   try {
     const secret = speakeasy.generateSecret({
@@ -3026,6 +3162,120 @@ app.get('/api/posts/:id/comments', auth, async (req, res) => {
     res.json(r.rows);
   } catch(e){ console.error('comments get:', e.message); res.status(500).json({ error: 'Server error' }); }
 });
+
+/* GISTAPP_SESSIONS_V2 — multi-session support */
+(async function(){
+  try {
+    await pool.query(`CREATE TABLE IF NOT EXISTS user_sessions (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL,
+      session_id TEXT NOT NULL UNIQUE,
+      ip TEXT,
+      user_agent TEXT,
+      device_name TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      last_active_at TIMESTAMPTZ DEFAULT NOW(),
+      revoked_at TIMESTAMPTZ
+    )`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS user_sessions_user_idx ON user_sessions (user_id, revoked_at, last_active_at DESC)`);
+    // Backfill existing sessions from users.session_id
+    await pool.query(`
+      INSERT INTO user_sessions (user_id, session_id, created_at, last_active_at)
+      SELECT id, session_id, COALESCE(session_started_at, NOW()), NOW()
+      FROM users
+      WHERE session_id IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM user_sessions WHERE user_sessions.session_id = users.session_id)
+    `);
+    console.log('✅ user_sessions migrations ready');
+  } catch(e){ console.warn('user_sessions migration:', e.message); }
+})();
+
+function _describeDevice(ua){
+  ua = String(ua || '');
+  if (/iPhone/i.test(ua)) return { name: 'iPhone · Safari', icon: '📱' };
+  if (/iPad/i.test(ua)) return { name: 'iPad · Safari', icon: '📱' };
+  if (/Android/i.test(ua)){
+    var br = /Chrome\//.test(ua) ? 'Chrome' : /Firefox/.test(ua) ? 'Firefox' : /Edg/.test(ua) ? 'Edge' : 'Browser';
+    return { name: 'Android · ' + br, icon: '📱' };
+  }
+  if (/Macintosh/i.test(ua)){
+    var br2 = /Chrome\//.test(ua) ? 'Chrome' : /Firefox/.test(ua) ? 'Firefox' : /Safari/.test(ua) ? 'Safari' : 'Browser';
+    return { name: 'Mac · ' + br2, icon: '💻' };
+  }
+  if (/Windows/i.test(ua)){
+    var br3 = /Chrome\//.test(ua) ? 'Chrome' : /Firefox/.test(ua) ? 'Firefox' : /Edg/.test(ua) ? 'Edge' : 'Browser';
+    return { name: 'Windows · ' + br3, icon: '💻' };
+  }
+  if (/Linux/i.test(ua)) return { name: 'Linux · Browser', icon: '💻' };
+  return { name: 'Unknown device', icon: '💻' };
+}
+
+async function createUserSession(userId, req){
+  const crypto = require('crypto');
+  const sid = crypto.randomBytes(16).toString('hex');
+  const ip = String((req && req.ip) || '').replace('::ffff:', '');
+  const ua = String((req && req.headers && req.headers['user-agent']) || '').slice(0, 300);
+  const dev = _describeDevice(ua);
+  try {
+    await pool.query(
+      'INSERT INTO user_sessions (user_id, session_id, ip, user_agent, device_name) VALUES ($1,$2,$3,$4,$5)',
+      [userId, sid, ip || null, ua || null, dev.name]
+    );
+  } catch(e){ console.warn('createUserSession:', e.message); }
+  // Keep users.session_id synced for backwards-compat with legacy checks
+  try { await pool.query('UPDATE users SET session_id=$1, session_started_at=NOW() WHERE id=$2', [sid, userId]); } catch(_){}
+  return sid;
+}
+
+// Backwards-compat alias — some call sites still use this name
+async function rotateUserSession(userId, req){
+  return createUserSession(userId, req);
+}
+
+/* GISTAPP_2FA_LOGIN — login events + 2FA enforcement */
+(async function(){
+  try {
+    await pool.query(`CREATE TABLE IF NOT EXISTS login_events (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL,
+      ip TEXT,
+      user_agent TEXT,
+      method TEXT DEFAULT 'password',
+      logged_in_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS login_events_user_idx ON login_events (user_id, logged_in_at DESC)`);
+    console.log('✅ 2fa_login migrations ready');
+  } catch(e){ console.warn('2fa_login migration:', e.message); }
+})();
+
+async function _logLoginEvent(userId, req, method){
+  try {
+    const ip = String(req.ip || '').replace('::ffff:', '');
+    const ua = String(req.headers['user-agent'] || '').slice(0, 300);
+    await pool.query('INSERT INTO login_events (user_id, ip, user_agent, method) VALUES ($1,$2,$3,$4)', [userId, ip, ua, method]);
+    // prune old (>90d)
+    await pool.query('DELETE FROM login_events WHERE user_id=$1 AND logged_in_at < NOW() - INTERVAL \'90 days\'', [userId]);
+  } catch(_){}
+}
+
+async function _maybeSendLoginAlert(user, req){
+  try {
+    const _ip = String(req.ip || '').replace('::ffff:', '');
+    const _ua = String(req.headers['user-agent'] || 'unknown').slice(0, 200);
+    const _prefs = user.prefs || {};
+    if (_prefs.login_alerts === 'false' || !_ip) return;
+    const _known = Array.isArray(_prefs.known_ips) ? _prefs.known_ips.map(String) : [];
+    if (_known.indexOf(_ip) !== -1) return;
+    const _next = _known.concat([_ip]).slice(-20);
+    pool.query(
+      "UPDATE users SET prefs = COALESCE(prefs,'{}'::jsonb) || jsonb_build_object('known_ips', $1::jsonb) WHERE id=$2",
+      [JSON.stringify(_next), user.id]
+    ).catch(function(){});
+    sendSecurityAlertEmail(user.email, user.display_name, 'new_login', {
+      ip: _ip, userAgent: _ua
+    }).catch(function(){});
+  } catch(_){}
+}
 
 /* GISTAPP_BROADCAST — admin announcements (instant banners + feature launches) */
 (async function(){

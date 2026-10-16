@@ -2389,14 +2389,24 @@ async function submitSignup(){
       website: (honeypotEl && honeypotEl.value) || ''
     }) });
     // GISTAPP_SIGNUP_SAVE_TOKEN: save token BEFORE the verification return
-    if (data.token){ token = data.token; localStorage.setItem('token', token); me = data.user; }
+    if (data.token){ if (data.totp_required && data.login_token){
+      window._2faLoginToken = data.login_token;
+      showTwoFactorPrompt();
+      return;
+    }
+    if (data.admin_2fa_setup_required && data.login_token){
+      window._2faLoginToken = data.login_token;
+      showAdmin2FASetupRequired();
+      return;
+    }
+    token = data.token; localStorage.setItem('token', token); me = data.user; }
     if (data.needsVerification){ showVerify(email, data.emailSent, data.emailError); return; }
     if (me && me.onboarded === false){ showOnboarding(); return; }
     await enterApp();
   } catch(e){ errEl.textContent = e.message; }
 }
 
-async function submitLogin(){
+async function submitLogin(){  /* GISTAPP_LOGIN_2FA_FIX */
   const errEl = document.getElementById('auth-err');
   errEl.textContent = '';
   const email = (document.getElementById('auth-email').value||'').trim();
@@ -2404,7 +2414,31 @@ async function submitLogin(){
   if (!email || !password){ errEl.textContent = 'Email and password required.'; return; }
   try {
     const data = await api('/api/login', { method:'POST', body: JSON.stringify({ email, password }) });
-    token = data.token; localStorage.setItem('token', token); me = data.user;
+
+    // 2FA prompt — user has 2FA enabled
+    if (data && data.totp_required && data.login_token){
+      window._2faLoginToken = data.login_token;
+      if (typeof showTwoFactorPrompt === 'function'){ showTwoFactorPrompt(); }
+      else { errEl.textContent = 'Two-factor required but prompt missing. Contact support.'; }
+      return;
+    }
+
+    // Admin 2FA setup required
+    if (data && data.admin_2fa_setup_required && data.login_token){
+      window._2faLoginToken = data.login_token;
+      if (typeof showAdmin2FASetupRequired === 'function'){ showAdmin2FASetupRequired(); }
+      else { errEl.textContent = 'Admin 2FA setup required but wizard missing.'; }
+      return;
+    }
+
+    // Normal login
+    if (!data || !data.token){
+      errEl.textContent = 'Login failed — no session token returned.';
+      return;
+    }
+    token = data.token;
+    localStorage.setItem('token', token);
+    me = data.user;
     if (me && me.onboarded === false){ showOnboarding(); return; }
     await enterApp();
   } catch(e){
@@ -11864,6 +11898,281 @@ if (typeof _origShowSignup === 'function' && !window._pwMeterHooked){
       } catch(_){}
     }
     return _origSendMsg.apply(this, arguments);
+  };
+})();
+
+/* GISTAPP_2FA_LOGIN — second step of login */
+window.showTwoFactorPrompt = function(){
+  var overlay = document.getElementById('tfa-overlay');
+  if (overlay) overlay.remove();
+  overlay = document.createElement('div');
+  overlay.id = 'tfa-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center;padding:24px';
+  overlay.innerHTML = '<div style="width:100%;max-width:380px;text-align:center">' +
+    '<div style="font-size:52px;margin-bottom:12px">🔐</div>' +
+    '<h2 style="margin:0 0 8px;color:var(--ink);font-size:22px;font-weight:800">Two-factor authentication</h2>' +
+    '<p style="margin:0 0 24px;color:var(--sub);font-size:14px;line-height:1.6">Enter the 6-digit code from your authenticator app.</p>' +
+    '<input id="tfa-code" type="tel" inputmode="numeric" maxlength="6" placeholder="123456" autocomplete="one-time-code" style="width:100%;padding:16px;border-radius:14px;border:2px solid var(--line);background:var(--bg-2);color:var(--ink);font-size:24px;font-weight:700;text-align:center;letter-spacing:8px;font-family:monospace;margin-bottom:8px">' +
+    '<div id="tfa-err" style="color:#e5484d;font-size:13px;min-height:18px;margin-bottom:14px"></div>' +
+    '<button onclick="submitTwoFactor()" id="tfa-submit" style="width:100%;padding:15px;border-radius:14px;border:none;background:var(--accent,#7b8cff);color:#fff;font-size:15px;font-weight:800;font-family:inherit;cursor:pointer;margin-bottom:10px">Verify</button>' +
+    '<button onclick="cancelTwoFactor()" style="width:100%;padding:12px;border-radius:14px;border:1px solid var(--line);background:var(--bg-2);color:var(--ink);font-size:14px;font-weight:700;font-family:inherit;cursor:pointer">Back to sign in</button>' +
+  '</div>';
+  document.body.appendChild(overlay);
+  setTimeout(function(){ var i = document.getElementById('tfa-code'); if (i) i.focus(); }, 100);
+  var inp = document.getElementById('tfa-code');
+  if (inp) inp.addEventListener('keydown', function(e){ if (e.key === 'Enter') submitTwoFactor(); });
+};
+
+window.cancelTwoFactor = function(){
+  var o = document.getElementById('tfa-overlay'); if (o) o.remove();
+  window._2faLoginToken = null;
+};
+
+window.submitTwoFactor = async function(){
+  var inp = document.getElementById('tfa-code');
+  var err = document.getElementById('tfa-err');
+  var btn = document.getElementById('tfa-submit');
+  if (!inp || !err || !btn) return;
+  var code = (inp.value || '').trim();
+  if (code.length !== 6){ err.textContent = 'Enter the 6-digit code'; return; }
+  btn.disabled = true; btn.textContent = 'Verifying…'; err.textContent = '';
+  try {
+    var res = await fetch('/api/login/2fa', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ login_token: window._2faLoginToken, code: code })
+    });
+    var data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Invalid code');
+    token = data.token;
+    localStorage.setItem('token', token);
+    me = data.user;
+    window._2faLoginToken = null;
+    var o = document.getElementById('tfa-overlay'); if (o) o.remove();
+    if (me && me.onboarded === false){ showOnboarding(); return; }
+    await enterApp();
+  } catch(e){
+    err.textContent = e.message || 'Verification failed';
+    btn.disabled = false; btn.textContent = 'Verify';
+  }
+};
+
+window.showAdmin2FASetupRequired = function(){
+  var overlay = document.getElementById('tfa-overlay');
+  if (overlay) overlay.remove();
+  overlay = document.createElement('div');
+  overlay.id = 'tfa-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center;padding:24px';
+  overlay.innerHTML = '<div style="width:100%;max-width:420px;text-align:center">' +
+    '<div style="font-size:52px;margin-bottom:12px">🛡️</div>' +
+    '<h2 style="margin:0 0 8px;color:var(--ink);font-size:22px;font-weight:800">Admin 2FA is required</h2>' +
+    '<p style="margin:0 0 20px;color:var(--sub);font-size:14px;line-height:1.6">As an admin, you must enable two-factor authentication before continuing. This protects the app if your password is compromised.</p>' +
+    '<button onclick="adminSetup2FA()" id="tfa-admin-start" style="width:100%;padding:15px;border-radius:14px;border:none;background:var(--accent,#7b8cff);color:#fff;font-size:15px;font-weight:800;font-family:inherit;cursor:pointer;margin-bottom:10px">Set up 2FA now</button>' +
+    '<button onclick="cancelTwoFactor()" style="width:100%;padding:12px;border-radius:14px;border:1px solid var(--line);background:var(--bg-2);color:var(--ink);font-size:14px;font-weight:700;font-family:inherit;cursor:pointer">Sign out</button>' +
+  '</div>';
+  document.body.appendChild(overlay);
+};
+
+window.adminSetup2FA = async function(){
+  try {
+    // Exchange bootstrap token for a temp session
+    var res = await fetch('/api/login/admin-2fa-bootstrap', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ login_token: window._2faLoginToken })
+    });
+    var data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed');
+    token = data.token;
+    localStorage.setItem('token', token);
+    me = data.user;
+    window._2faLoginToken = null;
+    var o = document.getElementById('tfa-overlay'); if (o) o.remove();
+    // Now show the 2FA setup flow (reuse existing open2FA if it exists)
+    if (typeof open2FA === 'function'){ open2FA(); return; }
+    if (typeof showTwoFactorSetup === 'function'){ showTwoFactorSetup(); return; }
+    // Fallback — call setup API directly
+    var s = await api('/api/2fa/setup', { method: 'POST' });
+    var code = prompt('Scan this secret in your authenticator app, then enter the 6-digit code:\n\n' + s.secret + '\n\nOr QR: ' + s.qr);
+    if (!code) return;
+    var r2 = await api('/api/2fa/enable', { method: 'POST', body: JSON.stringify({ code: code }) });
+    if (r2.ok){ try { toast('2FA enabled'); } catch(_){}; await enterApp(); }
+  } catch(e){ try { alert(e.message); } catch(_){} }
+};
+
+/* Login history screen */
+window.openLoginHistory = async function(){
+  var s = document.getElementById('login-history-screen');
+  if (s){ s.remove(); }
+  var screen = document.createElement('div');
+  screen.id = 'login-history-screen';
+  screen.style.cssText = 'position:fixed;inset:0;background:var(--bg);z-index:2960;display:flex;flex-direction:column;overflow-y:auto';
+  screen.innerHTML = '<div style="position:sticky;top:0;background:var(--bg);border-bottom:1px solid var(--line);padding:14px 16px;display:flex;align-items:center;gap:12px;z-index:5">' +
+    '<button onclick="document.getElementById(\'login-history-screen\').remove()" style="background:transparent;border:none;width:36px;height:36px;border-radius:50%;color:var(--ink);font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center">←</button>' +
+    '<div style="font-size:17px;font-weight:800;color:var(--ink);flex:1">Recent logins</div>' +
+    '</div>' +
+    '<div id="login-history-body" style="padding:16px"><div style="text-align:center;padding:40px;color:var(--sub)">Loading…</div></div>';
+  document.body.appendChild(screen);
+  try {
+    var r = await api('/api/auth/login-history');
+    var list = (r && r.events) || [];
+    var body = document.getElementById('login-history-body');
+    if (!body) return;
+    if (!list.length){ body.innerHTML = '<div style="text-align:center;padding:40px;color:var(--sub)">No login history yet</div>'; return; }
+    body.innerHTML = list.map(function(ev){
+      var when = new Date(ev.logged_in_at);
+      var whenStr = when.toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Lagos' }) + ' WAT';
+      var ua = ev.user_agent || '';
+      var device = 'Unknown device';
+      if (/iPhone/i.test(ua)) device = 'iPhone · Safari';
+      else if (/Android/i.test(ua)) device = 'Android · ' + (/Chrome/.test(ua) ? 'Chrome' : /Firefox/.test(ua) ? 'Firefox' : 'Browser');
+      else if (/Macintosh/i.test(ua)) device = 'Mac · ' + (/Chrome/.test(ua) ? 'Chrome' : /Safari/.test(ua) ? 'Safari' : 'Browser');
+      else if (/Windows/i.test(ua)) device = 'Windows · Browser';
+      var icon = /iPhone|Android/i.test(ua) ? '📱' : '💻';
+      var method = ev.method === 'password+2fa' ? ' · 2FA' : '';
+      return '<div style="background:var(--bg-2);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:10px">' +
+        '<div style="display:flex;align-items:center;gap:12px">' +
+        '<div style="font-size:22px;width:32px;text-align:center">' + icon + '</div>' +
+        '<div style="flex:1;min-width:0">' +
+        '<div style="font-size:13.5px;font-weight:700;color:var(--ink)">' + device + method + '</div>' +
+        '<div style="font-size:11.5px;color:var(--sub);margin-top:3px">IP: ' + (ev.ip || 'unknown') + '</div>' +
+        '<div style="font-size:11.5px;color:var(--sub);margin-top:1px">' + whenStr + '</div>' +
+        '</div></div>' +
+      '</div>';
+    }).join('');
+  } catch(e){
+    var b2 = document.getElementById('login-history-body');
+    if (b2) b2.innerHTML = '<div style="text-align:center;padding:40px;color:var(--sub)">Could not load</div>';
+  }
+};
+
+/* Settings row for login history */
+(function(){
+  if (window._loginHistHooked) return;
+  window._loginHistHooked = true;
+  var _orig = window.renderSettingsSections;
+  if (typeof _orig !== 'function') return;
+  window.renderSettingsSections = function(){
+    var r = _orig.apply(this, arguments);
+    setTimeout(function(){
+      var sections = document.getElementById('set-sections');
+      if (!sections || document.getElementById('login-hist-row')) return;
+      // find "Account" group
+      var groups = sections.querySelectorAll('.sgroup');
+      var target = null;
+      for (var i = 0; i < groups.length; i++){
+        if ((groups[i].textContent || '').toLowerCase().indexOf('account') !== -1){ target = groups[i]; break; }
+      }
+      if (!target) return;
+      var btn = document.createElement('button');
+      btn.id = 'login-hist-row';
+      btn.className = 'srow';
+      btn.innerHTML = '<span class="icw">🕒</span><span class="rt"><span class="lbl">Recent logins</span><span class="sub">See where your account was accessed</span></span><span class="chev">›</span>';
+      btn.onclick = function(){ try { openLoginHistory(); } catch(_){} };
+      target.appendChild(btn);
+    }, 200);
+    return r;
+  };
+})();
+
+/* GISTAPP_SESSIONS_V2 — session manager UI */
+window.openSessions = async function(){
+  var s = document.getElementById('sessions-screen');
+  if (s) s.remove();
+  var screen = document.createElement('div');
+  screen.id = 'sessions-screen';
+  screen.style.cssText = 'position:fixed;inset:0;background:var(--bg);z-index:2965;display:flex;flex-direction:column;overflow-y:auto';
+  screen.innerHTML = '<div style="position:sticky;top:0;background:var(--bg);border-bottom:1px solid var(--line);padding:14px 16px;display:flex;align-items:center;gap:12px;z-index:5">' +
+    '<button onclick="document.getElementById(\'sessions-screen\').remove()" style="background:transparent;border:none;width:36px;height:36px;border-radius:50%;color:var(--ink);font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center">←</button>' +
+    '<div style="font-size:17px;font-weight:800;color:var(--ink);flex:1">Active sessions</div>' +
+    '</div>' +
+    '<div id="sessions-body" style="padding:16px 16px 40px"><div style="text-align:center;padding:40px;color:var(--sub)">Loading…</div></div>';
+  document.body.appendChild(screen);
+  loadSessions();
+};
+
+window.loadSessions = async function(){
+  var body = document.getElementById('sessions-body');
+  if (!body) return;
+  try {
+    var r = await api('/api/sessions');
+    var list = (r && r.sessions) || [];
+    if (!list.length){
+      body.innerHTML = '<div style="text-align:center;padding:40px;color:var(--sub)">No active sessions</div>';
+      return;
+    }
+    body.innerHTML = list.map(function(s){
+      var icon = /iPhone|Android|iPad/i.test(s.device) ? '📱' : '💻';
+      var when = new Date(s.last_active_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Lagos' });
+      var current = s.is_current;
+      return '<div style="background:' + (current ? 'linear-gradient(135deg,rgba(123,140,255,.12),rgba(123,140,255,.05))' : 'var(--bg-2)') + ';border:1px solid ' + (current ? 'rgba(123,140,255,.4)' : 'var(--line)') + ';border-radius:14px;padding:14px;margin-bottom:10px">' +
+        '<div style="display:flex;align-items:center;gap:12px">' +
+          '<div style="font-size:24px;width:36px;text-align:center">' + icon + '</div>' +
+          '<div style="flex:1;min-width:0">' +
+            '<div style="font-size:14px;font-weight:700;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(s.device) + (current ? ' <span style="background:#22c55e;color:#fff;font-size:10px;padding:2px 7px;border-radius:6px;font-weight:800;margin-left:6px">CURRENT</span>' : '') + '</div>' +
+            '<div style="font-size:11.5px;color:var(--sub);margin-top:3px">' + esc(s.ip) + ' · ' + when + ' WAT</div>' +
+          '</div>' +
+          (current ? '' : '<button onclick="revokeSession(' + s.id + ',this)" style="background:transparent;border:1px solid #e5484d;color:#e5484d;padding:7px 12px;border-radius:10px;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;white-space:nowrap">Log out</button>') +
+        '</div>' +
+      '</div>';
+    }).join('');
+    var others = list.filter(function(x){ return !x.is_current; }).length;
+    if (others > 0){
+      body.innerHTML += '<button onclick="revokeAllOthers()" style="width:100%;padding:15px;border-radius:14px;border:1px solid #e5484d;background:var(--bg-2);color:#e5484d;font-size:14px;font-weight:800;font-family:inherit;cursor:pointer;margin-top:12px">Log out all other sessions</button>';
+    }
+    body.innerHTML += '<p style="text-align:center;color:var(--sub);font-size:12px;line-height:1.6;margin:20px 0 0">Sessions automatically expire after 90 days of inactivity.</p>';
+  } catch(e){
+    body.innerHTML = '<div style="text-align:center;padding:40px;color:var(--sub)">Could not load sessions</div>';
+  }
+};
+
+window.revokeSession = async function(id, btn){
+  if (!confirm('Log out this session?')) return;
+  if (btn){ btn.disabled = true; btn.textContent = '…'; }
+  try {
+    await api('/api/sessions/' + id, { method: 'DELETE' });
+    try { toast('Session logged out'); } catch(_){}
+    loadSessions();
+  } catch(e){
+    try { toast(e.message || 'Failed'); } catch(_){}
+    if (btn){ btn.disabled = false; btn.textContent = 'Log out'; }
+  }
+};
+
+window.revokeAllOthers = async function(){
+  if (!confirm('Log out all other sessions? Only this device will stay signed in.')) return;
+  try {
+    var r = await api('/api/sessions/all-others', { method: 'DELETE' });
+    try { toast('Logged out ' + (r.revoked || 0) + ' session' + (r.revoked === 1 ? '' : 's')); } catch(_){}
+    loadSessions();
+  } catch(e){ try { toast(e.message || 'Failed'); } catch(_){} }
+};
+
+// Settings row
+(function(){
+  if (window._sessRowHooked) return;
+  window._sessRowHooked = true;
+  var _orig = window.renderSettingsSections;
+  if (typeof _orig !== 'function') return;
+  window.renderSettingsSections = function(){
+    var r = _orig.apply(this, arguments);
+    setTimeout(function(){
+      var sections = document.getElementById('set-sections');
+      if (!sections || document.getElementById('sess-mgr-row')) return;
+      var groups = sections.querySelectorAll('.sgroup');
+      var target = null;
+      for (var i = 0; i < groups.length; i++){
+        if ((groups[i].textContent || '').toLowerCase().indexOf('account') !== -1){ target = groups[i]; break; }
+      }
+      if (!target) return;
+      var btn = document.createElement('button');
+      btn.id = 'sess-mgr-row';
+      btn.className = 'srow';
+      btn.innerHTML = '<span class="icw">💻</span><span class="rt"><span class="lbl">Active sessions</span><span class="sub">See and log out devices using your account</span></span><span class="chev">›</span>';
+      btn.onclick = function(){ try { openSessions(); } catch(_){} };
+      target.appendChild(btn);
+    }, 200);
+    return r;
   };
 })();
 
