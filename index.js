@@ -516,6 +516,85 @@ app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
+/* GISTAPP_LIVE_SHARE_V1 — /live/:id serves index.html with injected OG tags for rich previews */
+const fs_share = require('fs');
+const path_share = require('path');
+function _escapeHTML(str){
+  return String(str == null ? '' : str).replace(/[&<>"']/g, function(c){
+    return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c];
+  });
+}
+app.get('/live/:id', async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const indexPath = path_share.join(__dirname, 'public', 'index.html');
+    let html = fs_share.readFileSync(indexPath, 'utf8');
+    const baseUrl = process.env.APP_URL || 'https://gistapp.onrender.com';
+
+    // Try to load stream info
+    let ogTitle = 'GistApp — Chat, Stream, Earn';
+    let ogDesc  = 'Chat by email, go live, and earn from gifts.';
+    let ogImage = baseUrl + '/icon-512.png';
+    let ogUrl   = baseUrl + '/live/' + id;
+
+    try {
+      const r = await pool.query(
+        `SELECT s.title, s.status, u.display_name, u.username, u.avatar_url
+         FROM live_streams s
+         JOIN users u ON u.id = s.streamer_id
+         WHERE s.id=$1`,
+        [id]
+      );
+      if (r.rowCount){
+        const st = r.rows[0];
+        const name = st.display_name || st.username || 'Someone';
+        if (st.status === 'live'){
+          ogTitle = '🔴 ' + name + ' is live on GistApp';
+          ogDesc  = st.title ? st.title : ('Watch ' + name + ' live right now');
+        } else {
+          ogTitle = name + ' on GistApp';
+          ogDesc  = 'Live stream ended — see more on GistApp';
+        }
+        if (st.avatar_url){
+          // GISTAPP_LIVE_SHARE_IMG_FIX — OG images must be absolute URLs
+          var _img = String(st.avatar_url);
+          if (/^https?:\/\//i.test(_img)){
+            ogImage = _img;
+          } else if (_img.charAt(0) === '/'){
+            ogImage = baseUrl + _img;
+          } else {
+            ogImage = baseUrl + '/' + _img;
+          }
+        }
+      }
+    } catch(_){}
+
+    // Inject OG meta tags right before </head>
+    const ogBlock = '<!-- GISTAPP_LIVE_SHARE_V1 -->\n' +
+      '<meta property="og:type" content="video.other">\n' +
+      '<meta property="og:site_name" content="GistApp">\n' +
+      '<meta property="og:title" content="' + _escapeHTML(ogTitle) + '">\n' +
+      '<meta property="og:description" content="' + _escapeHTML(ogDesc) + '">\n' +
+      '<meta property="og:image" content="' + _escapeHTML(ogImage) + '">\n' +
+      '<meta property="og:url" content="' + _escapeHTML(ogUrl) + '">\n' +
+      '<meta name="twitter:card" content="summary_large_image">\n' +
+      '<meta name="twitter:title" content="' + _escapeHTML(ogTitle) + '">\n' +
+      '<meta name="twitter:description" content="' + _escapeHTML(ogDesc) + '">\n' +
+      '<meta name="twitter:image" content="' + _escapeHTML(ogImage) + '">\n';
+
+    // Strip existing og tags from the static head to avoid dupes, then inject
+    html = html.replace(/<meta property="og:[^>]+>\s*/g, '');
+    html = html.replace(/<meta name="twitter:[^>]+>\s*/g, '');
+    html = html.replace('</head>', ogBlock + '</head>');
+
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(html);
+  } catch(e){
+    console.error('live share route:', e.message);
+    res.sendFile(path_share.join(__dirname, 'public', 'index.html'));
+  }
+});
+
 /* ---------- helpers ---------- */
 // GISTAPP_AUTH_HARDENING — block unverified users from writes
 async function auth(req,res,next){
@@ -3934,12 +4013,47 @@ app.get('/api/live/join/:id', auth, async (req, res) => {
 });
 
 // POST /api/live/heartbeat — viewer keeps count alive
+// GISTAPP_LIVE_VIEWERS_V1 — also upserts into live_viewers for the host list
 app.post('/api/live/heartbeat', auth, async (req, res) => {
   try {
     const id = Number((req.body && req.body.id) || 0);
-    await pool.query('UPDATE live_streams SET viewer_count = GREATEST(0, viewer_count) WHERE id=$1', [id]);
-    res.json({ ok: true });
+    if (!id) return res.json({ ok: false });
+    // Upsert viewer row
+    await pool.query(
+      `INSERT INTO live_viewers (stream_id, user_id, last_ping)
+       VALUES ($1, $2, NOW())
+       ON CONFLICT (stream_id, user_id) DO UPDATE SET last_ping=NOW()`,
+      [id, req.user.id]
+    );
+    // Refresh viewer_count from active viewers
+    const c = await pool.query(
+      "SELECT COUNT(*)::int AS n FROM live_viewers WHERE stream_id=$1 AND last_ping > NOW() - INTERVAL '30 seconds'",
+      [id]
+    );
+    await pool.query('UPDATE live_streams SET viewer_count=$1 WHERE id=$2', [c.rows[0].n, id]);
+    res.json({ ok: true, viewers: c.rows[0].n });
   } catch(_){ res.json({ ok: false }); }
+});
+
+// GET /api/live/:id/viewers — host only, returns active viewer list
+app.get('/api/live/:id/viewers', auth, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const own = await pool.query('SELECT streamer_id FROM live_streams WHERE id=$1', [id]);
+    if (!own.rowCount) return res.status(404).json({ error: 'Stream not found' });
+    if (own.rows[0].streamer_id !== req.user.id) return res.status(403).json({ error: 'Only host' });
+    const r = await pool.query(
+      `SELECT v.user_id, v.joined_at, v.last_ping,
+              u.display_name, u.username, u.avatar_color, u.avatar_url,
+              u.subscription_tier
+       FROM live_viewers v
+       JOIN users u ON u.id = v.user_id
+       WHERE v.stream_id=$1 AND v.last_ping > NOW() - INTERVAL '30 seconds'
+       ORDER BY v.joined_at ASC`,
+      [id]
+    );
+    res.json({ viewers: r.rows, count: r.rowCount });
+  } catch(e){ console.error('viewers:', e.message); res.status(500).json({ error: 'Server error' }); }
 });
 
 // POST /api/live/leave — viewer leaves
@@ -3984,6 +4098,20 @@ async function livekitSyncViewerCounts(){
   } catch(e){ console.warn('vc sync:', e.message); }
 }
 setTimeout(livekitSyncViewerCounts, 3000);
+/* GISTAPP_LIVE_VIEWERS_V1 — table setup */
+(async function(){
+  try {
+    await pool.query(`CREATE TABLE IF NOT EXISTS live_viewers (
+      stream_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      joined_at TIMESTAMPTZ DEFAULT NOW(),
+      last_ping TIMESTAMPTZ DEFAULT NOW(),
+      PRIMARY KEY (stream_id, user_id)
+    )`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS live_viewers_stream_ping_idx ON live_viewers (stream_id, last_ping DESC)`);
+    console.log('✅ live_viewers table ready');
+  } catch(e){ console.warn('live_viewers setup:', e.message); }
+})();
 setInterval(livekitSyncViewerCounts, 5000);
 
 setTimeout(cleanupLiveStreams, 2 * 60 * 1000);
@@ -4499,6 +4627,72 @@ async function adminOnly(req, res, next){
   } catch(e){ res.status(500).json({ error: 'Server error' }); }
 }
 
+/* GISTAPP_WEEKLY_DIGEST — admin trigger for testing */
+app.post('/api/admin/send-digests-now', auth, adminOnly, async (req, res) => {
+  try {
+    const baseUrl = process.env.APP_URL || 'https://gistapp.onrender.com';
+    const limit = Math.min(Number(req.body && req.body.limit) || 5, 20);
+    const r = await pool.query(
+      "SELECT id, email, display_name, prefs FROM users WHERE verified=true AND email IS NOT NULL AND COALESCE(prefs->>'weekly_digest','true') <> 'false' ORDER BY id DESC LIMIT $1",
+      [limit]
+    );
+    let sent = 0, errors = [];
+    for (const u of r.rows){
+      try {
+        const stats = await _getUserWeeklyStats(u.id);
+        const html = _digestHTML(u.display_name || 'there', stats, u.id, baseUrl);
+        await mailer.sendMail({
+          from: '"GistApp" <' + GMAIL_SENDER + '>',
+          to: u.email,
+          replyTo: process.env.SMTP_USER,
+          subject: 'Your week on GistApp, ' + (u.display_name || 'there') + ' 📊',
+          headers: {
+            'X-Priority': '3',
+            'Importance': 'normal',
+            'List-Unsubscribe': '<' + baseUrl + '/api/email/unsub-digest?u=' + u.id + '&t=' + _digestToken(u.id) + '>'
+          },
+          html: html
+        });
+        sent++;
+        await new Promise(r => setTimeout(r, 200));
+      } catch(e){ errors.push({ email: u.email, err: e.message }); }
+    }
+    res.json({ ok: true, sent: sent, errors: errors });
+  } catch(e){ console.error('digest-admin:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+/* GISTAPP_CRON_ENDPOINT — external cron trigger for weekly digest */
+/* Usage: GET /api/cron/weekly-digest?key=<CRON_SECRET>
+   Set CRON_SECRET in Render env vars. Falls back to JWT_SECRET if unset. */
+app.get('/api/cron/weekly-digest', async (req, res) => {
+  const expected = process.env.CRON_SECRET || process.env.JWT_SECRET;
+  const provided = String(req.query.key || '');
+  if (!expected || provided !== expected){
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  // Respond immediately — run in background so cold starts don't fail the cron
+  res.json({ ok: true, triggered: true, at: new Date().toISOString() });
+  setImmediate(function(){
+    sendWeeklyDigests(true).catch(function(e){ console.warn('cron digest error:', e && e.message); });
+  });
+});
+
+/* GISTAPP_WEEKLY_DIGEST — unsubscribe (public, uses HMAC token) */
+app.get('/api/email/unsub-digest', async (req, res) => {
+  try {
+    const uid = Number(req.query.u || 0);
+    const tok = String(req.query.t || '');
+    if (!uid || !tok) return res.status(400).send('<h2>Invalid link</h2>');
+    const expect = _digestToken(uid);
+    if (tok !== expect) return res.status(403).send('<h2>Invalid or expired link</h2>');
+    await pool.query(
+      "UPDATE users SET prefs = COALESCE(prefs,'{}'::jsonb) || jsonb_build_object('weekly_digest', 'false') WHERE id=$1",
+      [uid]
+    );
+    res.send('<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Unsubscribed</title></head><body style="font-family:Inter,-apple-system,system-ui,sans-serif;background:#f2f0fa;color:#1c1c22;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;text-align:center;padding:20px"><div style="background:#fff;max-width:420px;padding:40px 30px;border-radius:24px;box-shadow:0 12px 40px rgba(51,52,76,.10)"><div style="font-size:52px;margin-bottom:12px">✅</div><h2 style="margin:0 0 10px;font-size:22px;letter-spacing:-.3px">You are unsubscribed</h2><p style="color:#6a6a73;font-size:14px;line-height:1.6;margin:0 0 20px">You will not receive the weekly recap anymore. You can re-enable it anytime in the app under <b>Settings &rarr; Notifications</b>.</p><a href="/" style="display:inline-block;background:#2b2c44;color:#fff;text-decoration:none;padding:12px 28px;border-radius:12px;font-weight:700;font-size:14px">Back to GistApp</a></div></body></html>');
+  } catch(e){ console.error('unsub-digest:', e.message); res.status(500).send('<h2>Server error</h2>'); }
+});
+
 const BACKUP_TABLES = [
   'users', 'chats', 'chat_members', 'messages', 'posts',
   'post_likes', 'post_comments', 'post_votes', 'post_saves', 'post_shares',
@@ -4614,6 +4808,183 @@ app.post('/api/admin/restore', auth, adminOnly, async (req, res) => {
 });
 
 // Auto-scheduler: 1 backup per day, checked every 6h
+/* GISTAPP_WEEKLY_DIGEST — Monday 8-10am WAT, once per 7 days */
+const crypto_digest = require('crypto');
+
+function _digestToken(uid){
+  return crypto_digest.createHmac('sha256', JWT_SECRET).update('digest-unsub:' + uid).digest('hex').slice(0, 32);
+}
+
+async function _getUserWeeklyStats(uid){
+  const stats = { new_followers:0, new_likes:0, new_messages:0, top_post:null, new_posts:0 };
+  try {
+    const r1 = await pool.query("SELECT COUNT(*)::int AS n FROM user_follows WHERE following_id=$1 AND created_at > NOW() - INTERVAL '7 days'", [uid]);
+    stats.new_followers = r1.rows[0].n;
+  } catch(_){}
+  try {
+    const r2 = await pool.query(
+      "SELECT COUNT(*)::int AS n FROM post_likes pl JOIN posts p ON p.id=pl.post_id WHERE p.user_id=$1 AND pl.created_at > NOW() - INTERVAL '7 days'",
+      [uid]
+    );
+    stats.new_likes = r2.rows[0].n;
+  } catch(_){}
+  try {
+    const r3 = await pool.query(
+      "SELECT COUNT(*)::int AS n FROM messages m JOIN chat_members cm ON cm.chat_id=m.chat_id WHERE cm.user_id=$1 AND m.sender_id<>$1 AND m.created_at > NOW() - INTERVAL '7 days'",
+      [uid]
+    );
+    stats.new_messages = r3.rows[0].n;
+  } catch(_){}
+  try {
+    const r4 = await pool.query("SELECT COUNT(*)::int AS n FROM posts WHERE user_id=$1 AND created_at > NOW() - INTERVAL '7 days'", [uid]);
+    stats.new_posts = r4.rows[0].n;
+  } catch(_){}
+  try {
+    const r5 = await pool.query(
+      `SELECT p.id, p.body, COUNT(pl.post_id)::int AS likes
+       FROM posts p LEFT JOIN post_likes pl ON pl.post_id=p.id AND pl.created_at > NOW() - INTERVAL '7 days'
+       WHERE p.user_id=$1 AND p.created_at > NOW() - INTERVAL '7 days'
+       GROUP BY p.id, p.body ORDER BY likes DESC NULLS LAST LIMIT 1`,
+      [uid]
+    );
+    if (r5.rowCount && r5.rows[0].likes > 0) stats.top_post = r5.rows[0];
+  } catch(_){}
+  return stats;
+}
+
+function _digestHTML(name, stats, uid, baseUrl){
+  const tok = _digestToken(uid);
+  const unsubUrl = baseUrl + '/api/email/unsub-digest?u=' + uid + '&t=' + tok;
+  const settingsUrl = baseUrl + '/?settings=notifications';
+  const statCard = (emoji, num, label) =>
+    '<td style="width:50%;padding:6px">' +
+    '<div style="background:#f7f5ff;border:1px solid #e6e2ff;border-radius:14px;padding:18px 12px;text-align:center">' +
+    '<div style="font-size:26px;line-height:1">' + emoji + '</div>' +
+    '<div style="color:#2b2c44;font-size:28px;font-weight:800;line-height:1.1;margin-top:8px">' + num + '</div>' +
+    '<div style="color:#6a6a73;font-size:11.5px;font-weight:600;text-transform:uppercase;letter-spacing:.6px;margin-top:4px">' + label + '</div>' +
+    '</div></td>';
+
+  let topPostSection = '';
+  if (stats.top_post && stats.top_post.body){
+    const snippet = String(stats.top_post.body).slice(0, 140).replace(/[<>&]/g, function(c){ return ({'<':'&lt;','>':'&gt;','&':'&amp;'})[c]; });
+    topPostSection =
+      '<tr><td style="padding:24px 32px 0">' +
+      '<div style="color:#8e8e93;font-size:11px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;margin-bottom:10px">Top post of the week</div>' +
+      '<div style="background:#fff;border:1px solid #eae7f5;border-left:3px solid #7b8cff;border-radius:12px;padding:14px 16px">' +
+      '<div style="color:#2b2c44;font-size:14px;line-height:1.55">' + snippet + '</div>' +
+      '<div style="color:#7b8cff;font-size:12.5px;font-weight:700;margin-top:8px">❤️ ' + stats.top_post.likes + ' like' + (stats.top_post.likes === 1 ? '' : 's') + '</div>' +
+      '</div></td></tr>';
+  }
+
+  return '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Your week on GistApp</title></head>' +
+  '<body style="margin:0;padding:0;background:#f2f0fa;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Inter,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased">' +
+  '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f2f0fa;padding:24px 12px">' +
+  '<tr><td align="center">' +
+  '<table role="presentation" width="560" cellspacing="0" cellpadding="0" border="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:24px;overflow:hidden;box-shadow:0 12px 40px rgba(51,52,76,.10)">' +
+
+  '<tr><td style="background:linear-gradient(135deg,#2b2c44 0%,#5a6cd6 55%,#7b8cff 100%);padding:32px 32px 26px;text-align:center">' +
+  '<img src="' + baseUrl + '/icon-192.png" alt="GistApp" width="60" height="60" style="border-radius:16px;display:block;margin:0 auto 12px;box-shadow:0 8px 24px rgba(0,0,0,.3)">' +
+  '<div style="color:#ffffff;font-size:22px;font-weight:800;letter-spacing:-.4px">Your week on GistApp</div>' +
+  '<div style="color:rgba(255,255,255,.85);font-size:12.5px;margin-top:6px">A quick recap for ' + name + '</div>' +
+  '</td></tr>' +
+
+  '<tr><td style="padding:26px 26px 4px">' +
+  '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border-collapse:separate">' +
+  '<tr>' + statCard('👥', stats.new_followers, 'New followers') + statCard('❤️', stats.new_likes, 'Likes received') + '</tr>' +
+  '<tr>' + statCard('💬', stats.new_messages, 'New messages') + statCard('📝', stats.new_posts, 'Posts shared') + '</tr>' +
+  '</table>' +
+  '</td></tr>' +
+
+  topPostSection +
+
+  '<tr><td style="padding:28px 32px 8px;text-align:center">' +
+  '<a href="' + baseUrl + '" style="background:#2b2c44;color:#ffffff;text-decoration:none;padding:14px 40px;border-radius:14px;font-weight:800;display:inline-block;font-size:14.5px;letter-spacing:.2px">Open GistApp</a>' +
+  '</td></tr>' +
+
+  '<tr><td style="padding:8px 32px 28px;text-align:center">' +
+  '<p style="margin:0;color:#8e8e93;font-size:12.5px;line-height:1.65">Keep the momentum going — post something, go live, or start a chat.</p>' +
+  '</td></tr>' +
+
+  '<tr><td style="background:#f7f6fc;padding:18px 32px;text-align:center;border-top:1px solid #eae7f5">' +
+  '<p style="margin:0 0 8px;color:#8e8e93;font-size:11.5px;line-height:1.6">You are receiving this weekly recap because you have a GistApp account.</p>' +
+  '<p style="margin:0;color:#a8a5b3;font-size:11px;line-height:1.6">' +
+  '<a href="' + settingsUrl + '" style="color:#5a6cd6;text-decoration:none;font-weight:600">Manage preferences</a> &middot; ' +
+  '<a href="' + unsubUrl + '" style="color:#5a6cd6;text-decoration:none;font-weight:600">Unsubscribe</a>' +
+  '</p>' +
+  '<p style="margin:8px 0 0;color:#a8a5b3;font-size:10.5px">' +
+  '&copy; ' + new Date().getFullYear() + ' GistApp Community &middot; All rights reserved.' +
+  '</p>' +
+  '</td></tr>' +
+
+  '</table></td></tr></table></body></html>';
+}
+
+async function sendWeeklyDigests(force){
+  const baseUrl = process.env.APP_URL || 'https://gistapp.onrender.com';
+  if (!force){
+    const today = new Date();
+    const watHour = (today.getUTCHours() + 1) % 24; // WAT = UTC+1
+    const adjDay = (new Date(today.getTime() + 60*60*1000)).getUTCDay();
+    if (adjDay !== 1) return;                 // Monday only
+    if (watHour < 8 || watHour > 10) return;  // 8-10am WAT window
+  } else {
+    console.log('📧 Weekly digest run (forced via cron)');
+  }
+
+  console.log('📧 Weekly digest run starting...');
+  let sent = 0, skipped = 0, failed = 0;
+  try {
+    const r = await pool.query(
+      "SELECT id, email, display_name, prefs FROM users WHERE verified=true AND email IS NOT NULL AND COALESCE(prefs->>'weekly_digest','true') <> 'false'"
+    );
+    for (const u of r.rows){
+      try {
+        // Skip if we already sent one within the last 6 days
+        const lastRaw = (u.prefs && u.prefs.last_digest_at) || null;
+        if (lastRaw){
+          const lastMs = Date.parse(lastRaw);
+          if (!isNaN(lastMs) && (Date.now() - lastMs) < 6 * 24 * 60 * 60 * 1000){ skipped++; continue; }
+        }
+        const stats = await _getUserWeeklyStats(u.id);
+        const total = stats.new_followers + stats.new_likes + stats.new_messages + stats.new_posts;
+        if (total === 0){ skipped++; continue; } // don't spam quiet users
+        const html = _digestHTML(u.display_name || 'there', stats, u.id, baseUrl);
+        await mailer.sendMail({
+          from: '"GistApp" <' + GMAIL_SENDER + '>',
+          to: u.email,
+          replyTo: process.env.SMTP_USER,
+          subject: 'Your week on GistApp, ' + (u.display_name || 'there') + ' 📊',
+          headers: {
+            'X-Priority': '3',
+            'Importance': 'normal',
+            'List-Unsubscribe': '<' + baseUrl + '/api/email/unsub-digest?u=' + u.id + '&t=' + _digestToken(u.id) + '>',
+            'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click'
+          },
+          html: html
+        });
+        // Stamp last_digest_at into prefs
+        await pool.query(
+          "UPDATE users SET prefs = COALESCE(prefs,'{}'::jsonb) || jsonb_build_object('last_digest_at', NOW()::text) WHERE id=$1",
+          [u.id]
+        );
+        sent++;
+        await new Promise(r => setTimeout(r, 250)); // throttle Gmail API
+      } catch(e){
+        failed++;
+        console.warn('digest send failed for', u.email, e.message);
+      }
+    }
+    console.log('📧 Weekly digest done — sent:', sent, 'skipped:', skipped, 'failed:', failed);
+  } catch(e){
+    console.error('weekly digest run error:', e.message);
+  }
+}
+
+// Cron: check every 6 hours; runs only Monday 8-10am WAT; uses last_digest_at to prevent dupes
+setInterval(sendWeeklyDigests, 6 * 60 * 60 * 1000);
+// Kick off one check 2 minutes after boot (in case the server was just started during the window)
+setTimeout(sendWeeklyDigests, 120 * 1000);
+
 async function autoBackupCheck(){
   try {
     const today = new Date().toISOString().slice(0, 10);

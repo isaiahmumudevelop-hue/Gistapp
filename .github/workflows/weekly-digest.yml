@@ -1,0 +1,23 @@
+name: Weekly Digest
+
+on:
+  schedule:
+    # Monday 07:00 UTC = Monday 08:00 WAT (Lagos)
+    - cron: '0 7 * * 1'
+  workflow_dispatch:        # manual trigger from GitHub UI
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger weekly digest
+        run: |
+          set -e
+          URL="https://gistapp.onrender.com/api/cron/weekly-digest?key=${{ secrets.CRON_SECRET }}"
+          echo "Triggering at $(date -u)"
+          # First call may hit a cold Render instance — allow up to 90s
+          RESP=$(curl -sS --max-time 90 -w "\nHTTP:%{http_code}" "$URL")
+          echo "Response: $RESP"
+          # Accept 200 as success; anything else fails the workflow
+          echo "$RESP" | grep -q "HTTP:200" || (echo "❌ Cron failed" && exit 1)
+          echo "✅ Digest triggered"
