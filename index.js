@@ -2944,7 +2944,7 @@ app.get('/api/posts/:id/comments', auth, async (req, res) => {
   try {
     const id = Number(req.params.id);
     const r = await pool.query(`
-      SELECT c.id, c.body, c.created_at, c.audio_url, c.audio_duration, c.kind, c.poll_data,
+      SELECT c.id, c.body, c.created_at, c.audio_url, c.audio_duration, c.kind, c.poll_data, c.media_urls,
              u.id AS user_id, u.display_name, u.avatar_color, u.avatar_url
       FROM post_comments c
       JOIN users u ON u.id = c.user_id
@@ -2952,6 +2952,26 @@ app.get('/api/posts/:id/comments', auth, async (req, res) => {
       ORDER BY c.created_at ASC
       LIMIT 200
     `, [id]);
+    // Fetch reactions for all comments
+    if (r.rows.length){
+      const cids = r.rows.map(function(c){ return c.id; });
+      const rx = await pool.query(
+        'SELECT comment_id, emoji, COUNT(*)::int AS n FROM comment_reactions WHERE comment_id = ANY($1) GROUP BY comment_id, emoji',
+        [cids]
+      );
+      const myRx = await pool.query(
+        'SELECT comment_id, emoji FROM comment_reactions WHERE comment_id = ANY($1) AND user_id=$2',
+        [cids, req.user.id]
+      );
+      const tally = {};
+      rx.rows.forEach(function(x){ if (!tally[x.comment_id]) tally[x.comment_id] = {}; tally[x.comment_id][x.emoji] = x.n; });
+      const mine = {};
+      myRx.rows.forEach(function(x){ if (!mine[x.comment_id]) mine[x.comment_id] = []; mine[x.comment_id].push(x.emoji); });
+      r.rows.forEach(function(c){
+        c.reactions = tally[c.id] || {};
+        c.my_reactions = mine[c.id] || [];
+      });
+    }
     // For poll comments, fetch vote counts + my vote
     const polls = r.rows.filter(function(x){ return x.kind === 'poll' && x.poll_data; });
     if (polls.length){
@@ -2980,6 +3000,42 @@ app.get('/api/posts/:id/comments', auth, async (req, res) => {
     }
     res.json(r.rows);
   } catch(e){ console.error('comments get:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+/* GISTAPP_CAROUSEL_REACT — photo carousel + reactions */
+(async function(){
+  try {
+    await pool.query(`ALTER TABLE post_comments ADD COLUMN IF NOT EXISTS media_urls JSONB`);
+    await pool.query(`CREATE TABLE IF NOT EXISTS comment_reactions (
+      comment_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      emoji TEXT NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      PRIMARY KEY (comment_id, user_id, emoji)
+    )`);
+    console.log('✅ carousel + reactions migrations ready');
+  } catch(e){ console.warn('carousel migration:', e.message); }
+})();
+
+/* GISTAPP_CAROUSEL_REACT — toggle reaction on a comment */
+app.post('/api/comments/:cid/react', auth, async (req, res) => {
+  try {
+    const cid = Number(req.params.cid);
+    const emoji = String((req.body && req.body.emoji) || '').slice(0, 8);
+    const allowed = ['👍','❤️','😂','😮','😢','🔥'];
+    if (!cid || !emoji || allowed.indexOf(emoji) === -1) return res.status(400).json({ error: 'Invalid emoji' });
+    const existing = await pool.query('SELECT 1 FROM comment_reactions WHERE comment_id=$1 AND user_id=$2 AND emoji=$3', [cid, req.user.id, emoji]);
+    if (existing.rowCount){
+      await pool.query('DELETE FROM comment_reactions WHERE comment_id=$1 AND user_id=$2 AND emoji=$3', [cid, req.user.id, emoji]);
+    } else {
+      await pool.query('INSERT INTO comment_reactions (comment_id, user_id, emoji) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING', [cid, req.user.id, emoji]);
+    }
+    const tally = await pool.query('SELECT emoji, COUNT(*)::int AS n FROM comment_reactions WHERE comment_id=$1 GROUP BY emoji', [cid]);
+    const mine = await pool.query('SELECT emoji FROM comment_reactions WHERE comment_id=$1 AND user_id=$2', [cid, req.user.id]);
+    const out = {};
+    tally.rows.forEach(function(r){ out[r.emoji] = r.n; });
+    res.json({ ok: true, reactions: out, my_reactions: mine.rows.map(function(r){ return r.emoji; }) });
+  } catch(e){ console.error('react:', e.message); res.status(500).json({ error: 'Server error' }); }
 });
 
 /* GISTAPP_COMMUNITY_HUB — community stats + guidelines + top creators */
@@ -3094,7 +3150,13 @@ app.post('/api/posts/:id/comments', auth, async (req, res) => {
     const body = String(req.body.body || '').trim();
     const audio_url = req.body.audio_url ? String(req.body.audio_url).slice(0, 500) : null;
     const audio_duration = req.body.audio_duration ? Number(req.body.audio_duration) : null;
-    if (!body && !audio_url) return res.status(400).json({ error: 'Empty comment' });
+    // GISTAPP_CAROUSEL_REACT — up to 9 photo URLs
+    let media_urls = null;
+    if (Array.isArray(req.body.media_urls) && req.body.media_urls.length){
+      media_urls = req.body.media_urls.slice(0, 9).map(function(u){ return String(u).slice(0, 500); }).filter(Boolean);
+      if (!media_urls.length) media_urls = null;
+    }
+    if (!body && !audio_url && !media_urls) return res.status(400).json({ error: 'Empty comment' });
 
     // GISTAPP_COMMUNITY_V1 — comment controls
     const postR = await pool.query('SELECT user_id FROM posts WHERE id=$1', [id]);
@@ -3125,8 +3187,8 @@ app.post('/api/posts/:id/comments', auth, async (req, res) => {
     }
 
     const r = await pool.query(
-      'INSERT INTO post_comments (post_id, user_id, body, audio_url, audio_duration) VALUES ($1,$2,$3,$4,$5) RETURNING id, body, created_at, audio_url, audio_duration',
-      [id, req.user.id, body.slice(0, 500), audio_url, audio_duration]
+      'INSERT INTO post_comments (post_id, user_id, body, audio_url, audio_duration, media_urls) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, body, created_at, audio_url, audio_duration, media_urls',
+      [id, req.user.id, body.slice(0, 500), audio_url, audio_duration, media_urls ? JSON.stringify(media_urls) : null]
     );
     const me = await pool.query('SELECT display_name, avatar_color, avatar_url FROM users WHERE id=$1', [req.user.id]);
     const full = { ...r.rows[0], user_id: req.user.id, kind: 'text', ...me.rows[0] };
