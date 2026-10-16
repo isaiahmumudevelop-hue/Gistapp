@@ -400,6 +400,208 @@ async function sendSecurityAlertEmail(toEmail, displayName, eventType, meta){
   }
 }
 
+/* GISTAPP_PAYMENT_RECEIPT — sent on successful Paystack or manual payment */
+async function sendPaymentReceiptEmail(toEmail, displayName, info){
+  if (!toEmail) return;
+  info = info || {};
+  const baseUrl = process.env.APP_URL || 'https://gistapp.onrender.com';
+  const iconUrl = baseUrl + '/icon-192.png';
+  const name = displayName || 'there';
+
+  const planKey = info.plan || 'pro';
+  const planName = planKey === 'business' ? 'GistApp Business' : 'GistApp Pro';
+  const amountNgn = Number(info.amount || 0);
+  const amountStr = '₦' + amountNgn.toLocaleString('en-NG');
+  const method = info.method === 'manual' ? 'Bank transfer (OPay)' : 'Card (Paystack)';
+  const ref = info.reference || '—';
+  const paidAt = new Date(info.completed_at || Date.now()).toLocaleString('en-GB', { timeZone: 'Africa/Lagos' }) + ' WAT';
+  const nextBill = new Date(Date.now() + (info.days || 30) * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB', { timeZone: 'Africa/Lagos', day: 'numeric', month: 'short', year: 'numeric' });
+
+  const row = (label, value, bold) =>
+    '<tr>' +
+    '<td style="padding:10px 0;color:#6a6a73;font-size:13px;' + (bold ? 'font-weight:700' : '') + '">' + label + '</td>' +
+    '<td style="padding:10px 0;color:#1c1c22;font-size:13px;text-align:right;' + (bold ? 'font-weight:800;font-size:15px' : 'font-weight:600') + '">' + value + '</td>' +
+    '</tr>';
+
+  const html = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Receipt</title></head>' +
+  '<body style="margin:0;padding:0;background:#f2f0fa;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Inter,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased">' +
+  '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f2f0fa;padding:24px 12px">' +
+  '<tr><td align="center">' +
+  '<table role="presentation" width="560" cellspacing="0" cellpadding="0" border="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:24px;overflow:hidden;box-shadow:0 12px 40px rgba(51,52,76,.10)">' +
+
+  // Header
+  '<tr><td style="background:linear-gradient(135deg,#0d8a5a 0%,#22a36b 55%,#34c47f 100%);padding:30px 32px 26px;text-align:center">' +
+  '<img src="' + iconUrl + '" alt="GistApp" width="56" height="56" style="border-radius:14px;display:block;margin:0 auto 12px;box-shadow:0 8px 22px rgba(0,0,0,.3)">' +
+  '<div style="color:#ffffff;font-size:12px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;opacity:.9">Payment received</div>' +
+  '<div style="color:#ffffff;font-size:28px;font-weight:800;letter-spacing:-.5px;margin-top:6px">' + amountStr + '</div>' +
+  '</td></tr>' +
+
+  // Greeting
+  '<tr><td style="padding:28px 32px 4px">' +
+  '<p style="margin:0 0 12px;color:#1c1c22;font-size:17px;font-weight:700;letter-spacing:-.2px">Hi ' + name + ',</p>' +
+  '<p style="margin:0;color:#4a4a55;font-size:14.5px;line-height:1.65">Thanks for subscribing to ' + planName + '. Your receipt is below — keep this email for your records.</p>' +
+  '</td></tr>' +
+
+  // Receipt card
+  '<tr><td style="padding:22px 32px 0">' +
+  '<div style="background:#fafaff;border:1px solid #eae7f5;border-radius:14px;padding:6px 20px">' +
+  '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border-collapse:collapse">' +
+  row('Plan', planName) +
+  row('Method', method) +
+  row('Reference', ref) +
+  row('Paid at', paidAt) +
+  '<tr><td colspan="2" style="padding:0;border-top:1px solid #eae7f5;height:0;line-height:0">&nbsp;</td></tr>' +
+  row('Total paid', amountStr, true) +
+  '</table>' +
+  '</div>' +
+  '</td></tr>' +
+
+  // What's active
+  '<tr><td style="padding:24px 32px 0">' +
+  '<div style="background:#f0fbf4;border:1px solid #c9efd6;border-radius:14px;padding:16px 20px">' +
+  '<div style="color:#1f7a3d;font-size:13px;font-weight:800;letter-spacing:.2px;margin-bottom:8px">What is now active</div>' +
+  '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">' +
+  '<tr><td style="padding:4px 0;color:#1f7a3d;font-size:14px;width:22px">&#10003;</td><td style="padding:4px 0;color:#2b2c44;font-size:13.5px">Verified badge on your profile</td></tr>' +
+  '<tr><td style="padding:4px 0;color:#1f7a3d;font-size:14px">&#10003;</td><td style="padding:4px 0;color:#2b2c44;font-size:13.5px">' + (planKey === 'business' ? 'All Business features unlocked' : 'All Pro features unlocked') + '</td></tr>' +
+  '<tr><td style="padding:4px 0;color:#1f7a3d;font-size:14px">&#10003;</td><td style="padding:4px 0;color:#2b2c44;font-size:13.5px">Access until <b>' + nextBill + '</b></td></tr>' +
+  '</table>' +
+  '</div>' +
+  '</td></tr>' +
+
+  // CTA
+  '<tr><td style="padding:26px 32px 6px;text-align:center">' +
+  '<a href="' + baseUrl + '" style="background:#2b2c44;color:#ffffff;text-decoration:none;padding:14px 40px;border-radius:14px;font-weight:800;display:inline-block;font-size:14.5px;letter-spacing:.2px">Open GistApp</a>' +
+  '</td></tr>' +
+
+  // Manage link
+  '<tr><td style="padding:10px 32px 28px;text-align:center">' +
+  '<p style="margin:0;color:#8e8e93;font-size:12.5px;line-height:1.6">Need to update your payment info or cancel?<br>' +
+  'Go to <b>Settings &rarr; Subscription</b> or reply to this email.</p>' +
+  '</td></tr>' +
+
+  // Footer
+  '<tr><td style="background:#f7f6fc;padding:18px 32px;text-align:center;border-top:1px solid #eae7f5">' +
+  '<p style="margin:0 0 6px;color:#8e8e93;font-size:11.5px;line-height:1.6">This receipt was sent to ' + toEmail + '.</p>' +
+  '<p style="margin:0;color:#a8a5b3;font-size:11px;line-height:1.6">&copy; ' + new Date().getFullYear() + ' GistApp Community &middot; All rights reserved.</p>' +
+  '</td></tr>' +
+
+  '</table></td></tr></table></body></html>';
+
+  try {
+    await mailer.sendMail({
+      from: '"GistApp" <' + GMAIL_SENDER + '>',
+      to: toEmail,
+      replyTo: process.env.SMTP_USER,
+      subject: 'Your GistApp receipt — ' + amountStr + ' (' + planName + ')',
+      headers: {
+        'X-Priority': '3',
+        'Importance': 'normal'
+      },
+      html: html
+    });
+    console.log('✅ Receipt sent to', toEmail, '(' + ref + ')');
+    return true;
+  } catch(e){
+    console.warn('receipt email failed:', e && e.message);
+    return false;
+  }
+}
+
+/* GISTAPP_GIFT_EMAIL — notified streamer when a gift arrives while they're offline */
+const GIFT_EMOJI_MAP = {
+  heart:'❤️', rose:'🌹', fire:'🔥', star:'⭐', cake:'🎂',
+  crown:'👑', diamond:'💎', rocket:'🚀'
+};
+async function sendGiftEmail(toEmail, displayName, info){
+  if (!toEmail) return false;
+  info = info || {};
+  const baseUrl = process.env.APP_URL || 'https://gistapp.onrender.com';
+  const iconUrl = baseUrl + '/icon-192.png';
+  const name = displayName || 'there';
+  const senderName = info.sender_name || 'Someone';
+  const emoji = GIFT_EMOJI_MAP[info.gift_type] || '🎁';
+  const coins = Number(info.coins || 0);
+  const creatorCoins = Number(info.creator_coins || Math.floor(coins * 0.7));
+  const streamTitle = info.stream_title || 'your live stream';
+  const when = new Date().toLocaleString('en-GB', { timeZone: 'Africa/Lagos' }) + ' WAT';
+
+  const html = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>New gift</title></head>' +
+  '<body style="margin:0;padding:0;background:#f2f0fa;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Inter,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased">' +
+  '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f2f0fa;padding:24px 12px">' +
+  '<tr><td align="center">' +
+  '<table role="presentation" width="560" cellspacing="0" cellpadding="0" border="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:24px;overflow:hidden;box-shadow:0 12px 40px rgba(51,52,76,.10)">' +
+
+  // Header
+  '<tr><td style="background:linear-gradient(135deg,#d97706 0%,#f59e0b 55%,#fbbf24 100%);padding:30px 32px 26px;text-align:center">' +
+  '<img src="' + iconUrl + '" alt="GistApp" width="56" height="56" style="border-radius:14px;display:block;margin:0 auto 12px;box-shadow:0 8px 22px rgba(0,0,0,.3)">' +
+  '<div style="font-size:52px;line-height:1;margin:0 0 8px">' + emoji + '</div>' +
+  '<div style="color:#ffffff;font-size:20px;font-weight:800;letter-spacing:-.3px">You received a gift!</div>' +
+  '</td></tr>' +
+
+  // Body
+  '<tr><td style="padding:28px 32px 4px">' +
+  '<p style="margin:0 0 12px;color:#1c1c22;font-size:17px;font-weight:700;letter-spacing:-.2px">Hey ' + name + ',</p>' +
+  '<p style="margin:0;color:#4a4a55;font-size:14.5px;line-height:1.65"><b>' + senderName + '</b> just sent you a gift during <b>' + streamTitle + '</b>. You earned coins while you were away.</p>' +
+  '</td></tr>' +
+
+  // Earnings card
+  '<tr><td style="padding:22px 32px 0">' +
+  '<div style="background:linear-gradient(135deg,#fff9e6,#fff3c4);border:1px solid #fde68a;border-radius:14px;padding:20px 22px;text-align:center">' +
+  '<div style="color:#92400e;font-size:11px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase">You earned</div>' +
+  '<div style="color:#1c1c22;font-size:34px;font-weight:800;letter-spacing:-.5px;line-height:1.1;margin-top:6px">' + creatorCoins + ' 🪙</div>' +
+  '<div style="color:#92400e;font-size:12.5px;font-weight:600;margin-top:4px">from a ' + coins + ' 🪙 ' + (info.gift_type || 'gift') + '</div>' +
+  '</div>' +
+  '</td></tr>' +
+
+  // Details
+  '<tr><td style="padding:20px 32px 0">' +
+  '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#fafaff;border:1px solid #eae7f5;border-radius:12px;padding:0 16px">' +
+  '<tr><td style="padding:10px 0;color:#6a6a73;font-size:13px">Gift</td><td style="padding:10px 0;color:#1c1c22;font-size:13px;font-weight:700;text-align:right">' + emoji + ' ' + (info.gift_type || 'gift') + '</td></tr>' +
+  '<tr><td style="padding:10px 0;color:#6a6a73;font-size:13px;border-top:1px solid #f0edf5">From</td><td style="padding:10px 0;color:#1c1c22;font-size:13px;font-weight:700;text-align:right">' + senderName + '</td></tr>' +
+  '<tr><td style="padding:10px 0;color:#6a6a73;font-size:13px;border-top:1px solid #f0edf5">When</td><td style="padding:10px 0;color:#1c1c22;font-size:13px;font-weight:700;text-align:right">' + when + '</td></tr>' +
+  '</table>' +
+  '</td></tr>' +
+
+  // CTA
+  '<tr><td style="padding:26px 32px 6px;text-align:center">' +
+  '<a href="' + baseUrl + '" style="background:#2b2c44;color:#ffffff;text-decoration:none;padding:14px 40px;border-radius:14px;font-weight:800;display:inline-block;font-size:14.5px;letter-spacing:.2px">Open GistApp</a>' +
+  '</td></tr>' +
+
+  // Footer with preferences
+  '<tr><td style="padding:10px 32px 28px;text-align:center">' +
+  '<p style="margin:0;color:#8e8e93;font-size:12px;line-height:1.6">You got this because a viewer sent you a gift.<br>' +
+  'Turn off gift emails in <b>Settings &rarr; Notifications</b>.</p>' +
+  '</td></tr>' +
+
+  '<tr><td style="background:#f7f6fc;padding:18px 32px;text-align:center;border-top:1px solid #eae7f5">' +
+  '<p style="margin:0;color:#a8a5b3;font-size:11px;line-height:1.6">&copy; ' + new Date().getFullYear() + ' GistApp Community &middot; All rights reserved.</p>' +
+  '</td></tr>' +
+
+  '</table></td></tr></table></body></html>';
+
+  try {
+    await mailer.sendMail({
+      from: '"GistApp" <' + GMAIL_SENDER + '>',
+      to: toEmail,
+      replyTo: process.env.SMTP_USER,
+      subject: emoji + ' ' + senderName + ' sent you ' + creatorCoins + ' coins!',
+      headers: {
+        'X-Priority': '3',
+        'Importance': 'normal'
+      },
+      html: html
+    });
+    console.log('✅ Gift email sent to', toEmail, '(' + senderName + ' → ' + creatorCoins + ' coins)');
+    return true;
+  } catch(e){
+    console.warn('gift email failed:', e && e.message);
+    return false;
+  }
+}
+
+// Throttle map: userId → timestamp of last gift email (in-memory, resets on restart)
+const _giftEmailLastSent = new Map();
+
 const app    = express();
 
 /* ========== GISTAPP_RATE_LIMIT_V1 ========== */
@@ -3697,6 +3899,21 @@ app.get('/api/billing/verify/:ref', auth, async (req, res) => {
         WHERE id=$1
       `, [req.user.id, planKey, plan.days]);
 
+      // GISTAPP_PAYMENT_RECEIPT — send receipt email (fire and forget)
+      try {
+        const _u = await pool.query('SELECT email, display_name FROM users WHERE id=$1', [req.user.id]);
+        if (_u.rowCount){
+          sendPaymentReceiptEmail(_u.rows[0].email, _u.rows[0].display_name, {
+            plan: planKey,
+            amount: d.amount ? Math.round(d.amount / 100) : (plan.price || 0),
+            method: 'paystack',
+            reference: ref,
+            completed_at: new Date().toISOString(),
+            days: plan.days
+          }).catch(function(){});
+        }
+      } catch(_){}
+
       return res.json({ status: 'success' });
     }
     if (d.status === 'failed' || d.status === 'abandoned'){
@@ -4463,7 +4680,47 @@ app.post('/api/live/:id/gift', auth, async (req, res) => { try { const id = Numb
       await pool.query('UPDATE users SET wallet_balance_coins = COALESCE(wallet_balance_coins,0) + $1, lifetime_earned_coins = COALESCE(lifetime_earned_coins,0) + $1 WHERE id=$2', [_creatorShare, s.rows[0].streamer_id]);
       await pool.query('INSERT INTO wallet_transactions (user_id, kind, coins, meta) VALUES ($1,$2,$3,$4)',
         [s.rows[0].streamer_id, 'gift_earn', _creatorShare, JSON.stringify({ from_user: req.user.id, gift: giftType, stream_id: id, gross: _coins }) ]);
-    } catch(_giftErr){ console.warn('gift record:', _giftErr.message); } const u = await pool.query('SELECT display_name, avatar_url, avatar_color FROM users WHERE id=$1', [req.user.id]); io.to('live:'+id).emit('live-gift', { stream_id: id, gift: giftType, user_id: req.user.id, display_name: u.rows[0].display_name, avatar_color: u.rows[0].avatar_color, avatar_url: u.rows[0].avatar_url, ts: Date.now() }); res.json({ ok: true }); } catch(e){ console.error('live gift:', e.message); res.status(500).json({ error: 'Server error' }); } });
+    } catch(_giftErr){ console.warn('gift record:', _giftErr.message); } const u = await pool.query('SELECT display_name, avatar_url, avatar_color FROM users WHERE id=$1', [req.user.id]); io.to('live:'+id).emit('live-gift', { stream_id: id, gift: giftType, user_id: req.user.id, display_name: u.rows[0].display_name, avatar_color: u.rows[0].avatar_color, avatar_url: u.rows[0].avatar_url, ts: Date.now() });
+    // GISTAPP_GIFT_EMAIL — notify streamer via email if they're offline (socket disconnected)
+    try {
+      const _streamerId = Number(s.rows[0].streamer_id);
+      const _isOnline = onlineUsers.has(_streamerId) && (onlineUsers.get(_streamerId) || 0) > 0;
+      if (!_isOnline){
+        const _lastSent = _giftEmailLastSent.get(_streamerId) || 0;
+        const _oneHourAgo = Date.now() - 60 * 60 * 1000;
+        if (_lastSent < _oneHourAgo){
+          const _info = await pool.query('SELECT email, display_name, prefs FROM users WHERE id=$1', [_streamerId]);
+          if (_info.rowCount && _info.rows[0].email){
+            const _prefs = _info.rows[0].prefs || {};
+            if (_prefs.gift_emails !== 'false'){
+              _giftEmailLastSent.set(_streamerId, Date.now());
+              const _streamRow = await pool.query('SELECT title FROM live_streams WHERE id=$1', [id]);
+              // GISTAPP_GIFT_EMAIL_COINFIX — read actual amounts from live_gifts (avoid recompute drift)
+              let _actualGiftCoins = _coins;
+              let _actualCreatorShare = 0;
+              try {
+                const _gt = await pool.query(
+                  'SELECT coins FROM live_gifts WHERE stream_id=$1 AND user_id=$2 ORDER BY id DESC LIMIT 1',
+                  [id, req.user.id]
+                );
+                if (_gt.rowCount) _actualGiftCoins = _gt.rows[0].coins || 1;
+              } catch(_){}
+              _actualCreatorShare = Math.max(1, Math.floor(_actualGiftCoins * CREATOR_SHARE));
+              sendGiftEmail(_info.rows[0].email, _info.rows[0].display_name, {
+                sender_name: u.rows[0].display_name,
+                gift_type: giftType,
+                coins: _actualGiftCoins,
+                creator_coins: _actualCreatorShare,
+                stream_title: (_streamRow.rows[0] && _streamRow.rows[0].title) || 'your live stream'
+              }).catch(function(){});
+            }
+          }
+        }
+      }
+    } catch(_giftEmailErr){
+      console.warn('gift email hook:', _giftEmailErr && _giftEmailErr.message);
+    }
+    res.json({ ok: true }); } catch(e){ console.error('live gift:', e.message); res.status(500).json({ error: 'Server error' }); } });
 app.delete('/api/live/:id/chat/:mid', auth, async (req, res) => { try { const id = Number(req.params.id); const mid = Number(req.params.mid); const own = await pool.query('SELECT streamer_id FROM live_streams WHERE id=$1', [id]); if (!own.rowCount) return res.status(404).json({ error: 'Stream not found' }); if (own.rows[0].streamer_id !== req.user.id) return res.status(403).json({ error: 'Only host' }); await pool.query('DELETE FROM live_chat_messages WHERE id=$1 AND stream_id=$2', [mid, id]); io.to('live:'+id).emit('live-chat-delete', { id, message_id: mid }); res.json({ ok: true }); } catch(e){ console.error('live del chat:', e.message); res.status(500).json({ error: 'Server error' }); } });
 app.post('/api/live/:id/ban/:uid', auth, async (req, res) => { try { const id = Number(req.params.id); const uid = Number(req.params.uid); const own = await pool.query('SELECT streamer_id FROM live_streams WHERE id=$1', [id]); if (!own.rowCount) return res.status(404).json({ error: 'Stream not found' }); if (own.rows[0].streamer_id !== req.user.id) return res.status(403).json({ error: 'Only host' }); await pool.query("INSERT INTO live_chat_messages (stream_id, user_id, text, kind) VALUES ($1,$2,'','ban')", [id, uid]); await pool.query("UPDATE live_join_requests SET status='kicked' WHERE stream_id=$1 AND user_id=$2", [id, uid]); io.to('user:'+uid).emit('live-kicked', { stream_id: id }); res.json({ ok: true }); } catch(e){ console.error('live ban:', e.message); res.status(500).json({ error: 'Server error' }); } });
 app.post('/api/live/:id/kick-guest/:uid', auth, async (req, res) => { try { const id = Number(req.params.id); const uid = Number(req.params.uid); const own = await pool.query('SELECT streamer_id, room_name FROM live_streams WHERE id=$1', [id]); if (!own.rowCount) return res.status(404).json({ error: 'Stream not found' }); if (own.rows[0].streamer_id !== req.user.id) return res.status(403).json({ error: 'Only host' }); await pool.query("UPDATE live_join_requests SET status='kicked' WHERE stream_id=$1 AND user_id=$2", [id, uid]); io.to('user:'+uid).emit('live-kicked', { stream_id: id, reason: 'Removed by host' }); io.to('live:'+id).emit('live-guest-left', { stream_id: id, user_id: uid }); res.json({ ok: true }); } catch(e){ console.error('live kick:', e.message); res.status(500).json({ error: 'Server error' }); } });
@@ -4591,6 +4848,22 @@ app.post('/api/admin/manual-approve/:id', auth, adminOnly, async (req, res) => {
     `, [p.rows[0].user_id, planKey, plan.days]);
 
     await pool.query("UPDATE payments SET status='success', completed_at=NOW() WHERE id=$1", [id]);
+
+    // GISTAPP_PAYMENT_RECEIPT — send receipt for manual (OPay) payment
+    try {
+      const _full = await pool.query('SELECT amount, reference_id, method FROM payments WHERE id=$1', [id]);
+      const _u = await pool.query('SELECT email, display_name FROM users WHERE id=$1', [p.rows[0].user_id]);
+      if (_u.rowCount && _full.rowCount){
+        sendPaymentReceiptEmail(_u.rows[0].email, _u.rows[0].display_name, {
+          plan: planKey,
+          amount: _full.rows[0].amount || plan.price || 0,
+          method: 'manual',
+          reference: _full.rows[0].reference_id || ('PAY-' + id),
+          completed_at: new Date().toISOString(),
+          days: plan.days
+        }).catch(function(){});
+      }
+    } catch(_){}
 
     console.log('✅ Manual payment approved — user', p.rows[0].user_id, 'plan', planKey);
     res.json({ ok: true });
