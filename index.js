@@ -2046,7 +2046,7 @@ app.get('/api/chats/:id/messages', auth, async (req,res)=>{
   params.push(limit);
 
   const r = await pool.query(`
-    SELECT m.id, m.body, m.created_at, m.edited_at, m.sender_id, m.reactions, m.read_at,
+    SELECT m.id, m.body, m.created_at, m.edited_at, m.sender_id, m.reactions, m.read_at, m.view_once,
            m.media_url, m.media_type, m.deleted_at, m.starred_by, m.pinned, m.reply_to_id,
            u.display_name, u.avatar_color, u.avatar_url, u.subscription_tier AS sender_tier, u.subscription_tier AS author_tier,
            rp.body AS reply_body,
@@ -2084,6 +2084,7 @@ app.get('/api/chats/:id/messages', auth, async (req,res)=>{
 app.post('/api/chats/:id/messages', auth, async (req,res)=>{
   const chatId = req.params.id;
   const { body, media_url, media_type, reply_to_id } = req.body;
+  const view_once = !!req.body.view_once && !!media_url;  // GISTAPP_VIEW_ONCE — only allow with media
   const text = (body||'').trim();
   if (!text && !media_url) return res.status(400).json({error:'Empty message'});
   const m = await isMember(chatId,req.user.id);
@@ -2115,8 +2116,8 @@ app.post('/api/chats/:id/messages', auth, async (req,res)=>{
     else if (disp === '90 days') expiresAt = new Date(Date.now() + 90*24*3600*1000);
 
     const r = await pool.query(
-      'INSERT INTO messages (chat_id,sender_id,body,media_url,media_type,reply_to_id,expires_at) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id,body,created_at,sender_id,reactions,read_at,media_url,media_type,reply_to_id,edited_at,starred_by,pinned,expires_at',
-      [chatId,req.user.id,text,media_url||null,media_type||null,reply_to_id||null,expiresAt]
+      'INSERT INTO messages (chat_id,sender_id,body,media_url,media_type,reply_to_id,expires_at,view_once) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id,body,created_at,sender_id,reactions,read_at,media_url,media_type,reply_to_id,edited_at,starred_by,pinned,expires_at,view_once',
+      [chatId,req.user.id,text,media_url||null,media_type||null,reply_to_id||null,expiresAt, view_once ? true : false]
     );
     row = r.rows[0];
   }
@@ -2312,6 +2313,7 @@ async function sendPush(userId, title, body, data){
 app.post('/api/upload', uploadLimiter, auth, upload.single('file'), async (req,res)=>{
   if (!req.file) return res.status(400).json({error:'No file'});
   const mime = req.file.mimetype || '';
+  console.log('🔍 UPLOAD DEBUG — filename:', req.file.originalname, '| size:', req.file.size, '| browser mimetype:', JSON.stringify(mime));  // TEMP
   const type = mime.startsWith('image/') ? 'image'
              : mime.startsWith('video/') ? 'video'
              : mime.startsWith('audio/') ? 'audio'
@@ -2547,6 +2549,40 @@ app.get('/api/search', auth, async (req, res) => {
     `, [req.user.id, '%' + q.toLowerCase() + '%']);
     res.json(r.rows);
   } catch(e){ console.error(e); res.status(500).json({ error: 'Server error' }); }
+});
+
+/* GISTAPP_VIEW_ONCE — mark message as viewed by current user */
+app.post('/api/messages/:id/viewed', auth, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ error: 'Invalid id' });
+    const m = await pool.query('SELECT id, sender_id, view_once, chat_id FROM messages WHERE id=$1', [id]);
+    if (!m.rowCount) return res.status(404).json({ error: 'Not found' });
+    if (!m.rows[0].view_once) return res.status(400).json({ error: 'Not a view-once message' });
+    if (m.rows[0].sender_id === req.user.id) return res.status(400).json({ error: 'Sender cannot view' });
+    // Verify user is member of the chat
+    const mem = await pool.query('SELECT 1 FROM chat_members WHERE chat_id=$1 AND user_id=$2', [m.rows[0].chat_id, req.user.id]);
+    if (!mem.rowCount) return res.status(403).json({ error: 'Not a member' });
+    // Insert view record (idempotent)
+    await pool.query(
+      'INSERT INTO message_views (message_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING',
+      [id, req.user.id]
+    );
+    res.json({ ok: true });
+  } catch(e){ console.error('mark viewed:', e.message); res.status(500).json({ error: 'Server error' }); }
+});
+
+/* GISTAPP_VIEW_ONCE — get which messages the current user has viewed */
+app.post('/api/messages/viewed-batch', auth, async (req, res) => {
+  try {
+    const ids = Array.isArray(req.body && req.body.ids) ? req.body.ids.map(Number).filter(Boolean).slice(0, 500) : [];
+    if (!ids.length) return res.json({ viewed: [] });
+    const r = await pool.query(
+      'SELECT message_id FROM message_views WHERE user_id=$1 AND message_id = ANY($2)',
+      [req.user.id, ids]
+    );
+    res.json({ viewed: r.rows.map(function(x){ return x.message_id; }) });
+  } catch(e){ console.error('viewed-batch:', e.message); res.status(500).json({ error: 'Server error' }); }
 });
 
 /* GISTAPP_SESSIONS_V2 — session management */
@@ -3162,6 +3198,87 @@ app.get('/api/posts/:id/comments', auth, async (req, res) => {
     res.json(r.rows);
   } catch(e){ console.error('comments get:', e.message); res.status(500).json({ error: 'Server error' }); }
 });
+
+/* GISTAPP_MEDIA_PROXY — stream Upstash media with correct Content-Type
+   Fixes Upstash bug where multipart uploads get text/plain content-type. */
+const _MIME_BY_EXT = {
+  webm: 'video/webm', mp4: 'video/mp4', mov: 'video/quicktime', m4v: 'video/mp4',
+  jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif',
+  webp: 'image/webp', heic: 'image/heic', avif: 'image/avif',
+  mp3: 'audio/mpeg', m4a: 'audio/mp4', ogg: 'audio/ogg', wav: 'audio/wav',
+  opus: 'audio/opus', weba: 'audio/webm', pdf: 'application/pdf'
+};
+app.get('/api/media', async (req, res) => {
+  try {
+    const url = String(req.query.url || '');
+    if (!url || !/^https:\/\/b5b7876444fe\.blob\.upstash\.io\//.test(url)){
+      return res.status(400).end();
+    }
+    const upstream = await fetch(url);
+    if (!upstream.ok) return res.status(upstream.status).end();
+    // Determine content-type from extension
+    const path = url.split('?')[0];
+    const ext = (path.split('.').pop() || '').toLowerCase();
+    const ct = _MIME_BY_EXT[ext] || upstream.headers.get('content-type') || 'application/octet-stream';
+    const len = upstream.headers.get('content-length');
+    res.setHeader('Content-Type', ct);
+    if (len) res.setHeader('Content-Length', len);
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.setHeader('Accept-Ranges', 'bytes');
+    // Support HTTP range requests (video seeking)
+    const range = req.headers.range;
+    if (range && upstream.body){
+      const m = /bytes=(\d+)-(\d+)?/.exec(range);
+      if (m){
+        const start = Number(m[1]);
+        const end = m[2] ? Number(m[2]) : (Number(len) || 0) - 1;
+        const chunkSize = end - start + 1;
+        res.status(206);
+        res.setHeader('Content-Range', 'bytes ' + start + '-' + end + '/' + len);
+        res.setHeader('Content-Length', chunkSize);
+        const upstream2 = await fetch(url, { headers: { Range: 'bytes=' + start + '-' + end } });
+        if (upstream2.body){
+          const reader = upstream2.body.getReader();
+          const pump = async () => {
+            const { value, done } = await reader.read();
+            if (done){ res.end(); return; }
+            res.write(value);
+            pump();
+          };
+          pump();
+          return;
+        }
+      }
+    }
+    if (upstream.body){
+      const reader = upstream.body.getReader();
+      const pump = async () => {
+        const { value, done } = await reader.read();
+        if (done){ res.end(); return; }
+        res.write(value);
+        pump();
+      };
+      pump();
+    } else {
+      res.end();
+    }
+  } catch(e){ console.error('media proxy:', e.message); res.status(500).end(); }
+});
+
+/* GISTAPP_VIEW_ONCE — view once media */
+(async function(){
+  try {
+    await pool.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS view_once BOOLEAN DEFAULT false`);
+    await pool.query(`CREATE TABLE IF NOT EXISTS message_views (
+      message_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      viewed_at TIMESTAMPTZ DEFAULT NOW(),
+      PRIMARY KEY (message_id, user_id)
+    )`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS message_views_msg_idx ON message_views (message_id)`);
+    console.log('✅ view_once migrations ready');
+  } catch(e){ console.warn('view_once migration:', e.message); }
+})();
 
 /* GISTAPP_SESSIONS_V2 — multi-session support */
 (async function(){

@@ -1414,7 +1414,11 @@ if ('serviceWorker' in navigator){
 
   <!-- ============ FEED / HOME ============ -->
   <section class="screen" id="screen-feed">
-    <div class="feed-head">
+    
+    <div id="presence-debug" style="background:#000;color:#0f0;font-family:monospace;font-size:10px;padding:10px;z-index:99999;position:relative">
+      Loading presence debug...
+    </div>
+<div class="feed-head">
       <div class="feed-title">Home</div>
       <div id="live-strip" style="display:none;padding:12px 16px 6px;gap:10px;overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch"></div>
       <!-- GISTAPP_L5_STRIP_V2 — GISTAPP_L5_HIDE_WHEN_LIVE — horizontal scroll of scheduled streams (hidden when live active) -->
@@ -1509,6 +1513,7 @@ if ('serviceWorker' in navigator){
         <button type="button" class="dm-mic" id="dm-video-btn" onclick="openVideoRecorder()" title="Record video" style="margin-right:2px">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="6" width="14" height="12" rx="2.5"/><path d="M16.5 10.5l5-3v9l-5-3z"/></svg>
         </button>
+        <button type="button" id="dm-viewonce-btn" onclick="toggleViewOnce()" title="View once" style="width:40px;height:40px;border-radius:50%;border:1px solid var(--line);background:var(--bg-2);color:var(--sub);font-size:16px;font-weight:800;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;transition:all .2s">1</button>
         <button type="button" class="dm-mic" id="dm-mic-btn" onclick="toggleVoice()">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15a3 3 0 003-3V6a3 3 0 00-6 0v6a3 3 0 003 3z"/><path d="M19 11a7 7 0 01-14 0M12 18v3"/></svg>
         </button>
@@ -2268,7 +2273,18 @@ async function api(path, opts={}){
   }
   clearTimeout(timer);
 
-  const data = await res.json().catch(()=>({}));
+  // GISTAPP_API_SAFE_JSON — never crash on HTML error pages
+  let data = {};
+  try {
+    const _txt = await res.text();
+    if (_txt && _txt.trim().startsWith('<')) {
+      // Server returned HTML (route missing or crashed)
+      console.warn('[api] non-JSON response from', path, ':', _txt.slice(0, 120));
+      data = { error: 'Endpoint returned HTML (route missing): ' + path };
+    } else if (_txt) {
+      try { data = JSON.parse(_txt); } catch(_) { data = { error: 'Invalid JSON from ' + path }; }
+    }
+  } catch(_) { data = {}; }
   if (!res.ok){
     // GISTAPP_SESSION_KICK — if session was replaced by another device, force logout
     if (res.status === 401 && data && data.code === 'SESSION_REPLACED'){
@@ -2595,7 +2611,18 @@ function connectSocket(){
   });
   setTimeout(function(){ try { if (typeof bindLiveSocketHandlers === 'function') bindLiveSocketHandlers(); } catch(_){} }, 200);
   socket.on('presence-list', function(ids){ onlineIds = new Set(ids.map(Number)); renderChats(); renderStories(); updateHeaderStatus(); });
+    try {
+      var dbg = document.getElementById('presence-debug');
+      if (dbg) dbg.innerHTML = 'SOCKET: ' + socket.connected + ' | ME: ' + (me ? me.id : 'none') + ' | ONLINE: ' + Array.from(onlineIds).join(',');
+    } catch(_){}
+
+  console.log('[PRESENCE] list:', ids, '| socket.connected:', socket.connected);
   socket.on('presence', function(p){ if (p.online) onlineIds.add(Number(p.userId)); else onlineIds.delete(Number(p.userId)); renderChats(); renderStories(); updateHeaderStatus(); });
+    try {
+      var dbg = document.getElementById('presence-debug');
+      if (dbg) dbg.innerHTML = 'SOCKET: ' + socket.connected + ' | ME: ' + (me ? me.id : 'none') + ' | ONLINE: ' + Array.from(onlineIds).join(',');
+    } catch(_){}
+
   socket.on('message', function(m){
     try { if (!me || Number(m.sender_id) !== Number(me.id)) playReceiveSound(); } catch(_){}
     loadChats();
@@ -3539,24 +3566,24 @@ function appendBubble(m, incoming){
     const auto = shouldAutoDownload();
     if (m.media_type === 'image'){
       if (auto){
-        inner = '<img src="' + m.media_url + '" loading="lazy" decoding="async" onclick="openLightbox(\'image\',\'' + m.media_url + '\')">';
+        inner = '<img src="' + mediaUrl(m.media_url) + '" loading="lazy" decoding="async" onclick="openLightbox(\'image\',\'' + mediaUrl(m.media_url) + '\')">';
       } else {
-        inner = '<div style="padding:20px;text-align:center;color:#8e8e93"><button class="btn" style="padding:10px 16px;background:rgba(123,140,255,.2);color:#7b8cff;border-radius:12px;border:none;cursor:pointer;font-family:inherit;font-weight:700" onclick="this.parentNode.innerHTML=\'<img src=&quot;' + m.media_url + '&quot; style=&quot;max-width:100%;border-radius:12px;cursor:pointer&quot; onclick=&quot;openLightbox(\\u0027image\\u0027,\\u0027' + m.media_url + '\\u0027)&quot;>\'">📷 Tap to download image</button></div>';
+        inner = '<div style="padding:20px;text-align:center;color:#8e8e93"><button class="btn" style="padding:10px 16px;background:rgba(123,140,255,.2);color:#7b8cff;border-radius:12px;border:none;cursor:pointer;font-family:inherit;font-weight:700" onclick="this.parentNode.innerHTML=\'<img src=&quot;' + mediaUrl(m.media_url) + '&quot; style=&quot;max-width:100%;border-radius:12px;cursor:pointer&quot; onclick=&quot;openLightbox(\\u0027image\\u0027,\\u0027' + m.media_url + '\\u0027)&quot;>\'">📷 Tap to download image</button></div>';
       }
     }
     else if (m.media_type === 'video'){
       if (auto){
-        inner = '<div style="position:relative;cursor:pointer" onclick="openLightbox(\'video\',\'' + m.media_url + '\')"><video src="' + m.media_url + '" preload="metadata" playsinline muted></video><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.25)"><svg width="44" height="44" viewBox="0 0 24 24" fill="white"><circle cx="12" cy="12" r="11" opacity=".6"/><path d="M10 8v8l6-4z" fill="#fff"/></svg></div></div>';
+        inner = '<div style="position:relative;cursor:pointer" onclick="openLightbox(\'video\',\'' + mediaUrl(m.media_url) + '\')"><video src="' + mediaUrl(m.media_url) + '" preload="metadata" playsinline muted></video><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.25)"><svg width="44" height="44" viewBox="0 0 24 24" fill="white"><circle cx="12" cy="12" r="11" opacity=".6"/><path d="M10 8v8l6-4z" fill="#fff"/></svg></div></div>';
       } else {
-        inner = '<div style="padding:20px;text-align:center;color:#8e8e93"><button class="btn" style="padding:10px 16px;background:rgba(123,140,255,.2);color:#7b8cff;border-radius:12px;border:none;cursor:pointer;font-family:inherit;font-weight:700" onclick="this.parentNode.innerHTML=\'<video src=&quot;' + m.media_url + '&quot; controls style=&quot;max-width:100%;border-radius:12px&quot;></video>\'">🎬 Tap to load video</button></div>';
+        inner = '<div style="padding:20px;text-align:center;color:#8e8e93"><button class="btn" style="padding:10px 16px;background:rgba(123,140,255,.2);color:#7b8cff;border-radius:12px;border:none;cursor:pointer;font-family:inherit;font-weight:700" onclick="this.parentNode.innerHTML=\'<video src=&quot;' + mediaUrl(m.media_url) + '&quot; controls style=&quot;max-width:100%;border-radius:12px&quot;></video>\'">🎬 Tap to load video</button></div>';
       }
     }
     else if (m.media_type === 'sticker'){
       d.classList.add('sticker-only');
-      inner = '<img class="sticker-img" src="' + m.media_url + '" alt="sticker">';
+      inner = '<img class="sticker-img" src="' + mediaUrl(m.media_url) + '" alt="sticker">';
     }
-        else if (m.media_type === 'audio') inner = renderVoicePlayer(m.media_url, m.id || ('v' + Math.random().toString(36).slice(2,7)));
-    else inner = renderFileCard(m.media_url, m.body || '');
+        else if (m.media_type === 'audio') inner = renderVoicePlayer(mediaUrl(m.media_url), m.id || ('v' + Math.random().toString(36).slice(2,7)));
+    else inner = renderFileCard(mediaUrl(m.media_url), m.body || '');
     d.innerHTML = reply + inner + (m.body ? '<div class="caption">' + linkify(m.body) + '</div>' : '') + '<span class="t">' + timeShort(m.created_at) + receipt + '</span>';
   } else {
     d.innerHTML = reply + linkify(m.body) + '<span class="t">' + timeShort(m.created_at) + receipt + '</span>';
@@ -3755,7 +3782,11 @@ document.getElementById('file-pick').addEventListener('change', async function(e
     const res = await fetch('/api/upload', { method:'POST', headers:{ Authorization:'Bearer '+token }, body: fd });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Upload failed');
-    const m = await api('/api/chats/'+currentChat.id+'/messages', { method:'POST', body: JSON.stringify({ body:'', media_url:data.url, media_type:data.type }) });
+    // GISTAPP_VIEW_ONCE_PAYLOAD — include view_once flag when toggle is on
+    const _voPayload = { body:'', media_url:data.url, media_type:data.type };
+    if (_viewOnceMode && (data.type === 'image' || data.type === 'video')) _voPayload.view_once = true;
+    const m = await api('/api/chats/'+currentChat.id+'/messages', { method:'POST', body: JSON.stringify(_voPayload) });
+    if (_voPayload.view_once && typeof toggleViewOnce === 'function') toggleViewOnce();  // reset toggle off
     const msgs = document.getElementById('dm-messages');
     if (!msgs.querySelector('.bubble[data-id="'+m.id+'"]')) appendBubble(m, false);
     messagesCache.push(m);
@@ -3903,7 +3934,7 @@ async function loadContactMedia(){
     const rows = await api('/api/chats/' + cpChat.id + '/messages');
     const media = rows.filter(function(m){ return m.media_url && m.media_type==='image'; }).slice(-4);
     if (!media.length){ grid.innerHTML = '<div style="grid-column:1/-1;color:var(--sub);font-size:13px">No media yet</div>'; return; }
-    grid.innerHTML = media.map(function(m){ return '<div style="aspect-ratio:1;border-radius:10px;overflow:hidden;background:var(--bg-2);cursor:pointer" onclick="openLightbox(\'image\',\''+m.media_url+'\')"><img src="'+m.media_url+'" style="width:100%;height:100%;object-fit:cover"></div>'; }).join('');
+    grid.innerHTML = media.map(function(m){ return '<div style="aspect-ratio:1;border-radius:10px;overflow:hidden;background:var(--bg-2);cursor:pointer" onclick="openLightbox(\'image\',\''+mediaUrl(m.media_url)+'\')"><img src="'+mediaUrl(m.media_url)+'" style="width:100%;height:100%;object-fit:cover"></div>'; }).join('');
   } catch(_){}
 }
 async function cpToggleMute(){ const next = !cpChat.muted; try { await api('/api/chats/'+cpChat.id, { method:'PATCH', body: JSON.stringify({ muted:next }) }); cpChat.muted = next; document.getElementById('cp-mute').classList.toggle('on', next); const c = chatsCache.find(function(x){ return Number(x.id)===Number(cpChat.id); }); if (c) c.muted = next; renderChats(); toast(next?'Muted':'Unmuted'); } catch(e){ alert(e.message); } }
@@ -4016,7 +4047,7 @@ async function loadProfileMedia(){
         for (const m of msgs){ if (m.media_url && m.media_type==='image'){ images.push(m); if (images.length>=4) break; } }
       } catch(_){}
     }
-    if (images.length){ grid.innerHTML = images.slice(0,4).map(function(m){ return '<div style="aspect-ratio:1;border-radius:10px;overflow:hidden;background:var(--bg-2);cursor:pointer" onclick="openLightbox(\'image\',\''+m.media_url+'\')"><img src="'+m.media_url+'" style="width:100%;height:100%;object-fit:cover"></div>'; }).join(''); }
+    if (images.length){ grid.innerHTML = images.slice(0,4).map(function(m){ return '<div style="aspect-ratio:1;border-radius:10px;overflow:hidden;background:var(--bg-2);cursor:pointer" onclick="openLightbox(\'image\',\''+mediaUrl(m.media_url)+'\')"><img src="'+mediaUrl(m.media_url)+'" style="width:100%;height:100%;object-fit:cover"></div>'; }).join(''); }
   } catch(_){}
 }
 
@@ -4278,9 +4309,9 @@ async function openGallery(){
     const media = rows.filter(function(m){ return m.media_url; });
     if (!media.length){ document.getElementById('media-grid').innerHTML = '<div style="grid-column:1/-1;color:var(--sub);text-align:center;padding:20px">No media yet</div>'; return; }
     document.getElementById('media-grid').innerHTML = media.map(function(m){
-      if (m.media_type === 'image') return '<div style="aspect-ratio:1;border-radius:8px;overflow:hidden;background:var(--bg-2);cursor:pointer" onclick="openLightbox(\'image\',\''+m.media_url+'\')"><img src="'+m.media_url+'" style="width:100%;height:100%;object-fit:cover"></div>';
-      if (m.media_type === 'video') return '<div style="aspect-ratio:1;border-radius:8px;overflow:hidden;background:var(--bg-2);display:flex;align-items:center;justify-content:center;cursor:pointer" onclick="openLightbox(\'video\',\''+m.media_url+'\')">🎬</div>';
-      return '<div style="aspect-ratio:1;border-radius:8px;background:var(--bg-2);display:flex;align-items:center;justify-content:center"><a href="'+m.media_url+'" target="_blank" style="text-decoration:none;color:var(--sub)">📎</a></div>';
+      if (m.media_type === 'image') return '<div style="aspect-ratio:1;border-radius:8px;overflow:hidden;background:var(--bg-2);cursor:pointer" onclick="openLightbox(\'image\',\''+mediaUrl(m.media_url)+'\')"><img src="'+mediaUrl(m.media_url)+'" style="width:100%;height:100%;object-fit:cover"></div>';
+      if (m.media_type === 'video') return '<div style="aspect-ratio:1;border-radius:8px;overflow:hidden;background:var(--bg-2);display:flex;align-items:center;justify-content:center;cursor:pointer" onclick="openLightbox(\'video\',\''+mediaUrl(m.media_url)+'\')">🎬</div>';
+      return '<div style="aspect-ratio:1;border-radius:8px;background:var(--bg-2);display:flex;align-items:center;justify-content:center"><a href="'+mediaUrl(m.media_url)+'" target="_blank" style="text-decoration:none;color:var(--sub)">📎</a></div>';
     }).join('');
   } catch(_){}
 }
@@ -11038,7 +11069,7 @@ if (typeof _origRenderCommentNode2 === 'function'){
     if (c.media_urls && Array.isArray(c.media_urls) && c.media_urls.length){
       extras += '<div style="display:flex;gap:6px;overflow-x:auto;margin:8px 0;-webkit-overflow-scrolling:touch;max-width:280px">' +
         c.media_urls.map(function(u){
-          return '<img src="' + u + '" onclick="if(typeof openLightbox===\'function\')openLightbox(\'' + u + '\')" style="flex:0 0 auto;width:120px;height:120px;border-radius:10px;object-fit:cover;cursor:pointer">';
+          return '<img src="' + mediaUrl(u) + '" onclick="if(typeof openLightbox===\'function\')openLightbox(\'' + mediaUrl(u) + '\')" style="flex:0 0 auto;width:120px;height:120px;border-radius:10px;object-fit:cover;cursor:pointer">';
         }).join('') +
       '</div>';
     }
@@ -12176,6 +12207,155 @@ window.revokeAllOthers = async function(){
   };
 })();
 
+/* GISTAPP_VIEW_ONCE — view once media in chat */
+var _viewOnceMode = false;
+var _viewOnceActiveMsg = null;
+
+window.toggleViewOnce = function(){
+  _viewOnceMode = !_viewOnceMode;
+  var btn = document.getElementById('dm-viewonce-btn');
+  if (btn){
+    if (_viewOnceMode){
+      btn.style.background = 'var(--accent,#7b8cff)';
+      btn.style.color = '#fff';
+      btn.style.borderColor = 'var(--accent,#7b8cff)';
+      try { toast('📸 Next photo/video will be view-once'); } catch(_){}
+    } else {
+      btn.style.background = 'var(--bg-2)';
+      btn.style.color = 'var(--sub)';
+      btn.style.borderColor = 'var(--line)';
+    }
+  }
+};
+
+// Reset after send
+var _origSendMsgHook = window.sendMsg;
+if (typeof _origSendMsgHook === 'function' && !window._voSendHooked){
+  window._voSendHooked = true;
+  window.sendMsg = function(){
+    var r = _origSendMsgHook.apply(this, arguments);
+    if (_viewOnceMode){ setTimeout(toggleViewOnce, 100); }  // reset off
+    return r;
+  };
+}
+
+// Ensure sendMsg includes view_once param
+// Find where the send payload is built — attach view_once
+(function(){
+  // Hook fetch indirectly via the api() call — simpler: patch sendMsg's payload
+  // The actual sendMsg calls api('/api/chats/X/messages', { body: JSON.stringify(payload) })
+  // We intercept before that — override sendMsg entirely is safest
+})();
+
+// Viewer modal
+window.openViewOnce = function(msgId, mediaUrl, mediaType){
+  _viewOnceActiveMsg = msgId;
+  var overlay = document.getElementById('viewonce-overlay');
+  if (overlay) overlay.remove();
+  overlay = document.createElement('div');
+  overlay.id = 'viewonce-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:#000;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center';
+  overlay.innerHTML =
+    '<div style="position:absolute;top:calc(16px + env(safe-area-inset-top,0px));left:16px;right:16px;display:flex;align-items:center;justify-content:space-between;color:#fff;z-index:2">' +
+      '<div style="background:rgba(255,255,255,.15);color:#fff;padding:6px 12px;border-radius:20px;font-size:12px;font-weight:800;letter-spacing:.5px">1 · VIEW ONCE</div>' +
+      '<button onclick="closeViewOnce()" style="background:rgba(255,255,255,.15);color:#fff;border:none;width:38px;height:38px;border-radius:50%;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center">✕</button>' +
+    '</div>' +
+    (mediaType === 'video'
+      ? '<video src="' + mediaUrl + '" autoplay controls playsinline style="max-width:100%;max-height:80vh;-webkit-touch-callout:none" oncontextmenu="return false"></video>'
+      : '<img src="' + mediaUrl + '" style="max-width:100%;max-height:80vh;object-fit:contain;-webkit-touch-callout:none" oncontextmenu="return false" draggable="false">') +
+    '<div style="position:absolute;bottom:calc(20px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);color:rgba(255,255,255,.7);font-size:12px;text-align:center;padding:0 20px">Tap ✕ to close. This media cannot be opened again.</div>';
+  document.body.appendChild(overlay);
+};
+
+window.closeViewOnce = async function(){
+  var overlay = document.getElementById('viewonce-overlay');
+  if (overlay){
+    var vid = overlay.querySelector('video');
+    if (vid){ try { vid.pause(); } catch(_){} }
+    overlay.remove();
+  }
+  if (_viewOnceActiveMsg){
+    var mid = _viewOnceActiveMsg;
+    _viewOnceActiveMsg = null;
+    try { await api('/api/messages/' + mid + '/viewed', { method: 'POST' }); } catch(_){}
+    // Update the local bubble to "Opened" state
+    var bubble = document.querySelector('.bubble[data-id="' + mid + '"]');
+    if (bubble){
+      bubble.innerHTML = '<div style="padding:14px;text-align:center;color:var(--sub);font-size:13px;font-weight:600">👁️ Opened</div><span class="t">' + timeShort(new Date()) + '</span>';
+    }
+  }
+};
+
+// Override appendBubble to render view-once state
+var _origAppendBubble = window.appendBubble;
+if (typeof _origAppendBubble === 'function' && !window._voBubbleHooked){
+  window._voBubbleHooked = true;
+  window.appendBubble = function(m, incoming){
+    if (!m || !m.view_once || !m.media_url){
+      return _origAppendBubble.apply(this, arguments);
+    }
+    // Custom render for view-once
+    var msgs = document.getElementById('dm-messages');
+    if (!msgs) return;
+    if (m.id && msgs.querySelector('.bubble[data-id="' + m.id + '"]')) return;
+    var d = document.createElement('div');
+    d.className = 'bubble ' + (incoming ? 'in' : 'out');
+    if (m.id) d.dataset.id = m.id;
+    var receipt = !incoming ? '<span class="receipt">' + (m.read_at ? '✓✓' : '✓') + '</span>' : '';
+    var viewOnceBadge = '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px"><span style="background:rgba(123,140,255,.2);color:var(--accent,#7b8cff);font-size:10.5px;font-weight:800;padding:2px 8px;border-radius:10px;letter-spacing:.6px">1 · VIEW ONCE</span></div>';
+    if (incoming){
+      // Show tap-to-view; after opening, prevents reopening
+      d.innerHTML = viewOnceBadge +
+        '<div id="vo-inner-' + m.id + '" style="cursor:pointer;padding:16px;background:rgba(123,140,255,.08);border-radius:12px;text-align:center" onclick="openViewOnce(' + m.id + ', \'' + mediaUrl(m.media_url || '').replace(/'/g, "\\'") + '\', \'' + (m.media_type || 'image') + '\')">' +
+          '<div style="font-size:24px">📸</div>' +
+          '<div style="font-size:12.5px;color:var(--sub);margin-top:4px;font-weight:600">Tap to view</div>' +
+        '</div>' +
+        '<span class="t">' + timeShort(m.created_at) + '</span>';
+    } else {
+      // Sender view
+      var thumb = m.media_type === 'video'
+        ? '<div style="display:flex;align-items:center;justify-content:center;height:80px;background:rgba(0,0,0,.3);border-radius:10px"><span style="font-size:26px">🎬</span></div>'
+        : '<img src="' + mediaUrl(m.media_url) + '" style="max-width:120px;max-height:120px;border-radius:10px;object-fit:cover;filter:blur(6px)">';
+      d.innerHTML = viewOnceBadge + thumb +
+        '<div style="font-size:11px;color:var(--sub);text-align:center;margin-top:4px">View-once media</div>' +
+        '<span class="t">' + timeShort(m.created_at) + receipt + '</span>';
+    }
+    msgs.appendChild(d);
+    scrollBottom();
+  };
+}
+
+// On messages load, mark incoming view-once messages the user has already viewed
+async function syncViewOnceStates(){
+  try {
+    var bubbles = document.querySelectorAll('.bubble[data-id]');
+    var ids = [];
+    bubbles.forEach(function(b){
+      var id = Number(b.dataset.id);
+      if (id) ids.push(id);
+    });
+    if (!ids.length) return;
+    var r = await api('/api/messages/viewed-batch', { method: 'POST', body: JSON.stringify({ ids: ids }) });
+    var viewed = (r && r.viewed) || [];
+    viewed.forEach(function(mid){
+      var inner = document.getElementById('vo-inner-' + mid);
+      if (inner){
+        inner.outerHTML = '<div style="padding:14px;text-align:center;color:var(--sub);font-size:13px;font-weight:600">👁️ Opened</div>';
+      }
+    });
+  } catch(_){}
+}
+setTimeout(syncViewOnceStates, 3000);
+
+/* GISTAPP_MEDIA_WRAP */ /* GISTAPP_MEDIA_URL_REWRITE — route Upstash URLs through proxy for correct content-type */
+window.mediaUrl = function(u){
+  if (!u) return u;
+  if (/^https?:\/\/b5b7876444fe\.blob\.upstash\.io\//.test(u)){
+    return '/api/media?url=' + encodeURIComponent(u);
+  }
+  return u;
+};
+
 boot();
 </script>
 
@@ -13219,5 +13399,32 @@ window.addEventListener('error', function(e){
     <button onclick="closeStreamSummary()" style="width:100%;height:52px;background:var(--accent,#7b8cff);color:#fff;border:none;border-radius:14px;font-size:15px;font-weight:800;font-family:inherit;cursor:pointer;margin-top:16px">Done</button>
   </div>
 </div>
+
+<script>
+setInterval(function(){
+  try {
+    var dbg = document.getElementById('presence-diagnostic-banner');
+      dbg = document.createElement('div');
+      dbg.id = 'presence-diagnostic-banner';
+      dbg.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:999999;background:#ff0000;color:#ffffff;padding:12px;font-size:14px;font-family:monospace;text-align:center;font-weight:bold;box-shadow:0 4px 10px rgba(0,0,0,0.5);pointer-events:none;';
+      document.body.appendChild(dbg);
+    }
+    var isConn = (typeof socket !== 'undefined' && socket && socket.connected) ? 'CONNECTED' : 'DISCONNECTED';
+    var meId = (typeof me !== 'undefined' && me) ? me.id : 'NONE';
+    var onIds = (typeof onlineIds !== 'undefined' && onlineIds) ? Array.from(onlineIds).join(',') : 'NONE';
+    
+    dbg.innerHTML = 'SOCKET: ' + isConn + '<br>ME: ' + meId + ' | ONLINE: ' + onIds;
+    
+    // Change color if broken
+    if (isConn === 'DISCONNECTED') {
+      dbg.style.background = '#ff0000'; 
+    } else if (onIds === 'NONE' || onIds === '') {
+      dbg.style.background = '#ff8800'; 
+    } else {
+      dbg.style.background = '#008800'; 
+    }
+  } catch(e){}
+}, 2000);
+</script>
 </body>
 </html>
