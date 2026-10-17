@@ -13387,37 +13387,6 @@ window.addEventListener('error', function(e){
   <div id="community-body" style="padding:16px 16px 60px">
     <div style="text-align:center;padding:40px;color:var(--sub)">Loading…</div>
   </div>
-</div>
-
-<!-- GISTAPP_STREAM_SUMMARY_UI -->
-<div id="stream-summary" style="position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:99998;display:none;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(6px)">
-  <div style="background:var(--bg);border-radius:24px;padding:28px 22px;max-width:420px;width:100%;max-height:88vh;overflow-y:auto;text-align:center">
-    <div style="font-size:56px;margin-bottom:8px">🎬</div>
-    <div style="font-size:22px;font-weight:800;color:var(--ink);margin-bottom:4px">Stream ended</div>
-    <div style="font-size:13px;color:var(--sub);margin-bottom:20px" id="ss-summary-title">—</div>
-    <div id="ss-summary-body" style="text-align:left"></div>
-    <button onclick="closeStreamSummary()" style="width:100%;height:52px;background:var(--accent,#7b8cff);color:#fff;border:none;border-radius:14px;font-size:15px;font-weight:800;font-family:inherit;cursor:pointer;margin-top:16px">Done</button>
-  </div>
-</div>
-
-<script>
-setInterval(function(){
-  try {
-    var dbg = document.getElementById('presence-diagnostic-banner');
-      dbg = document.createElement('div');
-      dbg.id = 'presence-diagnostic-banner';
-      dbg.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:999999;background:#ff0000;color:#ffffff;padding:12px;font-size:14px;font-family:monospace;text-align:center;font-weight:bold;box-shadow:0 4px 10px rgba(0,0,0,0.5);pointer-events:none;';
-      document.body.appendChild(dbg);
-    }
-    var isConn = (typeof socket !== 'undefined' && socket && socket.connected) ? 'CONNECTED' : 'DISCONNECTED';
-    var meId = (typeof me !== 'undefined' && me) ? me.id : 'NONE';
-    var onIds = (typeof onlineIds !== 'undefined' && onlineIds) ? Array.from(onlineIds).join(',') : 'NONE';
-    
-    dbg.innerHTML = 'SOCKET: ' + isConn + '<br>ME: ' + meId + ' | ONLINE: ' + onIds;
-    
-    // Change color if broken
-    if (isConn === 'DISCONNECTED') {
-      dbg.style.background = '#ff0000'; 
     } else if (onIds === 'NONE' || onIds === '') {
       dbg.style.background = '#ff8800'; 
     } else {

@@ -5054,6 +5054,7 @@ io.on('connection', socket=>{
   const uid = Number(socket.user.id);
   socket.join('user:'+uid);
   onlineUsers.set(uid,(onlineUsers.get(uid)||0)+1);
+  console.log(`🔌 SOCKET CONNECTED: User ${uid} (Total online: ${onlineUsers.size})`);
   io.emit('presence',{userId:uid,online:true});
   socket.emit('presence-list',[...onlineUsers.keys()]);
   socket.on('join',chatId=>socket.join('chat:'+chatId));
