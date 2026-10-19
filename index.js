@@ -4392,6 +4392,27 @@ app.post('/api/pw-reset/complete', async (req, res) => {
   } catch(e){ res.status(500).json({ error: 'Server error' }); }
 });
 
+
+/* GISTAPP_SEO_ROUTES — Robots & Sitemap */
+app.get('/robots.txt', (req, res) => {
+  res.type('text/plain');
+  res.send("User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /uploads/\nSitemap: https://gistapp.onrender.com/sitemap.xml");
+});
+
+app.get('/sitemap.xml', async (req, res) => {
+  try {
+    const baseUrl = 'https://gistapp.onrender.com';
+    let xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">`;
+    xml += `<url><loc>${baseUrl}/</loc><changefreq>daily</changefreq><priority>1.0</priority></url>`;
+    const users = await pool.query("SELECT id FROM users WHERE verified=true LIMIT 500");
+    users.rows.forEach(u => {
+      xml += `<url><loc>${baseUrl}/?profile=${u.id}</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>`;
+    });
+    xml += `</urlset>`;
+    res.header('Content-Type', 'application/xml');
+    res.send(xml);
+  } catch(e) { res.status(500).end(); }
+});
 /* ================= GROUP ADMIN ================= */
 app.post('/api/chats/:id/members/add', auth, async (req, res) => {
   try {
